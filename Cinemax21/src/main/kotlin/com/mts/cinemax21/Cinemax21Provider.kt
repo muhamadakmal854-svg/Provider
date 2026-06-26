@@ -14,8 +14,8 @@ class Cinemax21Provider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "movies" to "Filem Terbaru",
-        "tvshows" to "TV Series Terbaru",
+        "" to "Filem Terbaru",
+        "genre/trending" to "Trending",
         "genre/action" to "Aksi",
         "genre/horror" to "Seram",
         "genre/comedy" to "Komedi"
@@ -57,7 +57,7 @@ class Cinemax21Provider : MainAPI() {
 
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
         val doc = app.get(pageUrl, headers = mapOf("Referer" to mainUrl)).document
-        return doc.select("article.item, .item, .result-item, .film-poster-ahref, div.module-item, div.ml-item, .movie-item, .post-item, .item-post, .box-item, .data-item, .g-item").mapNotNull {
+        return doc.select(".card, div.card, article.item, .item, .result-item, .film-poster-ahref, div.module-item, div.ml-item, .movie-item, .post-item, .item-post, .box-item, .data-item, .g-item").mapNotNull {
             val a   = it.selectFirst("h3 a, h2 a, .title a, a") ?: return@mapNotNull null
             val img = it.selectFirst(".poster img, img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
             var src = img?.posterUrl() ?: ""
@@ -76,10 +76,14 @@ class Cinemax21Provider : MainAPI() {
                 src = foundBg
             }
             val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
+            val title = it.selectFirst(".title, .title-sm, h3, h2, .entry-title, .film-name")?.text()?.trim()
+                ?: a.attr("title").trim().ifEmpty { a.text().trim() }
+            if (title.isBlank()) return@mapNotNull null
+            
             if (href.contains("/tvshows/") || href.contains("/episode/")) {
-                newTvSeriesSearchResponse(a.text().trim(), href, TvType.TvSeries) { posterUrl = src }
+                newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
             } else {
-                newMovieSearchResponse(a.text().trim(), href, TvType.Movie) { posterUrl = src }
+                newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
             }
         }
     }
@@ -114,6 +118,12 @@ class Cinemax21Provider : MainAPI() {
         }
     }
     
+    private fun sha256(input: String): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val bytes = md.digest(input.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -275,7 +285,66 @@ class Cinemax21Provider : MainAPI() {
             if (finalUrl.startsWith("http") || finalUrl.startsWith("//")) {
                 val cleanUrl = if (finalUrl.startsWith("//")) "https:$finalUrl" else finalUrl
                 val cleanUrlEscaped = cleanUrl.replace(92.toChar().toString(), "")
-                if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
+                
+                if (cleanUrlEscaped.contains("gofile.io/d/")) {
+                    try {
+                        val contentId = cleanUrlEscaped.substringAfter("/d/").substringBefore("/").substringBefore("?")
+                        if (contentId.isNotEmpty()) {
+                            val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                            val accResponse = app.post(
+                                url = "https://api.gofile.io/accounts",
+                                headers = mapOf(
+                                    "User-Agent" to userAgent,
+                                    "Accept" to "*/*",
+                                    "Referer" to "https://gofile.io/",
+                                    "Origin" to "https://gofile.io"
+                                )
+                            )
+                            if (accResponse.isSuccessful) {
+                                val responseText = accResponse.text
+                                val apiToken = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(responseText)?.groupValues?.get(1)
+                                if (apiToken != null) {
+                                    val timeSlot = System.currentTimeMillis() / 1000 / 14400
+                                    val salt = "5d4f7g8sd45fsd"
+                                    val tokenData = "$userAgent::en-US::$apiToken::$timeSlot::$salt"
+                                    val websiteToken = sha256(tokenData)
+                                    
+                                    val contentUrl = "https://api.gofile.io/contents/$contentId?contentFilter=&page=1&pageSize=1000&sortField=name&sortDirection=1"
+                                    val contentResponse = app.get(
+                                        url = contentUrl,
+                                        headers = mapOf(
+                                            "User-Agent" to userAgent,
+                                            "Accept" to "*/*",
+                                            "Referer" to "https://gofile.io/",
+                                            "Origin" to "https://gofile.io",
+                                            "Authorization" to "Bearer $apiToken",
+                                            "X-Website-Token" to websiteToken,
+                                            "X-BL" to "en-US"
+                                        )
+                                    )
+                                    if (contentResponse.isSuccessful) {
+                                        val contentText = contentResponse.text
+                                        Regex("\"link\"\\s*:\\s*\"([^\"]+)\"").findAll(contentText).forEach { match ->
+                                            val link = match.groupValues[1]
+                                            if (link.startsWith("http")) {
+                                                callback(
+                                                    ExtractorLink(
+                                                        source = "Gofile",
+                                                        name = "Gofile",
+                                                        url = link,
+                                                        referer = "https://gofile.io/",
+                                                        quality = Qualities.Unknown.value,
+                                                        isM3u8 = link.contains(".m3u8")
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                } else if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
                     !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
                     !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
                     !cleanUrlEscaped.contains("adskeeper")) {
