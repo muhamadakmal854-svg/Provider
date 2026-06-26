@@ -43,7 +43,6 @@ class OploverzProvider : MainAPI() {
         return scrapeList("$mainUrl/?s=${query.replace(" ", "+")}")
     }
     
-    // Helper universal — ambil image dari semua lazy-load variants
     private fun Element.posterUrl(): String {
         for (attr in listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc",
                              "data-original", "data-image", "data-bg", "src")) {
@@ -53,13 +52,13 @@ class OploverzProvider : MainAPI() {
                 return if (v.startsWith("//")) "https:$v" else v
             }
         }
-        // Fallback: srcset — ambil URL pertama
         val srcset = this.attr("srcset")
         if (srcset.isNotBlank()) {
             return srcset.trim().split(",").firstOrNull()
-                ?.trim()?.split(" ")?.firstOrNull { it.startsWith("http") } ?: ""
+                ?.trim()?.split(" ")?.firstOrNull { it.startsWith("http") || it.startsWith("//") }?.let {
+                    if (it.startsWith("//")) "https:$it" else it
+                } ?: ""
         }
-        // Fallback: CSS background-image style
         val style = this.attr("style")
         if (style.contains("background") && style.contains("url(")) {
             val urlStart = style.indexOf("url(") + 4
@@ -70,7 +69,9 @@ class OploverzProvider : MainAPI() {
             val urlEnd = cleaned.indexOf(")")
             if (urlEnd > 0) {
                 val candidate = cleaned.substring(0, urlEnd).trim()
-                if (candidate.startsWith("http")) return candidate
+                if (candidate.startsWith("http") || candidate.startsWith("//")) {
+                    return if (candidate.startsWith("//")) "https:$candidate" else candidate
+                }
             }
         }
         return ""
@@ -84,10 +85,11 @@ class OploverzProvider : MainAPI() {
         return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
             val a     = it.selectFirst("a") ?: return@mapNotNull null
             val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
+            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
             val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
                 ?.text()?.trim()
-                ?: a.attr("title").trim().ifEmpty { return@mapNotNull null }
-            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
+                ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }.ifEmpty { img?.attr("title")?.trim() ?: "" }.ifEmpty { a.text().trim() }
+            if (title.isBlank()) return@mapNotNull null
             var src   = img?.posterUrl() ?: ""
             if (src.isEmpty()) {
                 src = it.posterUrl()
@@ -139,6 +141,12 @@ class OploverzProvider : MainAPI() {
         }
     }
     
+    private fun sha256(input: String): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val bytes = md.digest(input.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -300,13 +308,111 @@ class OploverzProvider : MainAPI() {
             if (finalUrl.startsWith("http") || finalUrl.startsWith("//")) {
                 val cleanUrl = if (finalUrl.startsWith("//")) "https:$finalUrl" else finalUrl
                 val cleanUrlEscaped = cleanUrl.replace(92.toChar().toString(), "")
-                if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
-                    !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
-                    !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
-                    !cleanUrlEscaped.contains("adskeeper")) {
+                
+                if (cleanUrlEscaped.contains("gofile.io/d/")) {
                     try {
-                        loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                        val contentId = cleanUrlEscaped.substringAfter("/d/").substringBefore("/").substringBefore("?")
+                        if (contentId.isNotEmpty()) {
+                            val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                            val accResponse = app.post(
+                                url = "https://api.gofile.io/accounts",
+                                headers = mapOf(
+                                    "User-Agent" to userAgent,
+                                    "Accept" to "*/*",
+                                    "Referer" to "https://gofile.io/",
+                                    "Origin" to "https://gofile.io"
+                                )
+                            )
+                            if (accResponse.isSuccessful) {
+                                val responseText = accResponse.text
+                                val apiToken = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(responseText)?.groupValues?.get(1)
+                                if (apiToken != null) {
+                                    val timeSlot = System.currentTimeMillis() / 1000 / 14400
+                                    val salt = "5d4f7g8sd45fsd"
+                                    val tokenData = "$userAgent::en-US::$apiToken::$timeSlot::$salt"
+                                    val websiteToken = sha256(tokenData)
+                                    
+                                    val contentUrl = "https://api.gofile.io/contents/$contentId?contentFilter=&page=1&pageSize=1000&sortField=name&sortDirection=1"
+                                    val contentResponse = app.get(
+                                        url = contentUrl,
+                                        headers = mapOf(
+                                            "User-Agent" to userAgent,
+                                            "Accept" to "*/*",
+                                            "Referer" to "https://gofile.io/",
+                                            "Origin" to "https://gofile.io",
+                                            "Authorization" to "Bearer $apiToken",
+                                            "X-Website-Token" to websiteToken,
+                                            "X-BL" to "en-US"
+                                        )
+                                    )
+                                    if (contentResponse.isSuccessful) {
+                                        val contentText = contentResponse.text
+                                        Regex("\"link\"\\s*:\\s*\"([^\"]+)\"").findAll(contentText).forEach { match ->
+                                            val link = match.groupValues[1]
+                                            if (link.startsWith("http")) {
+                                                callback(
+                                                    newExtractorLink(
+                                                        source = "Gofile",
+                                                        name = "Gofile",
+                                                        url = link,
+                                                        type = if (link.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                    ) {
+                                                        this.referer = "https://gofile.io/"
+                                                        this.quality = Qualities.Unknown.value
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     } catch (_: Exception) {}
+                } else if (cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains(".mp4") || cleanUrlEscaped.contains("/hls/")) {
+                    try {
+                        val isM3u = cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains("/hls/")
+                        callback(
+                            newExtractorLink(
+                                source = "Direct Stream",
+                                name = "Direct Stream",
+                                url = cleanUrlEscaped,
+                                type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = data
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                    } catch (_: Exception) {}
+                } else {
+                    listOf("link", "url", "r", "to", "go").forEach { param ->
+                        try {
+                            val regex = Regex("[\?&]" + param + "=([^&]+)")
+                            val match = regex.find(cleanUrlEscaped)
+                            val queryValue = match?.groupValues?.get(1)
+                            if (queryValue != null && queryValue.isNotEmpty()) {
+                                val decodedParam = try {
+                                    val decodedBytes = android.util.Base64.decode(queryValue, android.util.Base64.DEFAULT)
+                                    String(decodedBytes, Charsets.UTF_8)
+                                } catch (_: Exception) {
+                                    java.net.URLDecoder.decode(queryValue, "UTF-8")
+                                }
+                                if (decodedParam.startsWith("http") && !decodedParam.contains("google") && !decodedParam.contains("facebook")) {
+                                    try {
+                                        loadExtractor(decodedParam, data, subtitleCallback, callback)
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    
+                    if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
+                        !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
+                        !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
+                        !cleanUrlEscaped.contains("adskeeper")) {
+                        try {
+                            loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                        } catch (_: Exception) {}
+                    }
                 }
             }
         }

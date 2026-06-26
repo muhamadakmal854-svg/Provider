@@ -368,13 +368,51 @@ class Cinemax21Provider : MainAPI() {
                             }
                         }
                     } catch (_: Exception) {}
-                } else if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
-                    !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
-                    !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
-                    !cleanUrlEscaped.contains("adskeeper")) {
+                } else if (cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains(".mp4") || cleanUrlEscaped.contains("/hls/")) {
                     try {
-                        loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                        val isM3u = cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains("/hls/")
+                        callback(
+                            newExtractorLink(
+                                source = "Direct Stream",
+                                name = "Direct Stream",
+                                url = cleanUrlEscaped,
+                                type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = data
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
                     } catch (_: Exception) {}
+                } else {
+                    listOf("link", "url", "r", "to", "go").forEach { param ->
+                        try {
+                            val regex = Regex("[\?&]" + param + "=([^&]+)")
+                            val match = regex.find(cleanUrlEscaped)
+                            val queryValue = match?.groupValues?.get(1)
+                            if (queryValue != null && queryValue.isNotEmpty()) {
+                                val decodedParam = try {
+                                    val decodedBytes = android.util.Base64.decode(queryValue, android.util.Base64.DEFAULT)
+                                    String(decodedBytes, Charsets.UTF_8)
+                                } catch (_: Exception) {
+                                    java.net.URLDecoder.decode(queryValue, "UTF-8")
+                                }
+                                if (decodedParam.startsWith("http") && !decodedParam.contains("google") && !decodedParam.contains("facebook")) {
+                                    try {
+                                        loadExtractor(decodedParam, data, subtitleCallback, callback)
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    
+                    if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
+                        !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
+                        !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
+                        !cleanUrlEscaped.contains("adskeeper")) {
+                        try {
+                            loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                        } catch (_: Exception) {}
+                    }
                 }
             }
         }
