@@ -328,7 +328,7 @@ class Cinemax21Provider : MainAPI() {
                                             val link = match.groupValues[1]
                                             if (link.startsWith("http")) {
                                                 callback(
-                                                    ExtractorLink(
+                                                    newExtractorLink(
                                                         source = "Gofile",
                                                         name = "Gofile",
                                                         url = link,
