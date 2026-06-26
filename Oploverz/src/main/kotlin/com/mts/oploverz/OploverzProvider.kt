@@ -83,7 +83,7 @@ class OploverzProvider : MainAPI() {
             "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
         return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
-            val a     = it.selectFirst("a") ?: return@mapNotNull null
+            val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
             val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
             val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
             val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")

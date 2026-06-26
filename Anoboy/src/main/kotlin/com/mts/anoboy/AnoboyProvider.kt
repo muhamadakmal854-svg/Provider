@@ -62,8 +62,14 @@ class Anoboy : MainAPI() {
         val elements = document.select("a[href]:has(div.amv), a[href]:has(div#amv)")
             .filterNot { it.parents().hasClass("side_home") }
             
-        val items = elements.mapNotNull { it.toSearchResult() }
+        var items = elements.mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
+            
+        if (items.isEmpty()) {
+            items = document.select("div.listupd article.bs, div.listupd .bs, .listupd .bsx, article.bs")
+                .mapNotNull { it.toLegacySearchResult() }
+                .distinctBy { it.url }
+        }
             
         val hasNext = document.selectFirst(".wp-pagenavi a.nextpostslink") != null
             

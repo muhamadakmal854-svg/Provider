@@ -81,7 +81,7 @@ class Cinemax21Provider : MainAPI() {
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
         val doc = app.get(pageUrl, headers = mapOf("Referer" to mainUrl)).document
         return doc.select(".card, div.card, article.item, .item, .result-item, .film-poster-ahref, div.module-item, div.ml-item, .movie-item, .post-item, .item-post, .box-item, .data-item, .g-item").mapNotNull {
-            val a   = it.selectFirst("h3 a, h2 a, .title a, a") ?: return@mapNotNull null
+            val a   = (if (it.tagName() == "a") it else it.selectFirst("h3 a, h2 a, .title a, a")) ?: return@mapNotNull null
             val img = it.selectFirst(".poster img, img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
             val title = it.selectFirst(".title, .title-sm, h3, h2, .entry-title, .film-name")?.text()?.trim()
                 ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }.ifEmpty { img?.attr("title")?.trim() ?: "" }.ifEmpty { a.text().trim() }
