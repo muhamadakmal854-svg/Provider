@@ -51,7 +51,11 @@ class PencurimoviesubmalayProvider : MainAPI() {
             if (cleanPath.isEmpty()) {
                 mainUrl + if (page > 1) "/page/$page/" else "/"
             } else {
-                "$mainUrl/$cleanPath/" + if (page > 1) "page/$page/" else ""
+                val parts = cleanPath.split("?")
+                val basePath = parts[0].removeSuffix("/")
+                val query = if (parts.size > 1) "?" + parts[1] else ""
+                val pagedPath = if (page > 1) "$basePath/page/$page/" else "$basePath/"
+                "$mainUrl/$pagedPath$query"
             }
         }
         val document = app.get(pageUrl).documentLarge

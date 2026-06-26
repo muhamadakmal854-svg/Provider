@@ -15,9 +15,9 @@ class OploverzProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "" to "Terbaru",
-        "ongoing" to "Ongoing",
-        "completed" to "Completed",
-        "anime" to "Semua Anime"
+        "series/?status=ongoing" to "Ongoing",
+        "series/?status=completed" to "Completed",
+        "series" to "Semua Anime"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -29,7 +29,11 @@ class OploverzProvider : MainAPI() {
             if (cleanPath.isEmpty()) {
                 mainUrl + if (page > 1) "/page/$page/" else "/"
             } else {
-                "$mainUrl/$cleanPath/" + if (page > 1) "page/$page/" else ""
+                val parts = cleanPath.split("?")
+                val basePath = parts[0].removeSuffix("/")
+                val query = if (parts.size > 1) "?" + parts[1] else ""
+                val pagedPath = if (page > 1) "$basePath/page/$page/" else "$basePath/"
+                "$mainUrl/$pagedPath$query"
             }
         }
         return newHomePageResponse(request.name, scrapeList(pageUrl))
