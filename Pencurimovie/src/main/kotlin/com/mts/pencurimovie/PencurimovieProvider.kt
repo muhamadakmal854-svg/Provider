@@ -1,6 +1,7 @@
 package com.mts.pencurimovie
 
 import com.lagradost.api.Log
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
