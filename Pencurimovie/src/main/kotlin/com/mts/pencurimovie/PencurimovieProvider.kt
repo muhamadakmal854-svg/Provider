@@ -21,18 +21,13 @@ class PencurimoviesubmalayProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
     override val mainPage = mainPageOf(
-        "movies" to "Latest Movies",
+        "movies" to "Filem Terbaru",
         "series" to "TV Series",
-        "most-rating" to "Most Rating Movies",
-        "most-viewed" to "Most Viewed Movies",
-        "top-imdb" to "Top IMDB Movies",
-        "country/china" to "China Movies",
-        "genre/subbed/english" to "English Movies",
-        "country/india" to "India Movies",
-        "country/japan" to "Japan Movies",
-        "country/thailand" to "Thailand Movies",
-        "country/indonesia" to "Indonesia Movies",
         "country/malaysia" to "Malaysia Movies",
+        "country/indonesia" to "Indonesia Movies",
+        "country/indonesian" to "Indonesian Movies",
+        "country/india" to "India Movies",
+        "country/japan" to "Japan Movies"
     )
 
     private fun Element.getImageUrl(): String {
@@ -48,10 +43,16 @@ class PencurimoviesubmalayProvider : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val pageUrl = if (page > 1) {
-            "$mainUrl/${request.data}/page/$page/"
+        val path = request.data
+        val cleanPath = path.removePrefix("/").removeSuffix("/")
+        val pageUrl = if (path.startsWith("http")) {
+            path + if (page > 1) "page/$page/" else ""
         } else {
-            "$mainUrl/${request.data}/"
+            if (cleanPath.isEmpty()) {
+                mainUrl + if (page > 1) "/page/$page/" else "/"
+            } else {
+                "$mainUrl/$cleanPath/" + if (page > 1) "page/$page/" else ""
+            }
         }
         val document = app.get(pageUrl).documentLarge
         val home = document.select("div.module-item, div.ml-item, div.display-item").mapNotNull { it.toSearchResult() }
