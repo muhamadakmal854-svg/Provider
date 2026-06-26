@@ -386,7 +386,7 @@ class Cinemax21Provider : MainAPI() {
                 } else {
                     listOf("link", "url", "r", "to", "go").forEach { param ->
                         try {
-                            val regex = Regex("[\?&]" + param + "=([^&]+)")
+                            val regex = Regex("[?&]" + param + "=([^&]+)")
                             val match = regex.find(cleanUrlEscaped)
                             val queryValue = match?.groupValues?.get(1)
                             if (queryValue != null && queryValue.isNotEmpty()) {

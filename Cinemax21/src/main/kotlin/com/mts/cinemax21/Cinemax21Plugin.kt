@@ -11,9 +11,6 @@ class Cinemax21Plugin : Plugin() {
         registerExtractorAPI(D2Ww6N6ZilcrhvCloudfrontNet())
         registerExtractorAPI(Max389ProNet())
         registerExtractorAPI(MaxhokiMonster())
-        registerExtractorAPI(LayardramaLive())
-        registerExtractorAPI(WaMe())
         registerExtractorAPI(Vz02372100F95BcdnNet())
-        registerExtractorAPI(MezInk())
     }
 }

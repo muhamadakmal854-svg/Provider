@@ -22,22 +22,7 @@ class MaxhokiMonster : StreamWishExtractor() {
     override val mainUrl = "https://maxhoki.monster"
 }
 
-class LayardramaLive : StreamWishExtractor() {
-    override val name = "LayardramaLive"
-    override val mainUrl = "https://layardrama.live"
-}
-
-class WaMe : StreamWishExtractor() {
-    override val name = "WaMe"
-    override val mainUrl = "https://wa.me"
-}
-
 class Vz02372100F95BcdnNet : StreamWishExtractor() {
     override val name = "Vz02372100F95BcdnNet"
     override val mainUrl = "https://vz-02372100-f95.b-cdn.net"
-}
-
-class MezInk : StreamWishExtractor() {
-    override val name = "MezInk"
-    override val mainUrl = "https://mez.ink"
 }
