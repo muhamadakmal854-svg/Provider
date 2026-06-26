@@ -332,10 +332,11 @@ class Cinemax21Provider : MainAPI() {
                                                         source = "Gofile",
                                                         name = "Gofile",
                                                         url = link,
-                                                        referer = "https://gofile.io/",
-                                                        quality = Qualities.Unknown.value,
-                                                        isM3u8 = link.contains(".m3u8")
-                                                    )
+                                                        type = if (link.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                    ) {
+                                                        this.referer = "https://gofile.io/"
+                                                        this.quality = Qualities.Unknown.value
+                                                    }
                                                 )
                                             }
                                         }
