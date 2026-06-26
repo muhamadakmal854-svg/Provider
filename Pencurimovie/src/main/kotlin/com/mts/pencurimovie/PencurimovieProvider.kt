@@ -22,17 +22,17 @@ class PencurimoviesubmalayProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "movies" to "Latest Movies",
-        "tvshows" to "TV Series",
+        "series" to "TV Series",
         "most-rating" to "Most Rating Movies",
         "most-viewed" to "Most Viewed Movies",
         "top-imdb" to "Top IMDB Movies",
-        "group_movie/china" to "China Movies",
-        "group_movie/english" to "English Movies",
-        "group_movie/india" to "India Movies",
-        "group_movie/japan" to "Japan Movies",
-        "group_movie/thailand" to "Thailand Movies",
-        "group_movie/indonesia" to "Indonesia Movies",
-        "group_movie/malaysia" to "Malaysia Movies",
+        "country/china" to "China Movies",
+        "genre/subbed/english" to "English Movies",
+        "country/india" to "India Movies",
+        "country/japan" to "Japan Movies",
+        "country/thailand" to "Thailand Movies",
+        "country/indonesia" to "Indonesia Movies",
+        "country/malaysia" to "Malaysia Movies",
     )
 
     private fun Element.getImageUrl(): String {
