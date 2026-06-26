@@ -1,6 +1,7 @@
 package com.mts.oploverz
 
 import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -27,7 +28,8 @@ class BloggerCom : ExtractorApi() {
     ) {
         val doc = app.get(url, referer = referer ?: mainUrl).document
 
-        doc.select("video source[src], video[src], source[src]").forEach { el ->
+        // Use for() loops for suspend functions - forEach{} breaks suspend context
+        for (el in doc.select("video source[src], video[src], source[src]")) {
             val src = el.attr("src").trim()
             if (src.isNotBlank() && (src.startsWith("http") || src.startsWith("//"))) {
                 val u = if (src.startsWith("//")) "https:$src" else src
@@ -35,7 +37,7 @@ class BloggerCom : ExtractorApi() {
             }
         }
 
-        doc.select("iframe[src], iframe[data-src]").forEach { ifr ->
+        for (ifr in doc.select("iframe[src], iframe[data-src]")) {
             val s1 = ifr.attr("src").trim()
             val src = if (s1.isNotBlank()) s1 else ifr.attr("data-src").trim()
             if (src.isNotBlank() && (src.startsWith("http") || src.startsWith("//"))) {
@@ -44,9 +46,10 @@ class BloggerCom : ExtractorApi() {
             }
         }
 
-        doc.select("script").forEach { script ->
+        // Regex is not suspend - forEach is OK here
+        for (script in doc.select("script")) {
             val content = script.data()
-            if (content.isBlank()) return@forEach
+            if (content.isBlank()) continue
             val rx = Regex("""https?://\S+\.(?:mp4|m3u8|webm)\S*""")
             rx.findAll(content).forEach { m ->
                 val videoUrl = m.value
