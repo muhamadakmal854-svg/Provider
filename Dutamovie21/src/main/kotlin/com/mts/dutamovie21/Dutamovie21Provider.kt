@@ -11,17 +11,35 @@ class Dutamovie21Provider : MainAPI() {
     override var name           = "Dutamovie21"
     override var lang           = "id"
     override val hasMainPage    = true
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
     override val mainPage = mainPageOf(
         "" to "Terbaru",
         "movie" to "Movie",
-        "series/?status=ongoing" to "Ongoing",
-        "series/?status=completed" to "Completed",
-        "series" to "Semua Anime"
+        "serial-tv-terbaru" to "Ongoing",
+        "serial-tv-terbaru" to "Completed",
+        "animasi" to "Semua Anime"
     )
 
+    private var activeUrl: String? = null
+
+    private suspend fun getActiveUrl(): String {
+        if (activeUrl != null) return activeUrl!!
+        try {
+            val response = app.get("https://dutamovie21.live", timeout = 10, allowRedirects = true)
+            if (response.isSuccessful && response.url.startsWith("http")) {
+                val resolved = response.url.removeSuffix("/")
+                activeUrl = resolved
+                mainUrl = resolved
+                return resolved
+            }
+        } catch (_: Exception) {}
+        activeUrl = mainUrl
+        return mainUrl
+    }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        getActiveUrl()
         val path = request.data
         val cleanPath = path.removePrefix("/").removeSuffix("/")
         val pageUrl = if (path.startsWith("http")) {
@@ -37,13 +55,14 @@ class Dutamovie21Provider : MainAPI() {
                 "$mainUrl/$pagedPath$query"
             }
         }
-        return newHomePageResponse(request.name, scrapeList(pageUrl))
+        return newHomePageResponse(request.name, scrapeList(pageUrl, request.name))
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
+        getActiveUrl()
         return scrapeList("$mainUrl/?s=${query.replace(" ", "+")}")
     }
-    
+
     private fun Element.posterUrl(): String {
         for (attr in listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc",
                              "data-original", "data-image", "data-bg", "src")) {
@@ -78,14 +97,30 @@ class Dutamovie21Provider : MainAPI() {
         return ""
     }
 
-    private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
+    private suspend fun scrapeList(pageUrl: String, sectionName: String? = null): List<SearchResponse> {
         val doc = app.get(pageUrl, headers = mapOf(
             "Referer" to mainUrl,
             "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
-        return doc.select("article.item, .item, article, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
+        
+        val selStr = "article.item, .item, article"
+        
+        return doc.select(selStr).mapNotNull {
             val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
             val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
+            
+            // Check status / gmr-numbeps for Ongoing/Completed filtering
+            val numbeps = it.selectFirst(".gmr-numbeps")?.text()?.trim() ?: ""
+            if (sectionName == "Ongoing") {
+                if (numbeps.contains("END", ignoreCase = true) || !numbeps.contains("Eps", ignoreCase = true)) {
+                    return@mapNotNull null
+                }
+            } else if (sectionName == "Completed") {
+                if (!numbeps.contains("END", ignoreCase = true)) {
+                    return@mapNotNull null
+                }
+            }
+            
             val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
             val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
                 ?.text()?.trim()
@@ -109,8 +144,9 @@ class Dutamovie21Provider : MainAPI() {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
         }.distinctBy { it.url }
     }
-    
+
     override suspend fun load(url: String): LoadResponse? {
+        getActiveUrl()
         val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
         val title  = doc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")?.let {
             if (it.tagName() == "img") it.attr("alt").trim() else it.text().trim()
@@ -141,7 +177,7 @@ class Dutamovie21Provider : MainAPI() {
             }
         }
     }
-    
+
     private fun sha256(input: String): String {
         val md = java.security.MessageDigest.getInstance("SHA-256")
         val bytes = md.digest(input.toByteArray())
@@ -154,6 +190,7 @@ class Dutamovie21Provider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        getActiveUrl()
         val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
         val targets = mutableListOf<String>()
 
@@ -166,7 +203,7 @@ class Dutamovie21Provider : MainAPI() {
             }
         }
 
-        // 2. Direct iframes (check common attributes and classes)
+        // 2. Direct iframes
         doc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src], iframe.metaframe").forEach { iframe ->
             val src = iframe.attr("src")
                 .ifEmpty { iframe.attr("data-src") }
@@ -179,7 +216,7 @@ class Dutamovie21Provider : MainAPI() {
             }
         }
 
-        // 3. Option elements / Dropdowns (e.g. Server choices, mirror list)
+        // 3. Option elements
         doc.select("select option, .mirror option, .server option, select.mirror option, select.server option, .mobius option").forEach { el ->
             listOf("value", "data-src", "data-link", "data-embed", "data-video", "data-url", "data-id").forEach { attr ->
                 val v = el.attr(attr).trim()
@@ -189,7 +226,7 @@ class Dutamovie21Provider : MainAPI() {
             }
         }
 
-        // 4. Clickable elements, links, buttons, lists (e.g. Samehadaku download list, Otakudesu lists, mirrors)
+        // 4. Clickable elements
         doc.select("a, button, li, div, span, .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
@@ -203,78 +240,11 @@ class Dutamovie21Provider : MainAPI() {
             }
         }
 
-        // 5. AJAX Options (ZetaFlix, DooPlay, Flavor themes)
-        val ajaxBtns = doc.select("[data-post][data-nume], ul#playeroptionsul > li, li.zetaflix_player_option, .mirror-item")
-        val ajaxOptions = ajaxBtns.mapNotNull {
-            val post = it.attr("data-post")
-            val nume = it.attr("data-nume")
-            val type = it.attr("data-type").ifEmpty { "movie" }
-            if (post.isNotEmpty() && nume.isNotEmpty()) {
-                Triple(post, nume, type)
-            } else {
-                null
-            }
-        }.distinct()
-
-        ajaxOptions.forEach { (post, nume, type) ->
-            val actions = listOf(
-                "zt_main_ajax", "doo_player_ajax", "wp_ajax_doo_player", 
-                "action_player", "playvideo", "zeta_player_ajax",
-                "get_player_source", "ajax_player", "player_ajax", "bootstrap_ajax"
-            )
-            for (action in actions) {
-                try {
-                    val pageBase = try {
-                        val u = java.net.URL(data)
-                        "${u.protocol}://${u.host}"
-                    } catch (_: Exception) { mainUrl }
-                    val response = app.post(
-                        url = "$pageBase/wp-admin/admin-ajax.php",
-                        data = mapOf(
-                            "action" to action,
-                            "post" to post,
-                            "nume" to nume,
-                            "type" to type
-                        ),
-                        referer = data,
-                        headers = mapOf(
-                            "X-Requested-With" to "XMLHttpRequest",
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                        )
-                    )
-                    if (!response.isSuccessful) continue
-                    val json = response.text
-                    if (json.isBlank() || json == "0" || json == "false" || json == "null") continue
-
-                    // Extract iframe or URL from response HTML/JSON
-                    val parsedDoc = Jsoup.parse(json)
-                    val iframeSrc = parsedDoc.selectFirst("iframe[src], iframe[data-src]")?.let { 
-                        it.attr("src").ifEmpty { it.attr("data-src") } 
-                    }
-
-                    val embedUrl = iframeSrc
-                        ?: Regex("""src=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
-                        ?: Regex("""href=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
-                        ?: Regex("""["'](https?:[^"']+)["']""").find(json)?.groupValues?.get(1)
-                        ?: if (json.trim().startsWith("http")) json.trim() else null
-
-                    if (embedUrl != null) {
-                        val cleanUrl = embedUrl.replace(92.toChar().toString(), "")
-                        if (cleanUrl.startsWith("http") || cleanUrl.startsWith("//")) {
-                            val finalUrl = if (cleanUrl.startsWith("//")) "https:$cleanUrl" else cleanUrl
-                            targets.add(finalUrl)
-                            break // Found link for this button, skip other actions
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
-        }
-
-        // 6. Harvest URLs directly from <script> tags
+        // 5. Harvest URLs directly from <script> tags
         doc.select("script").forEach { script ->
             val content = script.data()
             if (content.isNotBlank()) {
-                Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+""").findAll(content).forEach { match ->
+                Regex("""https?://[a-zA-Z0-9.\\-_]+/[a-zA-Z0-9.\\-_\\?&=\\/~]+""").findAll(content).forEach { match ->
                     val url = match.value
                     if (!url.contains("google") && !url.contains("facebook") && !url.contains("analytics")) {
                         targets.add(url)
@@ -283,12 +253,12 @@ class Dutamovie21Provider : MainAPI() {
             }
         }
 
-        // 7. Process all collected targets (including base64 decoding)
+        // 6. Process all collected targets
         targets.distinct().forEach { raw ->
             val cleanedRaw = raw.trim()
             if (cleanedRaw.isBlank()) return@forEach
 
-            // Attempt base64 decoding (gunakan filter Kotlin untuk buang whitespace tanpa regex)
+            // Attempt base64 decoding
             var decodedUrl = ""
             try {
                 val base64Str = cleanedRaw.filter { !it.isWhitespace() }
@@ -326,7 +296,7 @@ class Dutamovie21Provider : MainAPI() {
                             )
                             if (accResponse.isSuccessful) {
                                 val responseText = accResponse.text
-                                val apiToken = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(responseText)?.groupValues?.get(1)
+                                val apiToken = Regex("\\"token\\"\\s*:\\s*\\"([^\\"]+)\\"").find(responseText)?.groupValues?.get(1)
                                 if (apiToken != null) {
                                     val timeSlot = System.currentTimeMillis() / 1000 / 14400
                                     val salt = "5d4f7g8sd45fsd"
@@ -348,7 +318,7 @@ class Dutamovie21Provider : MainAPI() {
                                     )
                                     if (contentResponse.isSuccessful) {
                                         val contentText = contentResponse.text
-                                        Regex("\"link\"\\s*:\\s*\"([^\"]+)\"").findAll(contentText).forEach { match ->
+                                        Regex("\\"link\\"\\s*:\\s*\\"([^\\"]+)\\"").findAll(contentText).forEach { match ->
                                             val link = match.groupValues[1]
                                             if (link.startsWith("http")) {
                                                 callback(

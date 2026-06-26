@@ -1,6 +1,9 @@
 package com.mts.dutamovie21
 
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
+import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
@@ -27,9 +30,49 @@ class Upload18Cc : StreamWishExtractor() {
     override val mainUrl = "https://upload18.cc"
 }
 
-class EmbedpyroxXyz : StreamWishExtractor() {
+class EmbedpyroxXyz : ExtractorApi() {
     override val name = "EmbedpyroxXyz"
     override val mainUrl = "https://embedpyrox.xyz"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.replace(92.toChar().toString(), "")
+        val id = cleanUrl.substringAfter("/video/").substringBefore("/").substringBefore("?")
+        if (id.isEmpty()) return
+
+        val ajaxUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
+        val response = app.post(
+            url = ajaxUrl,
+            data = mapOf("hash" to id, "r" to (referer ?: "")),
+            headers = mapOf(
+                "X-Requested-With" to "XMLHttpRequest",
+                "Referer" to cleanUrl,
+                "Origin" to mainUrl,
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
+            )
+        )
+        if (!response.isSuccessful) return
+        val text = response.text
+        val securedLink = Regex("\"securedLink\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.get(1)
+        if (securedLink != null) {
+            val finalUrl = securedLink.replace("\\/", "/")
+            callback(
+                newExtractorLink(
+                    source = name,
+                    name = name,
+                    url = finalUrl,
+                    referer = cleanUrl,
+                    type = ExtractorLinkType.M3U8
+                )
+            )
+        }
+    }
 }
 
 class IamcdnNet : StreamWishExtractor() {
