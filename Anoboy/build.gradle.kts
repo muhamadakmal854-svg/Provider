@@ -1,7 +1,7 @@
 version = 1
 
 cloudstream {
-    language    = "id"
+    language    = "en"
     description = "Provider untuk Anoboy"
     authors     = listOf("MTS")
     status      = 1
