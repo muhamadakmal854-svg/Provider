@@ -9,6 +9,5 @@ class OploverzPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(OploverzProvider())
         registerExtractorAPI(AcscdnCom())
-        registerExtractorAPI(BloggerCom())
     }
 }

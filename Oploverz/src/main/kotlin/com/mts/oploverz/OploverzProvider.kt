@@ -87,8 +87,22 @@ class OploverzProvider : MainAPI() {
             val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
                 ?.text()?.trim()
                 ?: a.attr("title").trim().ifEmpty { return@mapNotNull null }
-            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src]")
-            val src   = img?.posterUrl() ?: ""
+            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
+            var src   = img?.posterUrl() ?: ""
+            if (src.isEmpty()) {
+                src = it.posterUrl()
+            }
+            if (src.isEmpty()) {
+                var foundBg = ""
+                it.select("[style*=background], [style*=url]").forEach { el ->
+                    val url = el.posterUrl()
+                    if (url.isNotEmpty()) {
+                        foundBg = url
+                        return@forEach
+                    }
+                }
+                src = foundBg
+            }
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
         }.distinctBy { it.url }
     }
