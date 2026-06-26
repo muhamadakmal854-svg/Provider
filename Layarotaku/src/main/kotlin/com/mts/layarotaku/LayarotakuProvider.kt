@@ -1,24 +1,25 @@
-package com.mts.dutamovie21
+package com.mts.layarotaku
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
-class Dutamovie21Provider : MainAPI() {
+class LayarotakuProvider : MainAPI() {
 
-    override var mainUrl        = "https://eddieoneverything.com"
-    override var name           = "Dutamovie21"
+    override var mainUrl        = "https://www.xml-acronym-demystifier.org"
+    override var name           = "Layar Otaku"
     override var lang           = "id"
     override val hasMainPage    = true
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "" to "Terbaru",
-        "movie" to "Movie",
-        "series/?status=ongoing" to "Ongoing",
-        "series/?status=completed" to "Completed",
-        "series" to "Semua Anime"
+        "movies" to "Filem Terbaru",
+        "tvshows" to "TV Series Terbaru",
+        "genre" to "Genre List",
+        "genre/action" to "Aksi",
+        "genre/horror" to "Seram",
+        "genre/comedy" to "Komedi"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -79,19 +80,14 @@ class Dutamovie21Provider : MainAPI() {
     }
 
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
-        val doc = app.get(pageUrl, headers = mapOf(
-            "Referer" to mainUrl,
-            "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-        )).document
-        return doc.select("article.item, .item, article, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
-            val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
-            val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
-            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
-            val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
-                ?.text()?.trim()
+        val doc = app.get(pageUrl, headers = mapOf("Referer" to mainUrl)).document
+        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, article.item, .item, .result-item, .film-poster-ahref, div.module-item, div.ml-item, .movie-item, .post-item, .item-post, .box-item, .data-item, .g-item").mapNotNull {
+            val a   = (if (it.tagName() == "a") it else it.selectFirst("h3 a, h2 a, .title a, a")) ?: return@mapNotNull null
+            val img = it.selectFirst(".poster img, img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
+            val title = it.selectFirst(".title, .title-sm, h3, h2, .entry-title, .film-name")?.text()?.trim()
                 ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }.ifEmpty { img?.attr("title")?.trim() ?: "" }.ifEmpty { a.text().trim() }
             if (title.isBlank()) return@mapNotNull null
-            var src   = img?.posterUrl() ?: ""
+            var src = img?.posterUrl() ?: ""
             if (src.isEmpty()) {
                 src = it.posterUrl()
             }
@@ -106,38 +102,42 @@ class Dutamovie21Provider : MainAPI() {
                 }
                 src = foundBg
             }
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
-        }.distinctBy { it.url }
+            val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
+            
+            if (href.contains("/tvshows/") || href.contains("/episode/")) {
+                newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+            } else {
+                newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+            }
+        }
     }
     
     override suspend fun load(url: String): LoadResponse? {
-        val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
-        val title  = doc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")?.let {
-            if (it.tagName() == "img") it.attr("alt").trim() else it.text().trim()
-        }?.trim() ?: return null
-        val poster = doc.selectFirst(".thumb img, .seriesthumb img, .film-poster img, .entry-thumb img, .cover img")
-            ?.let { img ->
-                listOf("data-src","data-lazy-src","data-lazy","data-cfsrc","data-original","src")
-                    .map { img.attr(it) }
-                    .firstOrNull { it.isNotBlank() && it.startsWith("http") }
+        val doc    = app.get(url, headers = mapOf("Referer" to mainUrl)).document
+        val title  = doc.selectFirst(".sheader .data h1, h1.entry-title, .data h1")?.text()?.trim() ?: return null
+        val poster = doc.selectFirst(".poster img, .sheader .poster img")?.let { img ->
+            listOf("data-src","data-lazy-src","data-lazy","data-cfsrc","src")
+                .map { img.attr(it) }.firstOrNull { it.isNotBlank() && it.startsWith("http") }
+        }
+        val plot   = doc.selectFirst(".wp-content p, .description p")?.text()?.trim()
+        val year   = doc.selectFirst(".date, [itemprop=dateCreated]")?.text()
+            ?.filter { it.isDigit() }?.let {
+                if (it.length >= 4) it.substring(0, 4).toIntOrNull() else null
             }
-        val plot   = doc.selectFirst(".entry-content p, .synp .deskripsi, [itemprop=description], .film-description p")
-            ?.text()?.trim()
-        val genres = doc.select(".genxed a, .genre-info a, .info-content .spe a[href*=genre], .film-genres a")
-            .map { it.text() }
-        val eps = doc.select(".eplister ul li a, .episodelist ul li a, .clps li a, .ep-list li a").mapNotNull { a ->
-            val epTitle = a.selectFirst(".epl-title, .epl-num, span")?.text()?.trim()
-                ?: a.text().trim()
-            val epUrl   = a.attr("href")
-            if (epUrl.isNotBlank()) newEpisode(epUrl) { this.name = epTitle } else null
-        }.reversed()
-        return if (eps.isNotEmpty()) {
+        val genres = doc.select(".sgeneros a").map { it.text() }
+        val isTv   = url.contains("/tvshows/")
+        return if (isTv) {
+            val eps = doc.select("#episodes .episodiotitle a").mapIndexed { i, a ->
+                newEpisode(a.attr("href")) {
+                    this.name = a.text().trim(); this.episode = i + 1
+                }
+            }
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, eps) {
-                this.posterUrl = poster; this.plot = plot; this.tags = genres
+                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster; this.plot = plot; this.tags = genres
+                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
             }
         }
     }
