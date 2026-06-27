@@ -252,13 +252,28 @@ class PencurimoviesubmalayProvider : MainAPI() {
         val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
         val targets = mutableListOf<String>()
 
+        fun fixUrl(url: String): String {
+            if (url.isBlank()) return ""
+            if (url.startsWith("http")) return url
+            if (url.startsWith("//")) return "https:$url"
+            return try {
+                val u = java.net.URL(data)
+                if (url.startsWith("/")) {
+                    "${u.protocol}://${u.host}$url"
+                } else {
+                    val path = u.path.substringBeforeLast("/")
+                    "${u.protocol}://${u.host}$path/$url"
+                }
+            } catch (_: Exception) {
+                if (url.startsWith("/")) "$mainUrl$url" else "$mainUrl/$url"
+            }
+        }
+
         // 1. Direct video/source elements
         doc.select("source[src], video source[src], video[src]").forEach { el ->
             val src = el.attr("src").trim()
-            if (src.startsWith("http") || src.startsWith("//")) {
-                val finalUrl = if (src.startsWith("//")) "https:$src" else src
-                targets.add(finalUrl)
-            }
+            val finalUrl = fixUrl(src)
+            if (finalUrl.isNotEmpty()) targets.add(finalUrl)
         }
 
         // 2. Direct iframes (check common attributes and classes)
@@ -268,32 +283,31 @@ class PencurimoviesubmalayProvider : MainAPI() {
                 .ifEmpty { iframe.attr("data-litespeed-src") }
                 .ifEmpty { iframe.attr("data-lazy-src") }
                 .trim()
-            if (src.startsWith("http") || src.startsWith("//")) {
-                val finalUrl = if (src.startsWith("//")) "https:$src" else src
-                targets.add(finalUrl)
-            }
+            val finalUrl = fixUrl(src)
+            if (finalUrl.isNotEmpty()) targets.add(finalUrl)
         }
 
         // 3. Option elements / Dropdowns (e.g. Server choices, mirror list)
         doc.select("select option, .mirror option, .server option, select.mirror option, select.server option, .mobius option").forEach { el ->
             listOf("value", "data-src", "data-link", "data-embed", "data-video", "data-url", "data-id").forEach { attr ->
                 val v = el.attr(attr).trim()
-                if (v.isNotBlank()) {
-                    targets.add(v)
-                }
+                val finalUrl = fixUrl(v)
+                if (finalUrl.isNotEmpty()) targets.add(finalUrl)
             }
         }
 
-        // 4. Clickable elements, links, buttons, lists (e.g. Samehadaku download list, Otakudesu lists, mirrors)
+        // 4. Clickable elements, links, buttons, lists
         doc.select("a, button, li, div, span, .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
-                targets.add(href)
+                val finalUrl = fixUrl(href)
+                if (finalUrl.isNotEmpty()) targets.add(finalUrl)
             }
             listOf("data-src", "data-link", "data-embed", "data-video", "data-id", "data-url", "data-content").forEach { attr ->
                 val v = el.attr(attr).trim()
-                if (v.isNotBlank() && !v.contains("data:image")) {
-                    targets.add(v)
+                val finalUrl = fixUrl(v)
+                if (finalUrl.isNotEmpty() && !v.contains("data:image")) {
+                    targets.add(finalUrl)
                 }
             }
         }
@@ -354,10 +368,9 @@ class PencurimoviesubmalayProvider : MainAPI() {
                         ?: if (json.trim().startsWith("http")) json.trim() else null
 
                     if (embedUrl != null) {
-                        val cleanUrl = embedUrl.replace(92.toChar().toString(), "")
-                        if (cleanUrl.startsWith("http") || cleanUrl.startsWith("//")) {
-                            val finalUrl = if (cleanUrl.startsWith("//")) "https:$cleanUrl" else cleanUrl
-                            targets.add(finalUrl)
+                        val cleanUrl = fixUrl(embedUrl)
+                        if (cleanUrl.isNotEmpty()) {
+                            targets.add(cleanUrl)
                             break // Found link for this button, skip other actions
                         }
                     }
@@ -365,25 +378,26 @@ class PencurimoviesubmalayProvider : MainAPI() {
             }
         }
 
-        // 6. Harvest URLs directly from <script> tags
+        # 6. Harvest URLs directly from <script> tags
         doc.select("script").forEach { script ->
             val content = script.data()
             if (content.isNotBlank()) {
                 Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+""").findAll(content).forEach { match ->
                     val url = match.value
                     if (!url.contains("google") && !url.contains("facebook") && !url.contains("analytics")) {
-                        targets.add(url)
+                        val finalUrl = fixUrl(url)
+                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
                     }
                 }
             }
         }
 
-        // 7. Process all collected targets (including base64 decoding)
+        # 7. Process all collected targets (including base64 decoding & fallback routing)
         targets.distinct().forEach { raw ->
             val cleanedRaw = raw.trim()
             if (cleanedRaw.isBlank()) return@forEach
 
-            // Attempt base64 decoding (gunakan filter Kotlin untuk buang whitespace tanpa regex)
+            # Attempt base64 decoding
             var decodedUrl = ""
             try {
                 val base64Str = cleanedRaw.filter { !it.isWhitespace() }
@@ -395,8 +409,8 @@ class PencurimoviesubmalayProvider : MainAPI() {
                     ifr.attr("src").ifEmpty { ifr.attr("data-litespeed-src").ifEmpty { ifr.attr("data-lazy-src").ifEmpty { ifr.attr("data-src") } } }
                 } ?: if (html.startsWith("http")) html else ""
                 
-                if (src.startsWith("http") || src.startsWith("//")) {
-                    decodedUrl = if (src.startsWith("//")) "https:$src" else src
+                if (src.isNotEmpty()) {
+                    decodedUrl = fixUrl(src)
                 }
             } catch (_: Exception) {}
 
@@ -404,66 +418,199 @@ class PencurimoviesubmalayProvider : MainAPI() {
             if (finalUrl.startsWith("http") || finalUrl.startsWith("//")) {
                 val cleanUrl = if (finalUrl.startsWith("//")) "https:$finalUrl" else finalUrl
                 val cleanUrlEscaped = cleanUrl.replace(92.toChar().toString(), "")
-                if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
-                    !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
-                    !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
-                    !cleanUrlEscaped.contains("adskeeper")) {
+                
+                if (cleanUrlEscaped.contains("gofile.io/d/")) {
+                    try {
+                        val contentId = cleanUrlEscaped.substringAfter("/d/").substringBefore("/").substringBefore("?")
+                        if (contentId.isNotEmpty()) {
+                            val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                            val accResponse = app.post(
+                                url = "https://api.gofile.io/accounts",
+                                headers = mapOf(
+                                    "User-Agent" to userAgent,
+                                    "Accept" to "*/*",
+                                    "Referer" to "https://gofile.io/",
+                                    "Origin" to "https://gofile.io"
+                                )
+                            )
+                            if (accResponse.isSuccessful) {
+                                val responseText = accResponse.text
+                                val apiToken = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(responseText)?.groupValues?.get(1)
+                                if (apiToken != null) {
+                                    val timeSlot = System.currentTimeMillis() / 1000 / 14400
+                                    val salt = "5d4f7g8sd45fsd"
+                                    val tokenData = "$userAgent::en-US::$apiToken::$timeSlot::$salt"
+                                    val websiteToken = sha256(tokenData)
+                                    
+                                    val contentUrl = "https://api.gofile.io/contents/$contentId?contentFilter=&page=1&pageSize=1000&sortField=name&sortDirection=1"
+                                    val contentResponse = app.get(
+                                        url = contentUrl,
+                                        headers = mapOf(
+                                            "User-Agent" to userAgent,
+                                            "Accept" to "*/*",
+                                            "Referer" to "https://gofile.io/",
+                                            "Origin" to "https://gofile.io",
+                                            "Authorization" to "Bearer $apiToken",
+                                            "X-Website-Token" to websiteToken,
+                                            "X-BL" to "en-US"
+                                        )
+                                    )
+                                    if (contentResponse.isSuccessful) {
+                                        val contentText = contentResponse.text
+                                        Regex("\"link\"\\s*:\\s*\"([^\"]+)\"").findAll(contentText).forEach { match ->
+                                            val link = match.groupValues[1]
+                                            if (link.startsWith("http")) {
+                                                callback(
+                                                    newExtractorLink(
+                                                        source = "Gofile",
+                                                        name = "Gofile",
+                                                        url = link,
+                                                        type = if (link.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                    ) {
+                                                        this.referer = "https://gofile.io/"
+                                                        this.quality = Qualities.Unknown.value
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                } else if (cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains(".mp4") || cleanUrlEscaped.contains("/hls/")) {
+                    try {
+                        val isM3u = cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains("/hls/")
+                        callback(
+                            newExtractorLink(
+                                source = "Direct Stream",
+                                name = "Direct Stream",
+                                url = cleanUrlEscaped,
+                                type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = data
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                    } catch (_: Exception) {}
+                } else {
+                    // Try to unwrap redirect parameters
+                    listOf("link", "url", "r", "to", "go").forEach { param ->
+                        try {
+                            val regex = Regex("[?&]" + param + "=([^&]+)")
+                            val match = regex.find(cleanUrlEscaped)
+                            val queryValue = match?.groupValues?.get(1)
+                            if (queryValue != null && queryValue.isNotEmpty()) {
+                                val decodedParam = try {
+                                    val decodedBytes = android.util.Base64.decode(queryValue, android.util.Base64.DEFAULT)
+                                    String(decodedBytes, Charsets.UTF_8)
+                                } catch (_: Exception) {
+                                    java.net.URLDecoder.decode(queryValue, "UTF-8")
+                                }
+                                val finalDecoded = fixUrl(decodedParam)
+                                if (finalDecoded.startsWith("http") && !finalDecoded.contains("google") && !finalDecoded.contains("facebook")) {
+                                    try {
+                                        loadExtractor(finalDecoded, data, subtitleCallback, callback)
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
                     
-                    val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
-                    val isDood = listOf("dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
-                    val isVoe = cleanUrlEscaped.contains("voe.sx", true) || cleanUrlEscaped.contains("voe", true)
-                    val isStreamtape = cleanUrlEscaped.contains("streamtape", true)
-                    val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
-                    val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
+                    if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
+                        !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
+                        !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
+                        !cleanUrlEscaped.contains("adskeeper")) {
+                        
+                        # Same-domain deep scan (Auto Iframe Scanning for wrapper player pages on same domain)
+                        val isSameDomain = try {
+                            val host1 = java.net.URL(cleanUrlEscaped).host.replace("www.", "")
+                            val host2 = java.net.URL(mainUrl).host.replace("www.", "")
+                            host1 == host2
+                        } catch (_: Exception) { false }
 
-                    when {
-                        isStreamWish -> {
+                        if (isSameDomain && cleanUrlEscaped != data) {
                             try {
-                                com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                            } catch (e: Exception) {
-                                android.util.Log.e("FallbackExtractor", "StreamWish extraction failed for $cleanUrlEscaped: ${e.message}")
-                            }
+                                val subDoc = app.get(cleanUrlEscaped, referer = data).document
+                                subDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src]").forEach { iframe ->
+                                    val iframeSrc = iframe.attr("src").ifEmpty { iframe.attr("data-src") }.ifEmpty { iframe.attr("data-litespeed-src") }.trim()
+                                    if (iframeSrc.isNotBlank()) {
+                                        val finalIframeUrl = fixUrl(iframeSrc)
+                                        if (finalIframeUrl.isNotEmpty() && finalIframeUrl != cleanUrlEscaped) {
+                                            val cleanIf = finalIframeUrl.replace(92.toChar().toString(), "")
+                                            if (cleanIf.contains("gofile.io/d/")) {
+                                                # Handle Gofile inside sub iframe
+                                            } else if (cleanIf.contains(".m3u8") || cleanIf.contains(".mp4") || cleanIf.contains("/hls/")) {
+                                                val isM3u = cleanIf.contains(".m3u8") || cleanIf.contains("/hls/")
+                                                callback(newExtractorLink("Direct Stream", "Direct Stream", cleanIf, isM3u) {
+                                                    this.referer = cleanUrlEscaped
+                                                })
+                                            } else {
+                                                loadExtractor(cleanIf, cleanUrlEscaped, subtitleCallback, callback)
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) {}
                         }
-                        isDood -> {
-                            try {
-                                com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                            } catch (e: Exception) {
-                                android.util.Log.e("FallbackExtractor", "DoodLaExtractor extraction failed for $cleanUrlEscaped: ${e.message}")
+
+                        # Smart Extractor Fallback Dispatcher
+                        val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
+                        val isDood = listOf("dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
+                        val isVoe = cleanUrlEscaped.contains("voe.sx", true) || cleanUrlEscaped.contains("voe", true)
+                        val isStreamtape = cleanUrlEscaped.contains("streamtape", true)
+                        val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
+                        val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
+
+                        when {
+                            isStreamWish -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "StreamWish extraction failed for $cleanUrlEscaped: ${e.message}")
+                                }
                             }
-                        }
-                        isVoe -> {
-                            try {
-                                com.lagradost.cloudstream3.extractors.Voe().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                            } catch (e: Exception) {
-                                android.util.Log.e("FallbackExtractor", "Voe extraction failed: ${e.message}")
+                            isDood -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "DoodLaExtractor extraction failed for $cleanUrlEscaped: ${e.message}")
+                                }
                             }
-                        }
-                        isStreamtape -> {
-                            try {
-                                com.lagradost.cloudstream3.extractors.StreamTape().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                            } catch (e: Exception) {
-                                android.util.Log.e("FallbackExtractor", "StreamTape extraction failed: ${e.message}")
+                            isVoe -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.Voe().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "Voe extraction failed: ${e.message}")
+                                }
                             }
-                        }
-                        isFilemoon -> {
-                            try {
-                                com.lagradost.cloudstream3.extractors.FileMoon().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                            } catch (e: Exception) {
-                                android.util.Log.e("FallbackExtractor", "FileMoon extraction failed: ${e.message}")
+                            isStreamtape -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.StreamTape().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "StreamTape extraction failed: ${e.message}")
+                                }
                             }
-                        }
-                        isMp4Upload -> {
-                            try {
-                                com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                            } catch (e: Exception) {
-                                android.util.Log.e("FallbackExtractor", "Mp4Upload extraction failed: ${e.message}")
+                            isFilemoon -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.FileMoon().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "FileMoon extraction failed: ${e.message}")
+                                }
                             }
-                        }
-                        else -> {
-                            try {
-                                loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
-                            } catch (e: Exception) {
-                                android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
+                            isMp4Upload -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "Mp4Upload extraction failed: ${e.message}")
+                                }
+                            }
+                            else -> {
+                                try {
+                                    loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
+                                }
                             }
                         }
                     }

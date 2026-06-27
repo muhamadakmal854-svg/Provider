@@ -155,13 +155,28 @@ class KlikxxiProvider : MainAPI() {
         val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
         val targets = mutableListOf<String>()
 
+        fun fixUrl(url: String): String {
+            if (url.isBlank()) return ""
+            if (url.startsWith("http")) return url
+            if (url.startsWith("//")) return "https:$url"
+            return try {
+                val u = java.net.URL(data)
+                if (url.startsWith("/")) {
+                    "${u.protocol}://${u.host}$url"
+                } else {
+                    val path = u.path.substringBeforeLast("/")
+                    "${u.protocol}://${u.host}$path/$url"
+                }
+            } catch (_: Exception) {
+                if (url.startsWith("/")) "$mainUrl$url" else "$mainUrl/$url"
+            }
+        }
+
         // 1. Direct video/source elements
         doc.select("source[src], video source[src], video[src]").forEach { el ->
             val src = el.attr("src").trim()
-            if (src.startsWith("http") || src.startsWith("//")) {
-                val finalUrl = if (src.startsWith("//")) "https:$src" else src
-                targets.add(finalUrl)
-            }
+            val finalUrl = fixUrl(src)
+            if (finalUrl.isNotEmpty()) targets.add(finalUrl)
         }
 
         // 2. Direct iframes (check common attributes and classes)
@@ -171,32 +186,31 @@ class KlikxxiProvider : MainAPI() {
                 .ifEmpty { iframe.attr("data-litespeed-src") }
                 .ifEmpty { iframe.attr("data-lazy-src") }
                 .trim()
-            if (src.startsWith("http") || src.startsWith("//")) {
-                val finalUrl = if (src.startsWith("//")) "https:$src" else src
-                targets.add(finalUrl)
-            }
+            val finalUrl = fixUrl(src)
+            if (finalUrl.isNotEmpty()) targets.add(finalUrl)
         }
 
         // 3. Option elements / Dropdowns (e.g. Server choices, mirror list)
         doc.select("select option, .mirror option, .server option, select.mirror option, select.server option, .mobius option").forEach { el ->
             listOf("value", "data-src", "data-link", "data-embed", "data-video", "data-url", "data-id").forEach { attr ->
                 val v = el.attr(attr).trim()
-                if (v.isNotBlank()) {
-                    targets.add(v)
-                }
+                val finalUrl = fixUrl(v)
+                if (finalUrl.isNotEmpty()) targets.add(finalUrl)
             }
         }
 
-        // 4. Clickable elements, links, buttons, lists (e.g. Samehadaku download list, Otakudesu lists, mirrors)
+        // 4. Clickable elements, links, buttons, lists
         doc.select("a, button, li, div, span, .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
-                targets.add(href)
+                val finalUrl = fixUrl(href)
+                if (finalUrl.isNotEmpty()) targets.add(finalUrl)
             }
             listOf("data-src", "data-link", "data-embed", "data-video", "data-id", "data-url", "data-content").forEach { attr ->
                 val v = el.attr(attr).trim()
-                if (v.isNotBlank() && !v.contains("data:image")) {
-                    targets.add(v)
+                val finalUrl = fixUrl(v)
+                if (finalUrl.isNotEmpty() && !v.contains("data:image")) {
+                    targets.add(finalUrl)
                 }
             }
         }
@@ -257,10 +271,9 @@ class KlikxxiProvider : MainAPI() {
                         ?: if (json.trim().startsWith("http")) json.trim() else null
 
                     if (embedUrl != null) {
-                        val cleanUrl = embedUrl.replace(92.toChar().toString(), "")
-                        if (cleanUrl.startsWith("http") || cleanUrl.startsWith("//")) {
-                            val finalUrl = if (cleanUrl.startsWith("//")) "https:$cleanUrl" else cleanUrl
-                            targets.add(finalUrl)
+                        val cleanUrl = fixUrl(embedUrl)
+                        if (cleanUrl.isNotEmpty()) {
+                            targets.add(cleanUrl)
                             break // Found link for this button, skip other actions
                         }
                     }
@@ -275,7 +288,8 @@ class KlikxxiProvider : MainAPI() {
                 Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+""").findAll(content).forEach { match ->
                     val url = match.value
                     if (!url.contains("google") && !url.contains("facebook") && !url.contains("analytics")) {
-                        targets.add(url)
+                        val finalUrl = fixUrl(url)
+                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
                     }
                 }
             }
@@ -298,8 +312,8 @@ class KlikxxiProvider : MainAPI() {
                     ifr.attr("src").ifEmpty { ifr.attr("data-litespeed-src").ifEmpty { ifr.attr("data-lazy-src").ifEmpty { ifr.attr("data-src") } } }
                 } ?: if (html.startsWith("http")) html else ""
                 
-                if (src.startsWith("http") || src.startsWith("//")) {
-                    decodedUrl = if (src.startsWith("//")) "https:$src" else src
+                if (src.isNotEmpty()) {
+                    decodedUrl = fixUrl(src)
                 }
             } catch (_: Exception) {}
 
@@ -396,9 +410,10 @@ class KlikxxiProvider : MainAPI() {
                                 } catch (_: Exception) {
                                     java.net.URLDecoder.decode(queryValue, "UTF-8")
                                 }
-                                if (decodedParam.startsWith("http") && !decodedParam.contains("google") && !decodedParam.contains("facebook")) {
+                                val finalDecoded = fixUrl(decodedParam)
+                                if (finalDecoded.startsWith("http") && !finalDecoded.contains("google") && !finalDecoded.contains("facebook")) {
                                     try {
-                                        loadExtractor(decodedParam, data, subtitleCallback, callback)
+                                        loadExtractor(finalDecoded, data, subtitleCallback, callback)
                                     } catch (_: Exception) {}
                                 }
                             }
@@ -410,6 +425,38 @@ class KlikxxiProvider : MainAPI() {
                         !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
                         !cleanUrlEscaped.contains("adskeeper")) {
                         
+                        // Same-domain deep scan (Auto Iframe Scanning for wrapper player pages on same domain)
+                        val isSameDomain = try {
+                            val host1 = java.net.URL(cleanUrlEscaped).host.replace("www.", "")
+                            val host2 = java.net.URL(mainUrl).host.replace("www.", "")
+                            host1 == host2
+                        } catch (_: Exception) { false }
+
+                        if (isSameDomain && cleanUrlEscaped != data) {
+                            try {
+                                val subDoc = app.get(cleanUrlEscaped, referer = data).document
+                                subDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src]").forEach { iframe ->
+                                    val iframeSrc = iframe.attr("src").ifEmpty { iframe.attr("data-src") }.ifEmpty { iframe.attr("data-litespeed-src") }.trim()
+                                    if (iframeSrc.isNotBlank()) {
+                                        val finalIframeUrl = fixUrl(iframeSrc)
+                                        if (finalIframeUrl.isNotEmpty() && finalIframeUrl != cleanUrlEscaped) {
+                                            val cleanIf = finalIframeUrl.replace(92.toChar().toString(), "")
+                                            if (cleanIf.contains("gofile.io/d/")) {
+                                                // Handle Gofile inside sub iframe
+                                            } else if (cleanIf.contains(".m3u8") || cleanIf.contains(".mp4") || cleanIf.contains("/hls/")) {
+                                                val isM3u = cleanIf.contains(".m3u8") || cleanIf.contains("/hls/")
+                                                callback(newExtractorLink("Direct Stream", "Direct Stream", cleanIf, isM3u) {
+                                                    this.referer = cleanUrlEscaped
+                                                })
+                                            } else {
+                                                loadExtractor(cleanIf, cleanUrlEscaped, subtitleCallback, callback)
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                        }
+
                         // Smart Extractor Fallback Dispatcher
                         val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
                         val isDood = listOf("dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
