@@ -447,9 +447,16 @@ class DonghuastreamProvider : MainAPI() {
                                                 // Handle Gofile inside sub iframe
                                             } else if (cleanIf.contains(".m3u8") || cleanIf.contains(".mp4") || cleanIf.contains("/hls/")) {
                                                 val isM3u = cleanIf.contains(".m3u8") || cleanIf.contains("/hls/")
-                                                callback(newExtractorLink("Direct Stream", "Direct Stream", cleanIf, isM3u) {
-                                                    this.referer = cleanUrlEscaped
-                                                })
+                                                callback(
+                                                    newExtractorLink(
+                                                        source = "Direct Stream",
+                                                        name = "Direct Stream",
+                                                        url = cleanIf,
+                                                        type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                    ) {
+                                                        this.referer = cleanUrlEscaped
+                                                    }
+                                                )
                                             } else {
                                                 loadExtractor(cleanIf, cleanUrlEscaped, subtitleCallback, callback)
                                             }
