@@ -2,11 +2,11 @@ version = 1
 
 cloudstream {
     language    = "id"
-    description = "Provider untuk Anoboy"
+    description = "Provider untuk anoBoy"
     authors     = listOf("MTS")
     status      = 1
     tvTypes     = listOf("Anime", "TvSeries", "OVA")
-    iconUrl     = "https://anoboy.be/favicon.ico"
+    iconUrl     = "https://ww1.anoboy.boo/favicon.ico"
 }
 
 android {
