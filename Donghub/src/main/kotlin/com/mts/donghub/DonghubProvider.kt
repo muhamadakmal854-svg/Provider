@@ -430,16 +430,16 @@ class DonghubProvider : MainAPI() {
                             }
                             isDood -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.Doodplay().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
-                                    android.util.Log.e("FallbackExtractor", "Doodplay extraction failed for $cleanUrlEscaped: ${e.message}")
+                                    android.util.Log.e("FallbackExtractor", "DoodLaExtractor extraction failed for $cleanUrlEscaped: ${e.message}")
                                 }
                             }
                             isVoe -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.VoeExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    com.lagradost.cloudstream3.extractors.Voe().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
-                                    android.util.Log.e("FallbackExtractor", "VoeExtractor extraction failed: ${e.message}")
+                                    android.util.Log.e("FallbackExtractor", "Voe extraction failed: ${e.message}")
                                 }
                             }
                             isStreamtape -> {
