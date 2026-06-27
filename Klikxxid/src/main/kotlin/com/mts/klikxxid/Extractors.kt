@@ -1,7 +1,7 @@
 package com.mts.klikxxid
 
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
-import com.lagradost.cloudstream3.extractors.VoeExtractor
+import com.lagradost.cloudstream3.extractors.Voe
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
@@ -163,7 +163,7 @@ class Views4YouCom : StreamWishExtractor() {
     override val mainUrl = "https://views4you.com"
 }
 
-class VoeSx : VoeExtractor() {
+class VoeSx : Voe() {
     override val name = "VoeSx"
     override val mainUrl = "https://voe.sx"
 }
