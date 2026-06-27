@@ -378,7 +378,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
             }
         }
 
-        # 6. Harvest URLs directly from <script> tags
+        // 6. Harvest URLs directly from <script> tags
         doc.select("script").forEach { script ->
             val content = script.data()
             if (content.isNotBlank()) {
@@ -392,12 +392,12 @@ class PencurimoviesubmalayProvider : MainAPI() {
             }
         }
 
-        # 7. Process all collected targets (including base64 decoding & fallback routing)
+        // 7. Process all collected targets (including base64 decoding & fallback routing)
         targets.distinct().forEach { raw ->
             val cleanedRaw = raw.trim()
             if (cleanedRaw.isBlank()) return@forEach
 
-            # Attempt base64 decoding
+            // Attempt base64 decoding
             var decodedUrl = ""
             try {
                 val base64Str = cleanedRaw.filter { !it.isWhitespace() }
@@ -522,7 +522,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
                         !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
                         !cleanUrlEscaped.contains("adskeeper")) {
                         
-                        # Same-domain deep scan (Auto Iframe Scanning for wrapper player pages on same domain)
+                        // Same-domain deep scan (Auto Iframe Scanning for wrapper player pages on same domain)
                         val isSameDomain = try {
                             val host1 = java.net.URL(cleanUrlEscaped).host.replace("www.", "")
                             val host2 = java.net.URL(mainUrl).host.replace("www.", "")
@@ -539,7 +539,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
                                         if (finalIframeUrl.isNotEmpty() && finalIframeUrl != cleanUrlEscaped) {
                                             val cleanIf = finalIframeUrl.replace(92.toChar().toString(), "")
                                             if (cleanIf.contains("gofile.io/d/")) {
-                                                # Handle Gofile inside sub iframe
+                                                // Handle Gofile inside sub iframe
                                             } else if (cleanIf.contains(".m3u8") || cleanIf.contains(".mp4") || cleanIf.contains("/hls/")) {
                                                 val isM3u = cleanIf.contains(".m3u8") || cleanIf.contains("/hls/")
                                                 callback(
@@ -561,7 +561,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
                             } catch (_: Exception) {}
                         }
 
-                        # Smart Extractor Fallback Dispatcher
+                        // Smart Extractor Fallback Dispatcher
                         val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
                         val isDood = listOf("dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
                         val isVoe = cleanUrlEscaped.contains("voe.sx", true) || cleanUrlEscaped.contains("voe", true)
