@@ -22,7 +22,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "movies" to "Filem Terbaru",
-        "series" to "TV Series",
+        "drama" to "TV Series",
         "country/malaysia" to "Malaysia Movies",
         "country/indonesia" to "Indonesia Movies",
         "country/indonesian" to "Indonesian Movies",
