@@ -1,0 +1,62 @@
+package com.mts.klikxxid
+
+import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
+import com.lagradost.cloudstream3.plugins.Plugin
+import android.content.Context
+
+@CloudstreamPlugin
+class KlikxxidPlugin : Plugin() {
+    override fun load(context: Context) {
+        registerMainAPI(KlikxxidProvider())
+        registerExtractorAPI(OracleCom())
+        registerExtractorAPI(ConsentTrustarcCom())
+        registerExtractorAPI(LoginApiaryIo())
+        registerExtractorAPI(ApiaryIo())
+        registerExtractorAPI(ImgprodcmsrtmicrosoftcomAkamaizedNet())
+        registerExtractorAPI(CopilotMicrosoftCom())
+        registerExtractorAPI(SupportMicrosoftCom())
+        registerExtractorAPI(ProductsOfficeCom())
+        registerExtractorAPI(OnedriveLiveCom())
+        registerExtractorAPI(OutlookLiveCom())
+        registerExtractorAPI(AssetsMailerliteCom())
+        registerExtractorAPI(C0WpCom())
+        registerExtractorAPI(JsHsscriptsCom())
+        registerExtractorAPI(I0WpCom())
+        registerExtractorAPI(LakemedelsverketSe())
+        registerExtractorAPI(EmbedTawkTo())
+        registerExtractorAPI(LitLibguidesCom())
+        registerExtractorAPI(TextbuddyCom())
+        registerExtractorAPI(TheresanaiforthatCom())
+        registerExtractorAPI(ProducthuntCom())
+        registerExtractorAPI(IbanCom())
+        registerExtractorAPI(MensjournalCom())
+        registerExtractorAPI(RadaronlineCom())
+        registerExtractorAPI(EntrepreneurCom())
+        registerExtractorAPI(DailycallerCom())
+        registerExtractorAPI(NdtvCom())
+        registerExtractorAPI(MicrosoftCom())
+        registerExtractorAPI(VapehusetSe())
+        registerExtractorAPI(BuycheapestfollowersCom())
+        registerExtractorAPI(AitexthumanizerCom())
+        registerExtractorAPI(Views4YouCom())
+        registerExtractorAPI(VoeSx())
+        registerExtractorAPI(StaticVeevcdnCo())
+        registerExtractorAPI(RisdanlyCom())
+        registerExtractorAPI(Form6MbrCom())
+        registerExtractorAPI(Emas188Jun25Com())
+        registerExtractorAPI(Emas188Love())
+        registerExtractorAPI(OneOneOneOne())
+        registerExtractorAPI(LivechatCom())
+        registerExtractorAPI(MyLivechatincCom())
+        registerExtractorAPI(AccountsLivechatCom())
+        registerExtractorAPI(Emas188May14Ink())
+        registerExtractorAPI(ImgLulucdnCom())
+        registerExtractorAPI(Dnj8Ngd6Kq6YTnmrOrg())
+        registerExtractorAPI(Dh8Azcl753E1ECloudfrontNet())
+        registerExtractorAPI(YfDiasyrmunionicCom())
+        registerExtractorAPI(Server36784GomatinequisheoiCom())
+        registerExtractorAPI(LuluvidCom())
+        registerExtractorAPI(LulustreamCom())
+        registerExtractorAPI(Cdn1015CdntnmrOrg())
+    }
+}
