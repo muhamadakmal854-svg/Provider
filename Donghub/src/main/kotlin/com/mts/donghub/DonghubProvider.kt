@@ -283,12 +283,12 @@ class DonghubProvider : MainAPI() {
             }
         }
 
-        // 7. Process all collected targets (including base64 decoding)
+        // 7. Process all collected targets (including base64 decoding & fallback routing)
         targets.distinct().forEach { raw ->
             val cleanedRaw = raw.trim()
             if (cleanedRaw.isBlank()) return@forEach
 
-            // Attempt base64 decoding (gunakan filter Kotlin untuk buang whitespace tanpa regex)
+            // Attempt base64 decoding
             var decodedUrl = ""
             try {
                 val base64Str = cleanedRaw.filter { !it.isWhitespace() }
@@ -385,6 +385,7 @@ class DonghubProvider : MainAPI() {
                         )
                     } catch (_: Exception) {}
                 } else {
+                    // Try to unwrap redirect parameters
                     listOf("link", "url", "r", "to", "go").forEach { param ->
                         try {
                             val regex = Regex("[?&]" + param + "=([^&]+)")
@@ -410,9 +411,66 @@ class DonghubProvider : MainAPI() {
                         !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
                         !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
                         !cleanUrlEscaped.contains("adskeeper")) {
-                        try {
-                            loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
-                        } catch (_: Exception) {}
+                        
+                        // Smart Extractor Fallback Dispatcher
+                        val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk").any { cleanUrlEscaped.contains(it, true) }
+                        val isDood = listOf("dood", "dsvplay", "doodcdn").any { cleanUrlEscaped.contains(it, true) }
+                        val isVoe = cleanUrlEscaped.contains("voe.sx", true) || cleanUrlEscaped.contains("voe", true)
+                        val isStreamtape = cleanUrlEscaped.contains("streamtape", true)
+                        val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
+                        val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
+
+                        when {
+                            isStreamWish -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "StreamWish extraction failed for $cleanUrlEscaped: ${e.message}")
+                                }
+                            }
+                            isDood -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.Doodplay().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "Doodplay extraction failed for $cleanUrlEscaped: ${e.message}")
+                                }
+                            }
+                            isVoe -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.VoeExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "VoeExtractor extraction failed: ${e.message}")
+                                }
+                            }
+                            isStreamtape -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.StreamTape().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "StreamTape extraction failed: ${e.message}")
+                                }
+                            }
+                            isFilemoon -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.FileMoon().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "FileMoon extraction failed: ${e.message}")
+                                }
+                            }
+                            isMp4Upload -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "Mp4Upload extraction failed: ${e.message}")
+                                }
+                            }
+                            else -> {
+                                try {
+                                    loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
+                                }
+                            }
+                        }
                     }
                 }
             }
