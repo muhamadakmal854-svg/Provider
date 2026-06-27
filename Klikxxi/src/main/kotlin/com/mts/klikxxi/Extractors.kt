@@ -57,9 +57,10 @@ class EmbedpyroxXyz : ExtractorApi() {
                     source = name,
                     name = name,
                     url = finalUrl,
-                    referer = cleanUrl,
                     type = ExtractorLinkType.M3U8
-                )
+                ) {
+                    this.referer = cleanUrl
+                }
             )
         }
     }
