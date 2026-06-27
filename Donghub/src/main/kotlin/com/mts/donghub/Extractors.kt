@@ -8,14 +8,19 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
-class IsLysategriphusCfd : StreamWishExtractor() {
-    override val name = "IsLysategriphusCfd"
-    override val mainUrl = "https://is.lysategriphus.cfd"
+class DqEndebedouseShop : StreamWishExtractor() {
+    override val name = "DqEndebedouseShop"
+    override val mainUrl = "https://dq.endebedouse.shop"
 }
 
 class GeoDailymotionCom : Dailymotion() {
     override val name = "GeoDailymotionCom"
     override val mainUrl = "https://geo.dailymotion.com"
+}
+
+class DailymotionCom : Dailymotion() {
+    override val name = "DailymotionCom"
+    override val mainUrl = "https://dailymotion.com"
 }
 
 class TickcounterCom : StreamWishExtractor() {
