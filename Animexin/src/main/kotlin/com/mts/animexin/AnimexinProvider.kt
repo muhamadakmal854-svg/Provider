@@ -227,7 +227,7 @@ class AnimexinProvider : MainAPI() {
                         ) {
                             this.referer = link.referer
                             this.quality = link.quality
-                            this.headers.putAll(link.headers)
+                            this.headers = link.headers
                         }
                     } else {
                         val doc = res.document
@@ -246,7 +246,7 @@ class AnimexinProvider : MainAPI() {
                             ) {
                                 this.referer = finalUrl
                                 this.quality = link.quality
-                                this.headers.putAll(link.headers)
+                                this.headers = link.headers
                             }
                             return resolveAndValidateStream(nextLink, depth + 1)
                         }
