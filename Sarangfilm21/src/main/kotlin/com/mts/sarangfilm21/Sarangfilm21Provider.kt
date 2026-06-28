@@ -361,7 +361,7 @@ class Sarangfilm21Provider : MainAPI() {
     object JsUnpacker {
         fun unpack(packed: String): String? {
             try {
-                val regex = Regex("eval\\(function\\(p,a,c,k,e,.[^\\)]*\\)\\{.*\\}\\s*\\(\\s*(['"].*?['"])\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(['"].*?['"])\\.split\\(")
+                val regex = Regex("eval\\(function\\(p,a,c,k,e,.[^\\)]*\\)\\{.*\\}\\s*\\(\\s*([\\x27\\x22].*?[\\x27\\x22])\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*([\\x27\\x22].*?[\\x27\\x22])\\.split\\(")
                 val match = regex.find(packed) ?: return null
                 
                 val pStr = match.groupValues[1]
