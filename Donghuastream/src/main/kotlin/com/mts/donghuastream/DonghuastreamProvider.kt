@@ -224,11 +224,12 @@ class DonghuastreamProvider : MainAPI() {
                             source = link.source,
                             name = link.name,
                             url = finalUrl,
-                            referer = link.referer,
-                            quality = link.quality,
-                            type = if (finalUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO,
-                            headers = link.headers
-                        )
+                            type = if (finalUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = link.referer
+                            this.quality = link.quality
+                            this.headers.putAll(link.headers)
+                        }
                     } else {
                         val doc = res.document
                         val subSource = doc.selectFirst("source[src], video source[src], video[src]")?.attr("src")
@@ -242,11 +243,12 @@ class DonghuastreamProvider : MainAPI() {
                                 source = link.source,
                                 name = link.name,
                                 url = resolvedUrl,
-                                referer = finalUrl,
-                                quality = link.quality,
-                                type = if (resolvedUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO,
-                                headers = link.headers
-                            )
+                                type = if (resolvedUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = finalUrl
+                                this.quality = link.quality
+                                this.headers.putAll(link.headers)
+                            }
                             return resolveAndValidateStream(nextLink, depth + 1)
                         }
                     }
