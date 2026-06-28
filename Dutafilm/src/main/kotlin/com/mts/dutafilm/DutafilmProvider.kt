@@ -715,7 +715,7 @@ class DutafilmProvider : MainAPI() {
                 val base64Str = cleanedRaw.filter { !it.isWhitespace() }
                 val decoded = android.util.Base64.decode(base64Str, android.util.Base64.DEFAULT)
                 val html = String(decoded, Charsets.UTF_8)
-                val src = Jsoup.parse(html).selectFirst(
+                val src = org.jsoup.Jsoup.parse(html).selectFirst(
                     "iframe[src], iframe[data-litespeed-src], iframe[data-lazy-src], iframe[data-src], source[src]"
                 )?.let { ifr ->
                     val s = ifr.attr("src")
