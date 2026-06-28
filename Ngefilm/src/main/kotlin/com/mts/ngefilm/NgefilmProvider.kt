@@ -268,7 +268,7 @@ class NgefilmProvider : MainAPI() {
                 if (!response.isSuccessful) return
                 val html = response.text
 
-                val unpacked = com.lagradost.cloudstream3.utils.JsUnpacker.unpack(html) ?: ""
+                val unpacked = com.lagradost.cloudstream3.utils.JsUnpacker.unpackAndCombine(html) ?: ""
                 val kaken = Regex("window\\.kaken\\s*=\\s*\"([^\"]+)\"").find(unpacked)?.groupValues?.get(1) ?: return
 
                 val apiUrl = "https://$domain/api/"
