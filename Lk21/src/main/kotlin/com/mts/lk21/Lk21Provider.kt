@@ -20,6 +20,9 @@ class Lk21Provider : MainAPI() {
         }
     }
 
+
+    
+
     private suspend fun fetchURL(url: String): String {
         val res = app.get(url, allowRedirects = false)
         val href = res.headers["location"]
@@ -44,15 +47,7 @@ class Lk21Provider : MainAPI() {
     }
 
 
-    private fun getSafeBaseUrl(url: String?): String {
-        if (url.isNullOrBlank()) return mainUrl
-        return try {
-            val it = java.net.URI(url)
-            "${it.scheme}://${it.host}"
-        } catch (e: Exception) {
-            mainUrl
-        }
-    }
+    
 
 
     override var mainUrl = "https://tv9.lk21official.cc"
