@@ -372,7 +372,7 @@ class KlikxxiProvider : MainAPI() {
         val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
 
         // Engine 1: Standard Scraper
-        fun runStandardEngine(document: org.jsoup.nodes.Document): List<String> {
+        suspend fun runStandardEngine(document: org.jsoup.nodes.Document): List<String> {
             val list = mutableListOf<String>()
             
             document.select("source[src], video source[src], video[src]").forEach { el ->
