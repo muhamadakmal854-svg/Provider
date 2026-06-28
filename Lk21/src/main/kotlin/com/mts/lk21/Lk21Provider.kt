@@ -585,12 +585,13 @@ class Lk21Provider : MainAPI() {
             }
 
             document.select("iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src], iframe.metaframe").forEach { iframe ->
-                val src = iframe.attr("src")
-                    .ifEmpty { iframe.attr("data-src") }
-                    .ifEmpty { iframe.attr("data-litespeed-src") }
-                    .ifEmpty { iframe.attr("data-lazy-src") }
-                    .trim()
-                val finalUrl = fixUrl(src)
+                val s = iframe.attr("src")
+                val ds = iframe.attr("data-src")
+                val ls = iframe.attr("data-litespeed-src")
+                val laz = iframe.attr("data-lazy-src")
+                
+                val rawSrc = if (s.isNotBlank()) s else if (ds.isNotBlank()) ds else if (ls.isNotBlank()) ls else laz
+                val finalUrl = fixUrl(rawSrc.trim())
                 if (finalUrl.isNotEmpty()) list.add(finalUrl)
             }
 
@@ -756,7 +757,11 @@ class Lk21Provider : MainAPI() {
                 val src = Jsoup.parse(html).selectFirst(
                     "iframe[src], iframe[data-litespeed-src], iframe[data-lazy-src], iframe[data-src], source[src]"
                 )?.let { ifr ->
-                    ifr.attr("src").ifEmpty { ifr.attr("data-litespeed-src").ifEmpty { ifr.attr("data-lazy-src").ifEmpty { ifr.attr("data-src") } } }
+                    val s = ifr.attr("src")
+                    val ls = ifr.attr("data-litespeed-src")
+                    val laz = ifr.attr("data-lazy-src")
+                    val ds = ifr.attr("data-src")
+                    if (s.isNotBlank()) s else if (ls.isNotBlank()) ls else if (laz.isNotBlank()) laz else ds
                 } ?: if (html.startsWith("http")) html else ""
                 
                 if (src.isNotEmpty()) {
