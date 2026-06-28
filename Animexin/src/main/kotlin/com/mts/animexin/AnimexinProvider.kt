@@ -148,8 +148,8 @@ class AnimexinProvider : MainAPI() {
                 ?: a.text().trim()
             val epUrl   = a.attr("href")
             if (epUrl.isNotBlank()) {
-                val epNum = Regex("(?i)episode\s*(\d+)").find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
-                    ?: Regex("(\d+)").find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
+                val epNum = Regex("(?i)episode\\s*(\\d+)").find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
+                    ?: Regex("(\\d+)").find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
                 newEpisode(epUrl) {
                     this.name = epTitle
                     this.episode = epNum
