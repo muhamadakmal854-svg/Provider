@@ -184,8 +184,91 @@ class DutafilmProvider : MainAPI() {
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        parentCallback: (ExtractorLink) -> Unit
     ): Boolean {
+        val isKlikxxi = this.name.contains("klikxxi", true) || this::class.java.simpleName.contains("klikxxi", true)
+
+        suspend fun resolveAndValidateStream(link: ExtractorLink, depth: Int = 0): ExtractorLink? {
+            if (depth > 5) return null
+            val url = link.url
+            try {
+                val headersMap = mutableMapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Range" to "bytes=0-1024"
+                )
+                if (link.referer.isNotEmpty()) {
+                    headersMap["Referer"] = link.referer
+                }
+                headersMap.putAll(link.headers)
+
+                val res = app.get(
+                    url = url,
+                    headers = headersMap,
+                    verify = false,
+                    timeout = 8
+                )
+
+                if (res.isSuccessful) {
+                    val finalUrl = res.url
+                    val contentType = res.headers["Content-Type"]?.lowercase() ?: ""
+                    val isPlayable = contentType.contains("video") || 
+                                     contentType.contains("mpegurl") || 
+                                     contentType.contains("application/x-mpegurl") || 
+                                     contentType.contains("application/octet-stream") ||
+                                     finalUrl.contains(".m3u8") || 
+                                     finalUrl.contains(".mp4")
+
+                    if (isPlayable) {
+                        return newExtractorLink(
+                            source = link.source,
+                            name = link.name,
+                            url = finalUrl,
+                            referer = link.referer,
+                            quality = link.quality,
+                            type = if (finalUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO,
+                            headers = link.headers
+                        )
+                    } else {
+                        val doc = res.document
+                        val subSource = doc.selectFirst("source[src], video source[src], video[src]")?.attr("src")
+                            ?: doc.selectFirst("iframe[src]")?.attr("src")
+                        if (!subSource.isNullOrBlank()) {
+                            val resolvedUrl = if (subSource.startsWith("http")) subSource else {
+                                val u = java.net.URL(finalUrl)
+                                if (subSource.startsWith("/")) "${u.protocol}://${u.host}$subSource" else "${finalUrl.substringBeforeLast("/")}/$subSource"
+                            }
+                            val nextLink = newExtractorLink(
+                                source = link.source,
+                                name = link.name,
+                                url = resolvedUrl,
+                                referer = finalUrl,
+                                quality = link.quality,
+                                type = if (resolvedUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO,
+                                headers = link.headers
+                            )
+                            return resolveAndValidateStream(nextLink, depth + 1)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("KlikxxiResolver", "Validation failed for ${url}: ${e.message}")
+            }
+            return null
+        }
+
+        val callback: (ExtractorLink) -> Unit = { link ->
+            if (isKlikxxi) {
+                kotlinx.coroutines.runBlocking {
+                    val validated = resolveAndValidateStream(link)
+                    if (validated != null) {
+                        parentCallback(validated)
+                    }
+                }
+            } else {
+                parentCallback(link)
+            }
+        }
+
         val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
         val targets = mutableListOf<String>()
 
