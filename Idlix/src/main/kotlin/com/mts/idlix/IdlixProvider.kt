@@ -11,7 +11,7 @@ import java.net.URI
 import kotlinx.coroutines.delay
 
 class IdlixProvider : MainAPI() {
-    override var mainUrl = "https://comblank.com"
+    override var mainUrl = "https://idlixian.com"
     override var name = "Idlix"
     override val hasMainPage = true
     override var lang = "id"
