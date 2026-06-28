@@ -364,7 +364,15 @@ class KlikxxidProvider : MainAPI() {
             val finalUrl = if (decodedUrl.isNotEmpty()) decodedUrl else cleanedRaw
             if (finalUrl.startsWith("http") || finalUrl.startsWith("//")) {
                 val cleanUrl = if (finalUrl.startsWith("//")) "https:$finalUrl" else finalUrl
-                val cleanUrlEscaped = cleanUrl.replace(92.toChar().toString(), "")
+                var cleanUrlEscaped = cleanUrl.replace(92.toChar().toString(), "")
+                if (cleanUrlEscaped.contains("/f/") || cleanUrlEscaped.contains("/d/")) {
+                    val isWishOrDood = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed", "vikingfile", "dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
+                    if (isWishOrDood) {
+                        cleanUrlEscaped = cleanUrlEscaped
+                            .replace("/f/", "/e/")
+                            .replace("/d/", "/e/")
+                    }
+                }
                 
                 if (cleanUrlEscaped.contains("gofile.io/d/")) {
                     try {

@@ -109,7 +109,22 @@ class AnimexinProvider : MainAPI() {
                 }
                 src = foundBg
             }
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+            val hrefLower = href.lowercase()
+            val typeLabel = it.selectFirst(
+                ".type, .label, .badge, [class*=type], [class*=label], .quality"
+            )?.text()?.lowercase() ?: ""
+            when {
+                hrefLower.contains("/movie") || hrefLower.contains("/film") ||
+                hrefLower.contains("/movies/") ->
+                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+                hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
+                hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
+                typeLabel.contains("series") || typeLabel.contains("drama") ||
+                typeLabel.contains("episode") ->
+                    newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+                else ->
+                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+            }
         }.distinctBy { it.url }
     }
     
@@ -132,14 +147,28 @@ class AnimexinProvider : MainAPI() {
             val epTitle = a.selectFirst(".epl-title, .epl-num, span")?.text()?.trim()
                 ?: a.text().trim()
             val epUrl   = a.attr("href")
-            if (epUrl.isNotBlank()) newEpisode(epUrl) { this.name = epTitle } else null
-        }.reversed()
-        return if (eps.isNotEmpty()) {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, eps) {
+            if (epUrl.isNotBlank()) {
+                val epNum = Regex("(?i)episode\s*(\d+)").find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
+                    ?: Regex("(\d+)").find(epTitle)?.groupValues?.get(1)?.toIntOrNull()
+                newEpisode(epUrl) {
+                    this.name = epTitle
+                    this.episode = epNum
+                }
+            } else null
+        }
+        val sortedEps = if (eps.any { it.episode != null }) {
+            eps.sortedBy { it.episode ?: 9999 }
+        } else {
+            eps.reversed()
+        }
+        val isTvSeries = sortedEps.size > 1 || url.contains("/series/") || url.contains("/tvshows/") || url.contains("/tv/") || url.contains("/season/")
+        return if (isTvSeries && sortedEps.isNotEmpty()) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, sortedEps) {
                 this.posterUrl = poster; this.plot = plot; this.tags = genres
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
+            val movieUrl = sortedEps.firstOrNull()?.data ?: url
+            newMovieLoadResponse(title, movieUrl, TvType.Movie, movieUrl) {
                 this.posterUrl = poster; this.plot = plot; this.tags = genres
             }
         }
@@ -325,7 +354,15 @@ class AnimexinProvider : MainAPI() {
             val finalUrl = if (decodedUrl.isNotEmpty()) decodedUrl else cleanedRaw
             if (finalUrl.startsWith("http") || finalUrl.startsWith("//")) {
                 val cleanUrl = if (finalUrl.startsWith("//")) "https:$finalUrl" else finalUrl
-                val cleanUrlEscaped = cleanUrl.replace(92.toChar().toString(), "")
+                var cleanUrlEscaped = cleanUrl.replace(92.toChar().toString(), "")
+                if (cleanUrlEscaped.contains("/f/") || cleanUrlEscaped.contains("/d/")) {
+                    val isWishOrDood = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed", "vikingfile", "dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
+                    if (isWishOrDood) {
+                        cleanUrlEscaped = cleanUrlEscaped
+                            .replace("/f/", "/e/")
+                            .replace("/d/", "/e/")
+                    }
+                }
                 
                 if (cleanUrlEscaped.contains("gofile.io/d/")) {
                     try {
