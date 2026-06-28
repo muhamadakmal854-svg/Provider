@@ -328,6 +328,54 @@ class AnimexinProvider : MainAPI() {
         }
     }
 
+    object JsUnpacker {
+        fun unpack(packed: String): String? {
+            try {
+                val regex = Regex("eval\\(function\\(p,a,c,k,e,.[^\\)]*\\)\\{.*\\}\\s*\\(\\s*(['"].*?['"])\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(['"].*?['"])\\.split\\(")
+                val match = regex.find(packed) ?: return null
+                
+                val pStr = match.groupValues[1]
+                val a = match.groupValues[2].toIntOrNull() ?: return null
+                val c = match.groupValues[3].toIntOrNull() ?: return null
+                val kStr = match.groupValues[4]
+                
+                val p = pStr.substring(1, pStr.length - 1).replace(92.toChar().toString() + "'", "'").replace(92.toChar().toString() + 34.toChar().toString(), 34.toChar().toString())
+                val k = kStr.substring(1, kStr.length - 1).split("|")
+                
+                val unbaser = Unbaser(a)
+                val wordsRegex = Regex("\\b\\w+\\b")
+                
+                return wordsRegex.replace(p) { wordMatch ->
+                    val word = wordMatch.value
+                    val index = unbaser.unbase(word)
+                    if (index < k.size && k[index].isNotEmpty()) {
+                        k[index]
+                    } else {
+                        word
+                    }
+                }
+            } catch (e: Exception) {
+                return null
+            }
+        }
+        
+        private class Unbaser(val base: Int) {
+            private val alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            
+            fun unbase(str: String): Int {
+                if (str.isEmpty()) return 0
+                var result = 0
+                for (char in str) {
+                    val valOf = alphabet.indexOf(char)
+                    if (valOf >= 0 && valOf < base) {
+                        result = result * base + valOf
+                    }
+                }
+                return result
+            }
+        }
+    }
+
     class GDPlayerExtractor : com.lagradost.cloudstream3.utils.ExtractorApi() {
         override val name = "GDPlayer"
         override val mainUrl = "https://play.streamplay.co.in"
@@ -356,14 +404,14 @@ class AnimexinProvider : MainAPI() {
                 if (!response.isSuccessful) return
                 val html = response.text
 
-                val unpacked = com.lagradost.cloudstream3.utils.JsUnpacker.unpackAndCombine(html) ?: ""
+                val unpacked = JsUnpacker.unpack(html) ?: ""
                 val kaken = Regex("window\\.kaken\\s*=\\s*\"([^\"]+)\"").find(unpacked)?.groupValues?.get(1) ?: return
 
                 val apiUrl = "https://$domain/api/"
                 val apiResponse = app.post(
                     url = apiUrl,
                     requestBody = okhttp3.RequestBody.create(
-                        okhttp3.MediaType.parse("text/plain"),
+                        null as okhttp3.MediaType?,
                         kaken
                     ),
                     headers = mapOf(
