@@ -269,12 +269,15 @@ class NgefilmProvider : MainAPI() {
                 val html = response.text
 
                 val unpacked = com.lagradost.cloudstream3.utils.JsUnpacker.unpack(html) ?: ""
-                val kaken = Regex("window\\.kaken\\s*=\\s*\\"([^\\"]+)\\"").find(unpacked)?.groupValues?.get(1) ?: return
+                val kaken = Regex("window\\.kaken\\s*=\\s*\"([^\"]+)\"").find(unpacked)?.groupValues?.get(1) ?: return
 
                 val apiUrl = "https://$domain/api/"
                 val apiResponse = app.post(
                     url = apiUrl,
-                    data = kaken,
+                    requestBody = okhttp3.RequestBody.create(
+                        okhttp3.MediaType.parse("text/plain"),
+                        kaken
+                    ),
                     headers = mapOf(
                         "Referer" to downloadPageUrl,
                         "X-Requested-With" to "XMLHttpRequest",
