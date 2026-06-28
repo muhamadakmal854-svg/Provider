@@ -21,6 +21,17 @@ class Lk21Provider : MainAPI() {
     }
 
 
+    private fun getSafeBaseUrl(url: String?): String {
+        if (url.isNullOrBlank()) return mainUrl
+        return try {
+            val it = java.net.URI(url)
+            "${it.scheme}://${it.host}"
+        } catch (e: Exception) {
+            mainUrl
+        }
+    }
+
+
     
 
     private suspend fun fetchURL(url: String): String {

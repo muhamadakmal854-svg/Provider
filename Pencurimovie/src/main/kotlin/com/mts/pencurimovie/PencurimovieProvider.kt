@@ -1028,5 +1028,4 @@ class PencurimoviesubmalayProvider : MainAPI() {
         return true
     }
     
-    }
-    }
+}
