@@ -82,49 +82,116 @@ class Sarangfilm21Provider : MainAPI() {
         return ""
     }
 
+    private fun Element.parseToResponse(): SearchResponse? {
+        val a = (if (this.tagName() == "a") this else this.selectFirst("a")) ?: return null
+        val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
+        if (href.isBlank() || href == mainUrl || href.contains("javascript")) return null
+        val img = this.selectFirst("img") ?: this.selectFirst("[data-src], [data-lazy-src], [data-original]")
+        val title = this.selectFirst(
+            ".entry-title, h2.entry-title, h2, h3, .title, .film-name, .movie-title, .item-title"
+        )?.text()?.trim()
+            ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }
+                .ifEmpty { img?.attr("title")?.trim() ?: "" }
+                .ifEmpty { a.text().trim() }
+        if (title.isBlank()) return null
+        var src = img?.posterUrl() ?: ""
+        if (src.isEmpty()) src = this.posterUrl()
+        if (src.isEmpty()) {
+            this.select("[style*=background], [style*=url]").forEach { el ->
+                val u = el.posterUrl()
+                if (u.isNotEmpty()) { src = u; return@forEach }
+            }
+        }
+        val hrefLower = href.lowercase()
+        val typeLabel = this.selectFirst(
+            ".type, .label, .badge, [class*=type], [class*=label], .quality"
+        )?.text()?.lowercase() ?: ""
+        return when {
+            hrefLower.contains("/movie") || hrefLower.contains("/film") ||
+            hrefLower.contains("/movies/") ->
+                newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+            hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
+            hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
+            typeLabel.contains("series") || typeLabel.contains("drama") ||
+            typeLabel.contains("episode") ->
+                newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+            else ->
+                newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+        }
+    }
+
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
-        val doc = app.get(pageUrl, headers = mapOf(
-            "Referer" to mainUrl,
-            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-        )).document
-        return doc.select("article.item, .item, article, .card, div.card, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, .post, .entry, .film-poster-ahref").mapNotNull {
-            val a = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
-            val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
-            if (href.isBlank() || href == mainUrl || href.contains("javascript")) return@mapNotNull null
-            val img = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
-            val title = it.selectFirst(
-                ".entry-title, h2.entry-title, h2, h3, .title, .film-name, .movie-title, .item-title"
-            )?.text()?.trim()
-                ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }
-                    .ifEmpty { img?.attr("title")?.trim() ?: "" }
-                    .ifEmpty { a.text().trim() }
-            if (title.isBlank()) return@mapNotNull null
-            var src = img?.posterUrl() ?: ""
-            if (src.isEmpty()) src = it.posterUrl()
-            if (src.isEmpty()) {
-                it.select("[style*=background], [style*=url]").forEach { el ->
-                    val u = el.posterUrl()
-                    if (u.isNotEmpty()) { src = u; return@forEach }
+        var doc = try {
+            app.get(pageUrl, headers = mapOf(
+                "Referer" to mainUrl,
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            )).document
+        } catch (e: Exception) {
+            null
+        }
+
+        var items = if (doc != null) {
+            doc.select("article.item, .item, article, .card, div.card, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, .post, .entry, .film-poster-ahref").mapNotNull { it.parseToResponse() }
+        } else emptyList<SearchResponse>()
+
+        if (items.isEmpty() && doc != null) {
+            val relaxedSelectors = listOf(
+                "a:has(img)", "div:has(a:has(img))", "article", ".post", "[class*=item]", "[class*=post]", "li:has(a)"
+            )
+            for (sel in relaxedSelectors) {
+                val found = doc.select(sel).mapNotNull { it.parseToResponse() }
+                if (found.isNotEmpty()) {
+                    items = found
+                    break
                 }
             }
-            // Smart type detection based on URL pattern and page metadata
-            val hrefLower = href.lowercase()
-            val typeLabel = it.selectFirst(
-                ".type, .label, .badge, [class*=type], [class*=label], .quality"
-            )?.text()?.lowercase() ?: ""
-            when {
-                hrefLower.contains("/movie") || hrefLower.contains("/film") ||
-                hrefLower.contains("/movies/") ->
-                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
-                hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
-                hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
-                typeLabel.contains("series") || typeLabel.contains("drama") ||
-                typeLabel.contains("episode") ->
-                    newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
-                else ->
-                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+        }
+
+        if (items.isEmpty()) {
+            val homeDoc = try {
+                app.get(mainUrl, headers = mapOf(
+                    "Referer" to mainUrl,
+                    "Accept" to "text/html"
+                )).document
+            } catch (e: Exception) {
+                null
             }
-        }.distinctBy { it.url }
+            if (homeDoc != null) {
+                val homeItems = mutableListOf<SearchResponse>()
+                val headings = homeDoc.select("h1, h2, h3, h4, .title, .widget-title")
+                for (h in headings) {
+                    val txt = h.text().lowercase()
+                    if (txt.contains("series") || txt.contains("tv") || txt.contains("terbaru") || txt.contains("episode")) {
+                        var sibling = h.nextElementSibling()
+                        while (sibling != null) {
+                            val links = sibling.select("a:has(img), .card, .item, article").mapNotNull { it.parseToResponse() }
+                            if (links.isNotEmpty()) {
+                                homeItems.addAll(links)
+                                break
+                            }
+                            sibling = sibling.nextElementSibling()
+                        }
+                    }
+                }
+                if (homeItems.isEmpty()) {
+                    val links = homeDoc.select("a:has(img)").mapNotNull { it.parseToResponse() }
+                    homeItems.addAll(links)
+                }
+                if (homeItems.isNotEmpty()) {
+                    items = homeItems
+                }
+            }
+        }
+
+        if (items.isEmpty()) {
+            items = listOf(
+                newTvSeriesSearchResponse("No valid data found - Refresh", mainUrl, TvType.TvSeries) {
+                    posterUrl = ""
+                }
+            )
+        }
+
+        return items.distinctBy { it.url }
     }
     
     override suspend fun load(url: String): LoadResponse? {
@@ -291,6 +358,84 @@ class Sarangfilm21Provider : MainAPI() {
         }
     }
 
+    class GDPlayerExtractor : com.lagradost.cloudstream3.utils.ExtractorApi() {
+        override val name = "GDPlayer"
+        override val mainUrl = "https://play.streamplay.co.in"
+        override val requiresReferer = true
+
+        override suspend fun getUrl(
+            url: String,
+            referer: String?,
+            subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+            callback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit
+        ) {
+            try {
+                val cleanUrl = url.replace(92.toChar().toString(), "")
+                val uri = java.net.URI(cleanUrl)
+                val domain = uri.host
+                val id = cleanUrl.substringAfter("/embed/").substringBefore("/").substringBefore("?")
+                if (id.isEmpty()) return
+
+                val downloadPageUrl = "https://$domain/download/$id"
+                val response = app.get(
+                    downloadPageUrl,
+                    headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    )
+                )
+                if (!response.isSuccessful) return
+                val html = response.text
+
+                val unpacked = com.lagradost.cloudstream3.utils.JsUnpacker.unpack(html) ?: ""
+                val kaken = Regex("window\\.kaken\\s*=\\s*\\"([^\\"]+)\\"").find(unpacked)?.groupValues?.get(1) ?: return
+
+                val apiUrl = "https://$domain/api/"
+                val apiResponse = app.post(
+                    url = apiUrl,
+                    data = kaken,
+                    headers = mapOf(
+                        "Referer" to downloadPageUrl,
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "Content-Type" to "text/plain",
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                    verify = false
+                )
+                if (!apiResponse.isSuccessful) return
+                val jsonText = apiResponse.text
+                val json = org.json.JSONObject(jsonText)
+                if (json.optString("status") == "ok") {
+                    val sources = json.getJSONArray("sources")
+                    for (i in 0 until sources.length()) {
+                        val src = sources.getJSONObject(i)
+                        val fileUrl = src.getString("file")
+                        val label = src.optString("label", "1080p")
+                        
+                        callback(
+                            com.lagradost.cloudstream3.utils.newExtractorLink(
+                                source = name,
+                                name = "$name - $label",
+                                url = fileUrl,
+                                type = if (fileUrl.contains(".m3u8")) com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 else com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = downloadPageUrl
+                                this.quality = when (label.lowercase()) {
+                                    "360p" -> com.lagradost.cloudstream3.utils.Qualities.P360.value
+                                    "480p" -> com.lagradost.cloudstream3.utils.Qualities.P480.value
+                                    "720p" -> com.lagradost.cloudstream3.utils.Qualities.P720.value
+                                    "1080p" -> com.lagradost.cloudstream3.utils.Qualities.P1080.value
+                                    else -> com.lagradost.cloudstream3.utils.Qualities.Unknown.value
+                                }
+                            }
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("GDPlayerExtractor", "Failed to extract: ${e.message}")
+            }
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -322,7 +467,8 @@ class Sarangfilm21Provider : MainAPI() {
             "vidguard", "mixdrop", "filemoon", "vidsrc", "upstream", "streamwish", 
             "vudeo", "supervideo", "streamhide", "vidlox", "dropload", "vidoza", 
             "embedrise", "userload", "faststream", "pelisnow", "rabbitstream", 
-            "vizcloud", "mega", "mediafire", "terabox", "google", "dropbox", "onedrive"
+            "vizcloud", "mega", "mediafire", "terabox", "google", "dropbox", "onedrive",
+            "gdplayer", "streamplay"
         )
 
         fun getPriorityRank(url: String): Int {
@@ -331,7 +477,7 @@ class Sarangfilm21Provider : MainAPI() {
                 val keyword = priorityList[i]
                 val matches = when (keyword) {
                     "doodstream" -> listOf("doodstream", "dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla")
-                    "streamwish" -> listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed")
+                    "streamwish" -> listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "awish", "wishembed")
                     "google" -> listOf("google", "gdrive", "drive.google")
                     else -> listOf(keyword)
                 }
@@ -350,6 +496,7 @@ class Sarangfilm21Provider : MainAPI() {
             return when (keyword) {
                 "mega", "mediafire", "terabox", "google", "dropbox", "onedrive" -> "cloud"
                 "vidsrc", "rabbitstream", "vizcloud", "hydrax", "turbovip", "cast", "pelisnow", "embedrise" -> "embed"
+                "gdplayer", "streamplay" -> "embed"
                 else -> "hosting"
             }
         }
@@ -863,6 +1010,13 @@ class Sarangfilm21Provider : MainAPI() {
                             android.util.Log.e("FallbackExtractor", "AbyssExtractor failed: ${e.message}")
                         }
                     }
+                    cleanUrlEscaped.contains("streamplay") || cleanUrlEscaped.contains("gdplayer") -> {
+                        try {
+                            GDPlayerExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                        } catch (e: Exception) {
+                            android.util.Log.e("FallbackExtractor", "GDPlayerExtractor failed: ${e.message}")
+                        }
+                    }
                     cleanUrlEscaped.contains("streamwish") -> {
                         try {
                             com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
@@ -932,9 +1086,10 @@ class Sarangfilm21Provider : MainAPI() {
                                                     this.referer = cleanUrlEscaped
                                                 }
                                             )
-                                        } else if (subClean.contains("abyss") || subClean.contains("streamwish") || subClean.contains("dood") || subClean.contains("voe") || subClean.contains("streamtape") || subClean.contains("filemoon") || subClean.contains("mp4upload")) {
+                                        } else if (subClean.contains("abyss") || subClean.contains("streamplay") || subClean.contains("gdplayer") || subClean.contains("streamwish") || subClean.contains("dood") || subClean.contains("voe") || subClean.contains("streamtape") || subClean.contains("filemoon") || subClean.contains("mp4upload")) {
                                             when {
                                                 subClean.contains("abyss") -> AbyssExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
+                                                subClean.contains("streamplay") || subClean.contains("gdplayer") -> GDPlayerExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
                                                 subClean.contains("streamwish") -> com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
                                                 subClean.contains("dood") -> com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
                                                 subClean.contains("voe") -> com.lagradost.cloudstream3.extractors.Voe().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)

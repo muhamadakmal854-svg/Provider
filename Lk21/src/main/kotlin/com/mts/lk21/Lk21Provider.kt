@@ -343,6 +343,84 @@ class Lk21Provider : MainAPI() {
         }
     }
 
+    class GDPlayerExtractor : com.lagradost.cloudstream3.utils.ExtractorApi() {
+        override val name = "GDPlayer"
+        override val mainUrl = "https://play.streamplay.co.in"
+        override val requiresReferer = true
+
+        override suspend fun getUrl(
+            url: String,
+            referer: String?,
+            subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+            callback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit
+        ) {
+            try {
+                val cleanUrl = url.replace(92.toChar().toString(), "")
+                val uri = java.net.URI(cleanUrl)
+                val domain = uri.host
+                val id = cleanUrl.substringAfter("/embed/").substringBefore("/").substringBefore("?")
+                if (id.isEmpty()) return
+
+                val downloadPageUrl = "https://$domain/download/$id"
+                val response = app.get(
+                    downloadPageUrl,
+                    headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    )
+                )
+                if (!response.isSuccessful) return
+                val html = response.text
+
+                val unpacked = com.lagradost.cloudstream3.utils.JsUnpacker.unpack(html) ?: ""
+                val kaken = Regex("window\\.kaken\\s*=\\s*\\"([^\\"]+)\\"").find(unpacked)?.groupValues?.get(1) ?: return
+
+                val apiUrl = "https://$domain/api/"
+                val apiResponse = app.post(
+                    url = apiUrl,
+                    data = kaken,
+                    headers = mapOf(
+                        "Referer" to downloadPageUrl,
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "Content-Type" to "text/plain",
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    ),
+                    verify = false
+                )
+                if (!apiResponse.isSuccessful) return
+                val jsonText = apiResponse.text
+                val json = org.json.JSONObject(jsonText)
+                if (json.optString("status") == "ok") {
+                    val sources = json.getJSONArray("sources")
+                    for (i in 0 until sources.length()) {
+                        val src = sources.getJSONObject(i)
+                        val fileUrl = src.getString("file")
+                        val label = src.optString("label", "1080p")
+                        
+                        callback(
+                            com.lagradost.cloudstream3.utils.newExtractorLink(
+                                source = name,
+                                name = "$name - $label",
+                                url = fileUrl,
+                                type = if (fileUrl.contains(".m3u8")) com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 else com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = downloadPageUrl
+                                this.quality = when (label.lowercase()) {
+                                    "360p" -> com.lagradost.cloudstream3.utils.Qualities.P360.value
+                                    "480p" -> com.lagradost.cloudstream3.utils.Qualities.P480.value
+                                    "720p" -> com.lagradost.cloudstream3.utils.Qualities.P720.value
+                                    "1080p" -> com.lagradost.cloudstream3.utils.Qualities.P1080.value
+                                    else -> com.lagradost.cloudstream3.utils.Qualities.Unknown.value
+                                }
+                            }
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("GDPlayerExtractor", "Failed to extract: ${e.message}")
+            }
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -374,7 +452,8 @@ class Lk21Provider : MainAPI() {
             "vidguard", "mixdrop", "filemoon", "vidsrc", "upstream", "streamwish", 
             "vudeo", "supervideo", "streamhide", "vidlox", "dropload", "vidoza", 
             "embedrise", "userload", "faststream", "pelisnow", "rabbitstream", 
-            "vizcloud", "mega", "mediafire", "terabox", "google", "dropbox", "onedrive"
+            "vizcloud", "mega", "mediafire", "terabox", "google", "dropbox", "onedrive",
+            "gdplayer", "streamplay"
         )
 
         fun getPriorityRank(url: String): Int {
@@ -383,7 +462,7 @@ class Lk21Provider : MainAPI() {
                 val keyword = priorityList[i]
                 val matches = when (keyword) {
                     "doodstream" -> listOf("doodstream", "dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla")
-                    "streamwish" -> listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed")
+                    "streamwish" -> listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "awish", "wishembed")
                     "google" -> listOf("google", "gdrive", "drive.google")
                     else -> listOf(keyword)
                 }
@@ -402,6 +481,7 @@ class Lk21Provider : MainAPI() {
             return when (keyword) {
                 "mega", "mediafire", "terabox", "google", "dropbox", "onedrive" -> "cloud"
                 "vidsrc", "rabbitstream", "vizcloud", "hydrax", "turbovip", "cast", "pelisnow", "embedrise" -> "embed"
+                "gdplayer", "streamplay" -> "embed"
                 else -> "hosting"
             }
         }
@@ -915,6 +995,13 @@ class Lk21Provider : MainAPI() {
                             android.util.Log.e("FallbackExtractor", "AbyssExtractor failed: ${e.message}")
                         }
                     }
+                    cleanUrlEscaped.contains("streamplay") || cleanUrlEscaped.contains("gdplayer") -> {
+                        try {
+                            GDPlayerExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                        } catch (e: Exception) {
+                            android.util.Log.e("FallbackExtractor", "GDPlayerExtractor failed: ${e.message}")
+                        }
+                    }
                     cleanUrlEscaped.contains("streamwish") -> {
                         try {
                             com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
@@ -984,9 +1071,10 @@ class Lk21Provider : MainAPI() {
                                                     this.referer = cleanUrlEscaped
                                                 }
                                             )
-                                        } else if (subClean.contains("abyss") || subClean.contains("streamwish") || subClean.contains("dood") || subClean.contains("voe") || subClean.contains("streamtape") || subClean.contains("filemoon") || subClean.contains("mp4upload")) {
+                                        } else if (subClean.contains("abyss") || subClean.contains("streamplay") || subClean.contains("gdplayer") || subClean.contains("streamwish") || subClean.contains("dood") || subClean.contains("voe") || subClean.contains("streamtape") || subClean.contains("filemoon") || subClean.contains("mp4upload")) {
                                             when {
                                                 subClean.contains("abyss") -> AbyssExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
+                                                subClean.contains("streamplay") || subClean.contains("gdplayer") -> GDPlayerExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
                                                 subClean.contains("streamwish") -> com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
                                                 subClean.contains("dood") -> com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
                                                 subClean.contains("voe") -> com.lagradost.cloudstream3.extractors.Voe().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
