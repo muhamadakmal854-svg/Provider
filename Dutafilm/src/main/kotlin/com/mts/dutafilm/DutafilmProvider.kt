@@ -286,6 +286,64 @@ class DutafilmProvider : MainAPI() {
             }
         }
 
+        // 5b. MuviPro / GMR AJAX Player loading
+        val muviproPlayer = doc.selectFirst(".muvipro_player_content, #muvipro_player_content_id")
+        val muviproPostId = muviproPlayer?.attr("data-id") ?: ""
+        if (muviproPostId.isNotEmpty()) {
+            val muviproTabs = doc.select(".muvipro-player-tabs a, .tab-content-ajax").mapNotNull { 
+                val href = it.attr("href").orEmpty()
+                if (href.startsWith("#")) {
+                    href.substring(1)
+                } else {
+                    val id = it.attr("id").orEmpty()
+                    if (id.isNotEmpty()) id else null
+                }
+            }.distinct()
+            
+            muviproTabs.forEach { tab ->
+                try {
+                    val pageBase = try {
+                        val u = java.net.URL(data)
+                        "${u.protocol}://${u.host}"
+                    } catch (_: Exception) { mainUrl }
+                    val response = app.post(
+                        url = "$pageBase/wp-admin/admin-ajax.php",
+                        data = mapOf(
+                            "action" to "muvipro_player_content",
+                            "tab" to tab,
+                            "post_id" to muviproPostId
+                        ),
+                        referer = data,
+                        headers = mapOf(
+                            "X-Requested-With" to "XMLHttpRequest",
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        )
+                    )
+                    if (response.isSuccessful) {
+                        val json = response.text
+                        if (json.isNotBlank() && json != "0" && json != "false") {
+                            val parsedDoc = Jsoup.parse(json)
+                            val iframeSrc = parsedDoc.selectFirst("iframe[src], iframe[data-src]")?.let { 
+                                it.attr("src").ifEmpty { it.attr("data-src") } 
+                            }
+                            val embedUrl = iframeSrc
+                                ?: Regex("""src=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
+                                ?: Regex("""href=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
+                                ?: Regex("""["'](https?:[^"']+)["']""").find(json)?.groupValues?.get(1)
+                                ?: if (json.trim().startsWith("http")) json.trim() else null
+
+                            if (embedUrl != null) {
+                                val cleanUrl = fixUrl(embedUrl)
+                                if (cleanUrl.isNotEmpty()) {
+                                    targets.add(cleanUrl)
+                                }
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
         // 6. Harvest URLs directly from <script> tags
         doc.select("script").forEach { script ->
             val content = script.data()
