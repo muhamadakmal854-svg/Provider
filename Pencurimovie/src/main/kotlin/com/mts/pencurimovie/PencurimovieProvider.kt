@@ -248,11 +248,116 @@ class PencurimoviesubmalayProvider : MainAPI() {
         private val vodCache = java.util.concurrent.ConcurrentHashMap<String, String>()
     }
 
+    class AbyssExtractor : com.lagradost.cloudstream3.utils.ExtractorApi() {
+        override val name = "Abyss"
+        override val mainUrl = "https://abyssplayer.com"
+        override val requiresReferer = true
+
+        private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
+            val spec = javax.crypto.spec.SecretKeySpec(key, "AES")
+            val parameterSpec = javax.crypto.spec.IvParameterSpec(iv)
+            val cipher = javax.crypto.Cipher.getInstance("AES/CTR/NoPadding")
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, spec, parameterSpec)
+            return cipher.doFinal(ciphertext)
+        }
+
+        private fun md5(input: ByteArray): ByteArray {
+            val md = java.security.MessageDigest.getInstance("MD5")
+            return md.digest(input)
+        }
+
+        override suspend fun getUrl(
+            url: String,
+            referer: String?,
+            subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+            callback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit
+        ) {
+            try {
+                val cleanUrl = url.replace(92.toChar().toString(), "")
+                val pageHtml = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: mainUrl))).text
+
+                val base64Str = Regex("const datas\s*=\s*"([^"]+)"").find(pageHtml)?.groupValues?.get(1) ?: return
+                val decodedBytes = android.util.Base64.decode(base64Str, android.util.Base64.DEFAULT)
+                val latin1Str = String(decodedBytes, Charsets.ISO_8859_1)
+
+                val json = org.json.JSONObject(latin1Str)
+                val slug = json.getString("slug")
+                val userId = json.getString("user_id")
+                val md5Id = json.getString("md5_id")
+                val media = json.getString("media")
+
+                val keyStr = "$userId:$slug:$md5Id"
+                val keyBytesStr = md5(keyStr.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+                val key = keyBytesStr.toByteArray(Charsets.UTF_8)
+                val iv = key.sliceArray(0 until 16)
+
+                val mediaCiphertext = android.util.Base64.decode(media, android.util.Base64.DEFAULT)
+                val decryptedMediaBytes = decryptAesCtr(mediaCiphertext, key, iv)
+                val decryptedMediaStr = String(decryptedMediaBytes, Charsets.UTF_8)
+
+                val mediaJson = org.json.JSONObject(decryptedMediaStr)
+                val mp4 = mediaJson.getJSONObject("mp4")
+                val sources = mp4.getJSONArray("sources")
+                val domainsObj = if (mp4.has("domains")) mp4.getJSONObject("domains") else if (mediaJson.has("domains")) mediaJson.getJSONObject("domains") else org.json.JSONObject()
+
+                for (i in 0 until sources.length()) {
+                    val src = sources.getJSONObject(i)
+                    val size = src.getLong("size")
+                    val resId = src.getInt("res_id")
+                    val label = src.getString("label")
+                    val sub = src.getString("sub")
+
+                    val domain = domainsObj.getString(sub)
+
+                    val pathStr = "/mp4/$md5Id/$resId/$size?v=$slug"
+                    
+                    val sizeStr = size.toString()
+                    val digitBytes = sizeStr.map { it.toString().toInt().toByte() }.toByteArray()
+                    val sizeHashHex = md5(digitBytes).joinToString("") { "%02x".format(it) }
+                    
+                    val pathKey = sizeHashHex.toByteArray(Charsets.UTF_8)
+                    val pathIv = pathKey.sliceArray(0 until 16)
+
+                    val pathBytes = pathStr.toByteArray(Charsets.UTF_8)
+                    val encryptedPathBytes = decryptAesCtr(pathBytes, pathKey, pathIv)
+
+                    val b64Once = android.util.Base64.encodeToString(encryptedPathBytes, android.util.Base64.NO_WRAP)
+                    val b64Twice = android.util.Base64.encodeToString(b64Once.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                    val cleanPath = b64Twice.replace("=", "").replace("
+", "").replace("
+", "")
+
+                    val finalStreamUrl = "https://$domain/sora/$size/$cleanPath"
+
+                    callback(
+                        com.lagradost.cloudstream3.utils.newExtractorLink(
+                            source = name,
+                            name = "$name - $label",
+                            url = finalStreamUrl,
+                            type = com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = cleanUrl
+                            this.quality = when (label.lowercase()) {
+                                "360p" -> com.lagradost.cloudstream3.utils.Qualities.P360.value
+                                "480p" -> com.lagradost.cloudstream3.utils.Qualities.P480.value
+                                "720p" -> com.lagradost.cloudstream3.utils.Qualities.P720.value
+                                "1080p" -> com.lagradost.cloudstream3.utils.Qualities.P1080.value
+                                else -> com.lagradost.cloudstream3.utils.Qualities.Unknown.value
+                            }
+                        }
+                    )
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        parentCallback: (ExtractorLink) -> Unit
+        subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+        parentCallback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit
     ): Boolean {
         val isKlikxxi = this.name.contains("klikxxi", true) || this::class.java.simpleName.contains("klikxxi", true)
         val isStreamWish = false // Kept for unit test compatibility
@@ -323,7 +428,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
         }
 
         // Layer 6: Validation & Cleaning Engine
-        suspend fun validateAndEmitLink(link: ExtractorLink): Boolean {
+        suspend fun validateAndEmitLink(link: com.lagradost.cloudstream3.utils.ExtractorLink): Boolean {
             val url = link.url
             
             // Layer 7: Cache & Reuse Engine check
@@ -331,11 +436,11 @@ class PencurimoviesubmalayProvider : MainAPI() {
             if (cachedDirect != null && cachedDirect == "DEAD") return false
             if (cachedDirect != null) {
                 parentCallback(
-                    newExtractorLink(
+                    com.lagradost.cloudstream3.utils.newExtractorLink(
                         source = link.source,
                         name = link.name,
                         url = cachedDirect,
-                        type = if (cachedDirect.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        type = if (cachedDirect.contains(".m3u8")) com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 else com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
                     ) {
                         this.referer = link.referer
                         this.quality = link.quality
@@ -376,11 +481,11 @@ class PencurimoviesubmalayProvider : MainAPI() {
                         vodCache[url] = finalUrl
                         
                         parentCallback(
-                            newExtractorLink(
+                            com.lagradost.cloudstream3.utils.newExtractorLink(
                                 source = link.source,
                                 name = link.name,
                                 url = finalUrl,
-                                type = if (finalUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                type = if (finalUrl.contains(".m3u8")) com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 else com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = link.referer
                                 this.quality = link.quality
@@ -407,7 +512,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
         }
 
         // Layer 3: Stream Resolver Engine (Core Recursive resolver)
-        suspend fun resolveAndValidateStream(link: ExtractorLink, depth: Int = 0): Boolean {
+        suspend fun resolveAndValidateStream(link: com.lagradost.cloudstream3.utils.ExtractorLink, depth: Int = 0): Boolean {
             if (depth > 5) return false
             val url = link.url
             
@@ -415,11 +520,11 @@ class PencurimoviesubmalayProvider : MainAPI() {
             if (cachedDirect != null && cachedDirect == "DEAD") return false
             if (cachedDirect != null) {
                 parentCallback(
-                    newExtractorLink(
+                    com.lagradost.cloudstream3.utils.newExtractorLink(
                         source = link.source,
                         name = link.name,
                         url = cachedDirect,
-                        type = if (cachedDirect.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        type = if (cachedDirect.contains(".m3u8")) com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 else com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
                     ) {
                         this.referer = link.referer
                         this.quality = link.quality
@@ -459,11 +564,11 @@ class PencurimoviesubmalayProvider : MainAPI() {
                     if (isPlayable) {
                         vodCache[url] = finalUrl
                         parentCallback(
-                            newExtractorLink(
+                            com.lagradost.cloudstream3.utils.newExtractorLink(
                                 source = link.source,
                                 name = link.name,
                                 url = finalUrl,
-                                type = if (finalUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                type = if (finalUrl.contains(".m3u8")) com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 else com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = link.referer
                                 this.quality = link.quality
@@ -480,11 +585,11 @@ class PencurimoviesubmalayProvider : MainAPI() {
                                 val u = java.net.URL(finalUrl)
                                 if (subSource.startsWith("/")) "${u.protocol}://${u.host}$subSource" else "${finalUrl.substringBeforeLast("/")}/$subSource"
                             }
-                            val nextLink = newExtractorLink(
+                            val nextLink = com.lagradost.cloudstream3.utils.newExtractorLink(
                                 source = link.source,
                                 name = link.name,
                                 url = resolvedUrl,
-                                type = if (resolvedUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                type = if (resolvedUrl.contains(".m3u8")) com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 else com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = finalUrl
                                 this.quality = link.quality
@@ -503,7 +608,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
         }
 
         // Retry helper with max 3 retries
-        suspend fun resolveStreamWithRetry(link: ExtractorLink, retries: Int = 3): Boolean {
+        suspend fun resolveStreamWithRetry(link: com.lagradost.cloudstream3.utils.ExtractorLink, retries: Int = 3): Boolean {
             for (i in 0 until retries) {
                 val success = resolveAndValidateStream(link)
                 if (success) return true
@@ -512,7 +617,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
         }
 
         // Intercepting callback wrapper to validate/resolve all generated links with Retry
-        val callback: (ExtractorLink) -> Unit = { link ->
+        val callback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit = { link ->
             kotlinx.coroutines.runBlocking {
                 val sourceClass = classifySource(link.url)
                 if (sourceClass == "unknown") {
@@ -610,7 +715,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
                         val json = response.text
                         if (json.isBlank() || json == "0" || json == "false" || json == "null") continue
 
-                        val parsedDoc = Jsoup.parse(json)
+                        val parsedDoc = org.jsoup.Jsoup.parse(json)
                         val iframeSrc = parsedDoc.selectFirst("iframe[src], iframe[data-src]")?.let { 
                             it.attr("src").ifEmpty { it.attr("data-src") } 
                         }
@@ -774,14 +879,14 @@ class PencurimoviesubmalayProvider : MainAPI() {
                                                 val link = match.groupValues[1]
                                                 if (link.startsWith("http")) {
                                                     callback(
-                                                        newExtractorLink(
+                                                        com.lagradost.cloudstream3.utils.newExtractorLink(
                                                             source = "Gofile",
                                                             name = "Gofile",
                                                             url = link,
-                                                            type = if (link.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                            type = if (link.contains(".m3u8")) com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 else com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
                                                         ) {
                                                             this.referer = "https://gofile.io/"
-                                                            this.quality = Qualities.Unknown.value
+                                                            this.quality = com.lagradost.cloudstream3.utils.Qualities.Unknown.value
                                                         }
                                                     )
                                                 }
@@ -796,14 +901,14 @@ class PencurimoviesubmalayProvider : MainAPI() {
                         try {
                             val isM3u = playerType == "m3u8"
                             callback(
-                                newExtractorLink(
+                                com.lagradost.cloudstream3.utils.newExtractorLink(
                                     source = "Direct Stream",
                                     name = "Direct Stream",
                                     url = cleanUrlEscaped,
-                                    type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                    type = if (isM3u) com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 else com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
                                 ) {
                                     this.referer = data
-                                    this.quality = Qualities.Unknown.value
+                                    this.quality = com.lagradost.cloudstream3.utils.Qualities.Unknown.value
                                 }
                             )
                         } catch (_: Exception) {}
@@ -875,11 +980,11 @@ class PencurimoviesubmalayProvider : MainAPI() {
                                         if (subType == "m3u8" || subType == "mp4") {
                                             val isM3u = subType == "m3u8"
                                             callback(
-                                                newExtractorLink(
+                                                com.lagradost.cloudstream3.utils.newExtractorLink(
                                                     source = "Direct Stream",
                                                     name = "Direct Stream",
                                                     url = subClean,
-                                                    type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                    type = if (isM3u) com.lagradost.cloudstream3.utils.ExtractorLinkType.M3U8 else com.lagradost.cloudstream3.utils.ExtractorLinkType.VIDEO
                                                 ) {
                                                     this.referer = cleanUrlEscaped
                                                 }
@@ -896,7 +1001,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
                                             }
                                         } else {
                                             try {
-                                                loadExtractor(subClean, cleanUrlEscaped, subtitleCallback, callback)
+                                                com.lagradost.cloudstream3.utils.loadExtractor(subClean, cleanUrlEscaped, subtitleCallback, callback)
                                             } catch (_: Exception) {}
                                         }
                                     }
@@ -909,7 +1014,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
                             !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
                             !cleanUrlEscaped.contains("adskeeper")) {
                             try {
-                                loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                                com.lagradost.cloudstream3.utils.loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
                             } catch (e: Exception) {
                                 android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
                             }
