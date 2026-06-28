@@ -1,4 +1,4 @@
-package __PACKAGE__
+package com.mts.anichin
 
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*

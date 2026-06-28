@@ -1,4 +1,4 @@
-package __PACKAGE__
+package com.mts.lk21
 
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
