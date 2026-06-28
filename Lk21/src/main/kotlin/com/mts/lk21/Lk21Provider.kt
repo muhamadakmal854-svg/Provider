@@ -20,6 +20,40 @@ class Lk21Provider : MainAPI() {
         }
     }
 
+    private suspend fun fetchURL(url: String): String {
+        val res = app.get(url, allowRedirects = false)
+        val href = res.headers["location"]
+        return if (href != null) {
+            try {
+                val it = java.net.URI(href)
+                "${it.scheme}://${it.host}"
+            } catch (e: Exception) {
+                url
+            }
+        } else {
+            url
+        }
+    }
+
+    private fun Element.getImageAttr(): String {
+        return when {
+            this.hasAttr("src") -> this.attr("src")
+            this.hasAttr("data-src") -> this.attr("data-src")
+            else -> this.attr("src")
+        }
+    }
+
+
+    private fun getSafeBaseUrl(url: String?): String {
+        if (url.isNullOrBlank()) return mainUrl
+        return try {
+            val it = java.net.URI(url)
+            "${it.scheme}://${it.host}"
+        } catch (e: Exception) {
+            mainUrl
+        }
+    }
+
 
     override var mainUrl = "https://tv9.lk21official.cc"
     private var seriesUrl = "https://tv3.nontondrama.my"
