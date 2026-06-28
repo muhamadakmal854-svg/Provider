@@ -110,9 +110,7 @@ class AnichinProvider : MainAPI() {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    companion object {
-        private val vodCache = java.util.concurrent.ConcurrentHashMap<String, String>()
-    }
+    private val vodCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     class AbyssExtractor : com.lagradost.cloudstream3.utils.ExtractorApi() {
         override val name = "Abyss"
