@@ -167,7 +167,7 @@ class NgefilmProvider : MainAPI() {
                 val cleanUrl = url.replace(92.toChar().toString(), "")
                 val pageHtml = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: mainUrl))).text
 
-                val base64Str = Regex("const datas\s*=\s*"([^"]+)"").find(pageHtml)?.groupValues?.get(1) ?: return
+                val base64Str = Regex("const datas\\s*=\\s*\"([^\"]+)\"").find(pageHtml)?.groupValues?.get(1) ?: return
                 val decodedBytes = android.util.Base64.decode(base64Str, android.util.Base64.DEFAULT)
                 val latin1Str = String(decodedBytes, Charsets.ISO_8859_1)
 
@@ -214,9 +214,7 @@ class NgefilmProvider : MainAPI() {
 
                     val b64Once = android.util.Base64.encodeToString(encryptedPathBytes, android.util.Base64.NO_WRAP)
                     val b64Twice = android.util.Base64.encodeToString(b64Once.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-                    val cleanPath = b64Twice.replace("=", "").replace("
-", "").replace("
-", "")
+                    val cleanPath = b64Twice.replace("=", "").replace("\\n", "").replace("\\r", "")
 
                     val finalStreamUrl = "https://$domain/sora/$size/$cleanPath"
 
