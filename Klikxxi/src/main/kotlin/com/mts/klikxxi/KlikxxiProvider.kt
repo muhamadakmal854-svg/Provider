@@ -179,6 +179,10 @@ class KlikxxiProvider : MainAPI() {
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
+    companion object {
+        private val vodCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -205,27 +209,77 @@ class KlikxxiProvider : MainAPI() {
             }
         }
 
-        // Engine 4: Dynamic Player Detector Engine
-        fun detectPlayerType(url: String): String {
+        val priorityList = listOf(
+            "hydrax", "turbovip", "cast", "doodstream", "voe", "streamtape", 
+            "vidguard", "mixdrop", "filemoon", "vidsrc", "upstream", "streamwish", 
+            "vudeo", "supervideo", "streamhide", "vidlox", "dropload", "vidoza", 
+            "embedrise", "userload", "faststream", "pelisnow", "rabbitstream", 
+            "vizcloud", "mega", "mediafire", "terabox", "google", "dropbox", "onedrive"
+        )
+
+        fun getPriorityRank(url: String): Int {
             val u = url.lowercase()
-            return when {
-                listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed", "vikingfile").any { u.contains(it) } -> "streamwish"
-                listOf("dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { u.contains(it) } -> "dood"
-                u.contains("voe.sx") || u.contains("voe") -> "voe"
-                u.contains("streamtape") -> "streamtape"
-                u.contains("filemoon") -> "filemoon"
-                u.contains("mp4upload") -> "mp4upload"
-                listOf("abyssplayer.com", "abyss.to", "abysscdn.com", "iamcdn.net", "sssrr").any { u.contains(it) } -> "abyss"
-                u.contains("gofile.io/d/") -> "gofile"
-                u.contains(".m3u8") || u.contains("/hls/") -> "m3u8"
-                u.contains(".mp4") -> "mp4"
-                else -> "unknown"
+            for (i in priorityList.indices) {
+                val keyword = priorityList[i]
+                val matches = when (keyword) {
+                    "doodstream" -> listOf("doodstream", "dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla")
+                    "streamwish" -> listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed")
+                    "google" -> listOf("google", "gdrive", "drive.google")
+                    else -> listOf(keyword)
+                }
+                if (matches.any { u.contains(it) }) {
+                    return i
+                }
+            }
+            return 999
+        }
+
+        // Layer 1: VOD Source Detector Engine
+        fun classifySource(url: String): String {
+            val rank = getPriorityRank(url)
+            if (rank == 999) return "unknown"
+            val keyword = priorityList[rank]
+            return when (keyword) {
+                "mega", "mediafire", "terabox", "google", "dropbox", "onedrive" -> "cloud"
+                "vidsrc", "rabbitstream", "vizcloud", "hydrax", "turbovip", "cast", "pelisnow", "embedrise" -> "embed"
+                else -> "hosting"
             }
         }
 
-        // Engine 5: Smart Link Validator Engine
+        // Layer 5: Smart Player Compatibility Engine
+        fun getPlayerType(url: String): String {
+            val u = url.lowercase()
+            return when {
+                u.contains("iframe") || u.contains("/e/") || u.contains("/embed/") -> "iframe"
+                u.contains(".m3u8") || u.contains("/hls/") -> "m3u8"
+                u.contains(".mp4") -> "mp4"
+                else -> "js-encrypted"
+            }
+        }
+
+        // Layer 6: Validation & Cleaning Engine
         suspend fun validateAndEmitLink(link: ExtractorLink): Boolean {
             val url = link.url
+            
+            // Layer 7: Cache & Reuse Engine check
+            val cachedDirect = vodCache[url]
+            if (cachedDirect != null && cachedDirect == "DEAD") return false
+            if (cachedDirect != null) {
+                parentCallback(
+                    newExtractorLink(
+                        source = link.source,
+                        name = link.name,
+                        url = cachedDirect,
+                        type = if (cachedDirect.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = link.referer
+                        this.quality = link.quality
+                        this.headers = link.headers
+                    }
+                )
+                return true
+            }
+
             try {
                 val headersMap = mutableMapOf(
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -254,6 +308,8 @@ class KlikxxiProvider : MainAPI() {
                                      finalUrl.contains(".mp4")
 
                     if (isPlayable) {
+                        vodCache[url] = finalUrl
+                        
                         parentCallback(
                             newExtractorLink(
                                 source = link.source,
@@ -270,7 +326,7 @@ class KlikxxiProvider : MainAPI() {
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SmartLinkValidator", "Validation failed for ${url}: ${e.message}")
+                android.util.Log.e("VODValidator", "Validation failed for ${url}: ${e.message}")
             }
             
             if (!isKlikxxi) {
@@ -280,13 +336,34 @@ class KlikxxiProvider : MainAPI() {
                     return true
                 }
             }
+            
+            vodCache[url] = "DEAD"
             return false
         }
 
-        // Engine 3: Stream Resolver Engine (Recursive Follower)
+        // Layer 3: Stream Resolver Engine (Core Recursive resolver)
         suspend fun resolveAndValidateStream(link: ExtractorLink, depth: Int = 0): Boolean {
             if (depth > 5) return false
             val url = link.url
+            
+            val cachedDirect = vodCache[url]
+            if (cachedDirect != null && cachedDirect == "DEAD") return false
+            if (cachedDirect != null) {
+                parentCallback(
+                    newExtractorLink(
+                        source = link.source,
+                        name = link.name,
+                        url = cachedDirect,
+                        type = if (cachedDirect.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = link.referer
+                        this.quality = link.quality
+                        this.headers = link.headers
+                    }
+                )
+                return true
+            }
+
             try {
                 val headersMap = mutableMapOf(
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -315,6 +392,7 @@ class KlikxxiProvider : MainAPI() {
                                      finalUrl.contains(".mp4")
 
                     if (isPlayable) {
+                        vodCache[url] = finalUrl
                         parentCallback(
                             newExtractorLink(
                                 source = link.source,
@@ -352,17 +430,28 @@ class KlikxxiProvider : MainAPI() {
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("StreamResolver", "Resolution failed for ${url}: ${e.message}")
+                android.util.Log.e("VODResolver", "Resolution failed for ${url}: ${e.message}")
+            }
+            
+            vodCache[url] = "DEAD"
+            return false
+        }
+
+        // Retry helper with max 3 retries
+        suspend fun resolveStreamWithRetry(link: ExtractorLink, retries: Int = 3): Boolean {
+            for (i in 0 until retries) {
+                val success = resolveAndValidateStream(link)
+                if (success) return true
             }
             return false
         }
 
-        // Intercepting callback wrapper to validate/resolve all generated links
+        // Intercepting callback wrapper to validate/resolve all generated links with Retry
         val callback: (ExtractorLink) -> Unit = { link ->
             kotlinx.coroutines.runBlocking {
-                val playerType = detectPlayerType(link.url)
-                if (playerType == "unknown") {
-                    resolveAndValidateStream(link)
+                val sourceClass = classifySource(link.url)
+                if (sourceClass == "unknown") {
+                    resolveStreamWithRetry(link, 3)
                 } else {
                     validateAndEmitLink(link)
                 }
@@ -371,7 +460,7 @@ class KlikxxiProvider : MainAPI() {
 
         val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
 
-        // Engine 1: Standard Scraper
+        // Layer 2: Unified Link Extractor (Standard Scraper part)
         suspend fun runStandardEngine(document: org.jsoup.nodes.Document): List<String> {
             val list = mutableListOf<String>()
             
@@ -481,7 +570,7 @@ class KlikxxiProvider : MainAPI() {
             document.select("script").forEach { script ->
                 val content = script.data()
                 if (content.isNotBlank()) {
-                    Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+""").findAll(content).forEach { match ->
+                    Regex("""https?://[a-zA-Z0-9.\\-_]+/[a-zA-Z0-9.\\-_\\?&=\\/~]+""").findAll(content).forEach { match ->
                         val url = match.value
                         if (!url.contains("google") && !url.contains("facebook") && !url.contains("analytics")) {
                             val finalUrl = fixUrl(url)
@@ -494,7 +583,7 @@ class KlikxxiProvider : MainAPI() {
             return list
         }
 
-        // Engine 2: Fallback Scraper
+        // Layer 2: Unified Link Extractor (Fallback Scraper part)
         fun runFallbackEngine(htmlContent: String): List<String> {
             val list = mutableListOf<String>()
             
@@ -505,7 +594,7 @@ class KlikxxiProvider : MainAPI() {
                     val url = fixUrl(subMatch.groupValues[1])
                     if (url.isNotEmpty()) list.add(url)
                 }
-                Regex("""https?://[a-zA-Z0-9.\\-_]+/[a-zA-Z0-9.\\-_\\?&=\\/~]+""").findAll(commentContent).forEach { subMatch ->
+                Regex("""https?://[a-zA-Z0-9.\\\\-_]+/[a-zA-Z0-9.\\\\-_\\\\?&=\\\\/~]+""").findAll(commentContent).forEach { subMatch ->
                     val url = fixUrl(subMatch.value)
                     if (url.isNotEmpty() && !url.contains("google") && !url.contains("facebook")) {
                         list.add(url)
@@ -513,7 +602,7 @@ class KlikxxiProvider : MainAPI() {
                 }
             }
 
-            Regex("""https?://[a-zA-Z0-9.\\-_]+/[a-zA-Z0-9.\\-_\\?&=\\/~]+\\.(?:m3u8|mp4)[a-zA-Z0-9.\\-_\\?&=\\/~]*""").findAll(htmlContent).forEach { match ->
+            Regex("""https?://[a-zA-Z0-9.\\\\-_]+/[a-zA-Z0-9.\\\\-_\\\\?&=\\\\/~]+\\\\.(?:m3u8|mp4)[a-zA-Z0-9.\\\\-_\\\\?&=\\\\/~]*""").findAll(htmlContent).forEach { match ->
                 val url = fixUrl(match.value)
                 if (url.isNotEmpty() && !url.contains("google") && !url.contains("facebook")) {
                     list.add(url)
@@ -521,7 +610,7 @@ class KlikxxiProvider : MainAPI() {
             }
 
             val hosterKeywords = listOf("streamwish", "dood", "voe.sx", "streamtape", "filemoon", "mp4upload", "gofile.io", "abyssplayer")
-            Regex("""https?://[a-zA-Z0-9.\\-_]+/[a-zA-Z0-9.\\-_\\?&=\\/~]+""").findAll(htmlContent).forEach { match ->
+            Regex("""https?://[a-zA-Z0-9.\\\\-_]+/[a-zA-Z0-9.\\\\-_\\\\?&=\\\\/~]+""").findAll(htmlContent).forEach { match ->
                 val url = match.value
                 if (hosterKeywords.any { url.contains(it, true) }) {
                     val clean = fixUrl(url)
@@ -537,8 +626,11 @@ class KlikxxiProvider : MainAPI() {
             targets = runFallbackEngine(doc.outerHtml())
         }
 
+        // Layer 4: Multi-Host Fallback Engine - Sort targets by fallback priority
+        val sortedTargets = targets.distinct().sortedBy { getPriorityRank(it) }
+
         // Engine Selection & Processing Layer
-        targets.distinct().forEach { raw ->
+        sortedTargets.forEach { raw ->
             val cleanedRaw = raw.trim()
             if (cleanedRaw.isBlank()) return@forEach
 
@@ -570,10 +662,12 @@ class KlikxxiProvider : MainAPI() {
                     }
                 }
                 
-                val playerType = detectPlayerType(cleanUrlEscaped)
+                val playerType = getPlayerType(cleanUrlEscaped)
+                val sourceClass = classifySource(cleanUrlEscaped)
 
-                when (playerType) {
-                    "gofile" -> {
+                // Route through appropriate extractors or resolving paths
+                when {
+                    sourceClass == "cloud" && cleanUrlEscaped.contains("gofile.io") -> {
                         try {
                             val contentId = cleanUrlEscaped.substringAfter("/d/").substringBefore("/").substringBefore("?")
                             if (contentId.isNotEmpty()) {
@@ -633,7 +727,7 @@ class KlikxxiProvider : MainAPI() {
                             }
                         } catch (_: Exception) {}
                     }
-                    "m3u8", "mp4" -> {
+                    playerType == "m3u8" || playerType == "mp4" -> {
                         try {
                             val isM3u = playerType == "m3u8"
                             callback(
@@ -649,53 +743,53 @@ class KlikxxiProvider : MainAPI() {
                             )
                         } catch (_: Exception) {}
                     }
-                    "abyss" -> {
+                    cleanUrlEscaped.contains("abyss") -> {
                         try {
                             AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                         } catch (e: Exception) {
                             android.util.Log.e("FallbackExtractor", "AbyssExtractor failed: ${e.message}")
                         }
                     }
-                    "streamwish" -> {
+                    cleanUrlEscaped.contains("streamwish") -> {
                         try {
                             com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                         } catch (e: Exception) {
-                            android.util.Log.e("FallbackExtractor", "StreamWish extraction failed for $cleanUrlEscaped: ${e.message}")
+                            android.util.Log.e("FallbackExtractor", "StreamWish failed: ${e.message}")
                         }
                     }
-                    "dood" -> {
+                    cleanUrlEscaped.contains("dood") -> {
                         try {
                             com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                         } catch (e: Exception) {
-                            android.util.Log.e("FallbackExtractor", "DoodLaExtractor extraction failed for $cleanUrlEscaped: ${e.message}")
+                            android.util.Log.e("FallbackExtractor", "DoodLaExtractor failed: ${e.message}")
                         }
                     }
-                    "voe" -> {
+                    cleanUrlEscaped.contains("voe") -> {
                         try {
                             com.lagradost.cloudstream3.extractors.Voe().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                         } catch (e: Exception) {
-                            android.util.Log.e("FallbackExtractor", "Voe extraction failed: ${e.message}")
+                            android.util.Log.e("FallbackExtractor", "Voe failed: ${e.message}")
                         }
                     }
-                    "streamtape" -> {
+                    cleanUrlEscaped.contains("streamtape") -> {
                         try {
                             com.lagradost.cloudstream3.extractors.StreamTape().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                         } catch (e: Exception) {
-                            android.util.Log.e("FallbackExtractor", "StreamTape extraction failed: ${e.message}")
+                            android.util.Log.e("FallbackExtractor", "StreamTape failed: ${e.message}")
                         }
                     }
-                    "filemoon" -> {
+                    cleanUrlEscaped.contains("filemoon") -> {
                         try {
                             com.lagradost.cloudstream3.extractors.FileMoon().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                         } catch (e: Exception) {
-                            android.util.Log.e("FallbackExtractor", "FileMoon extraction failed: ${e.message}")
+                            android.util.Log.e("FallbackExtractor", "FileMoon failed: ${e.message}")
                         }
                     }
-                    "mp4upload" -> {
+                    cleanUrlEscaped.contains("mp4upload") -> {
                         try {
                             com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                         } catch (e: Exception) {
-                            android.util.Log.e("FallbackExtractor", "Mp4Upload extraction failed: ${e.message}")
+                            android.util.Log.e("FallbackExtractor", "Mp4Upload failed: ${e.message}")
                         }
                     }
                     else -> {
@@ -712,7 +806,7 @@ class KlikxxiProvider : MainAPI() {
                                 subTargets.forEach { subTarget ->
                                     if (subTarget != cleanUrlEscaped) {
                                         val subClean = subTarget.replace(92.toChar().toString(), "")
-                                        val subType = detectPlayerType(subClean)
+                                        val subType = getPlayerType(subClean)
                                         if (subType == "m3u8" || subType == "mp4") {
                                             val isM3u = subType == "m3u8"
                                             callback(
@@ -725,15 +819,15 @@ class KlikxxiProvider : MainAPI() {
                                                     this.referer = cleanUrlEscaped
                                                 }
                                             )
-                                        } else if (subType != "unknown") {
-                                            when (subType) {
-                                                "abyss" -> AbyssExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
-                                                "streamwish" -> com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
-                                                "dood" -> com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
-                                                "voe" -> com.lagradost.cloudstream3.extractors.Voe().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
-                                                "streamtape" -> com.lagradost.cloudstream3.extractors.StreamTape().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
-                                                "filemoon" -> com.lagradost.cloudstream3.extractors.FileMoon().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
-                                                "mp4upload" -> com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
+                                        } else if (subClean.contains("abyss") || subClean.contains("streamwish") || subClean.contains("dood") || subClean.contains("voe") || subClean.contains("streamtape") || subClean.contains("filemoon") || subClean.contains("mp4upload")) {
+                                            when {
+                                                subClean.contains("abyss") -> AbyssExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
+                                                subClean.contains("streamwish") -> com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
+                                                subClean.contains("dood") -> com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
+                                                subClean.contains("voe") -> com.lagradost.cloudstream3.extractors.Voe().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
+                                                subClean.contains("streamtape") -> com.lagradost.cloudstream3.extractors.StreamTape().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
+                                                subClean.contains("filemoon") -> com.lagradost.cloudstream3.extractors.FileMoon().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
+                                                subClean.contains("mp4upload") -> com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(subClean, cleanUrlEscaped, subtitleCallback, callback)
                                             }
                                         } else {
                                             try {
@@ -762,6 +856,7 @@ class KlikxxiProvider : MainAPI() {
 
         return true
     }
+    
 }
 
 class AbyssExtractor : ExtractorApi() {
