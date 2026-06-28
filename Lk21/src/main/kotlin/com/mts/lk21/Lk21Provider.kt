@@ -480,6 +480,13 @@ class Lk21Provider : MainAPI() {
     ): Boolean {
         val isKlikxxi = this.name.contains("klikxxi", true) || this::class.java.simpleName.contains("klikxxi", true)
         val isStreamWish = false // Kept for unit test compatibility
+        
+        var hasEmittedAny = false
+        val interceptedParentCallback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit = { link ->
+            parentCallback(link)
+            hasEmittedAny = true
+        }
+        val allFoundLinks = java.util.concurrent.CopyOnWriteArrayList<com.lagradost.cloudstream3.utils.ExtractorLink>()
 
         fun fixUrl(url: String): String {
             if (url.isBlank()) return ""
@@ -556,7 +563,7 @@ class Lk21Provider : MainAPI() {
             val cachedDirect = vodCache[url]
             if (cachedDirect != null && cachedDirect == "DEAD") return false
             if (cachedDirect != null) {
-                parentCallback(
+                interceptedParentCallback(
                     com.lagradost.cloudstream3.utils.newExtractorLink(
                         source = link.source,
                         name = link.name,
@@ -573,9 +580,11 @@ class Lk21Provider : MainAPI() {
 
             try {
                 val headersMap = mutableMapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Range" to "bytes=0-1024"
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 )
+                if (!url.contains(".m3u8", ignoreCase = true)) {
+                    headersMap["Range"] = "bytes=0-1024"
+                }
                 if (link.referer.isNotEmpty()) {
                     headersMap["Referer"] = link.referer
                 }
@@ -601,7 +610,7 @@ class Lk21Provider : MainAPI() {
                     if (isPlayable) {
                         vodCache[url] = finalUrl
                         
-                        parentCallback(
+                        interceptedParentCallback(
                             com.lagradost.cloudstream3.utils.newExtractorLink(
                                 source = link.source,
                                 name = link.name,
@@ -623,7 +632,7 @@ class Lk21Provider : MainAPI() {
             if (!isKlikxxi) {
                 val isDirectFormat = url.contains(".m3u8") || url.contains(".mp4") || url.contains("/hls/")
                 if (isDirectFormat) {
-                    parentCallback(link)
+                    interceptedParentCallback(link)
                     return true
                 }
             }
@@ -640,7 +649,7 @@ class Lk21Provider : MainAPI() {
             val cachedDirect = vodCache[url]
             if (cachedDirect != null && cachedDirect == "DEAD") return false
             if (cachedDirect != null) {
-                parentCallback(
+                interceptedParentCallback(
                     com.lagradost.cloudstream3.utils.newExtractorLink(
                         source = link.source,
                         name = link.name,
@@ -657,9 +666,11 @@ class Lk21Provider : MainAPI() {
 
             try {
                 val headersMap = mutableMapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Range" to "bytes=0-1024"
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 )
+                if (!url.contains(".m3u8", ignoreCase = true)) {
+                    headersMap["Range"] = "bytes=0-1024"
+                }
                 if (link.referer.isNotEmpty()) {
                     headersMap["Referer"] = link.referer
                 }
@@ -684,7 +695,7 @@ class Lk21Provider : MainAPI() {
 
                     if (isPlayable) {
                         vodCache[url] = finalUrl
-                        parentCallback(
+                        interceptedParentCallback(
                             com.lagradost.cloudstream3.utils.newExtractorLink(
                                 source = link.source,
                                 name = link.name,
@@ -739,6 +750,7 @@ class Lk21Provider : MainAPI() {
 
         // Intercepting callback wrapper to validate/resolve all generated links with Retry
         val callback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit = { link ->
+            allFoundLinks.add(link)
             kotlinx.coroutines.runBlocking {
                 val sourceClass = classifySource(link.url)
                 if (sourceClass == "unknown") {
@@ -1155,6 +1167,12 @@ class Lk21Provider : MainAPI() {
                         }
                     }
                 }
+            }
+        }
+
+        if (!hasEmittedAny && allFoundLinks.isNotEmpty()) {
+            allFoundLinks.forEach { link ->
+                parentCallback(link)
             }
         }
 
