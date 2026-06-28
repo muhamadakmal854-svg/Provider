@@ -1,4 +1,4 @@
-package com.mts.sarangfilm21
+package com.mts.drama
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -9,19 +9,20 @@ import javax.crypto.spec.SecretKeySpec
 import javax.crypto.spec.IvParameterSpec
 import java.security.MessageDigest
 
-class Sarangfilm21Provider : MainAPI() {
+class DramaProvider : MainAPI() {
 
-    override var mainUrl        = "https://corymcabee.net"
-    override var name           = "SARANGFILM21"
-    override var lang           = "id"
+    override var mainUrl        = "https://drama.mu"
+    override var name           = "Nonton Drama & TV Series Sub Indo Terbaru"
+    override var lang           = "ms"
     override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
         "" to "Terbaru",
-        "anime/?status=ongoing" to "Ongoing",
-        "anime/?status=completed" to "Completed",
-        "anime" to "Semua Anime"
+        "series/ongoing" to "Ongoing",
+        "series/?status=ongoing" to "Ongoing",
+        "series/?status=completed" to "Completed",
+        "series" to "Semua Anime"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -86,7 +87,7 @@ class Sarangfilm21Provider : MainAPI() {
             "Referer" to mainUrl,
             "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
-        return doc.select("article.item, .item, article, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
+        return doc.select("article, .slider, li.slider, .sliders, .slider-wrapper, div.slider-wrapper, .widget, div.widget, .container, div.container, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
             val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
             val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
             val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")

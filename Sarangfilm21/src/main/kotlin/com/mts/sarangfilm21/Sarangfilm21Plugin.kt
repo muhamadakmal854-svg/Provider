@@ -8,16 +8,10 @@ import android.content.Context
 class Sarangfilm21Plugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(Sarangfilm21Provider())
-        registerExtractorAPI(SyAkrabatableCom())
-        registerExtractorAPI(SimontokBlog())
-        registerExtractorAPI(TodayecoCom())
-        registerExtractorAPI(PeterboroughmovesCom())
-        registerExtractorAPI(MukdenpowsOrg())
-        registerExtractorAPI(SpaoShortpixelAi())
-        registerExtractorAPI(IyengaryogacenterCom())
-        registerExtractorAPI(UseFontawesomeCom())
-        registerExtractorAPI(CleantechworldOrg())
-        registerExtractorAPI(IYtimgCom())
-        registerExtractorAPI(YoutuBe())
+        registerExtractorAPI(CvGenipspillionCom())
+        registerExtractorAPI(KuyhaaMe())
+        registerExtractorAPI(Edgestorewebpmed2HnhfgbgnfmfuhaZ01AzurefdNet())
+        registerExtractorAPI(StoreimagesSmicrosoftCom())
+        registerExtractorAPI(MicrosoftCom())
     }
 }

@@ -2,11 +2,11 @@ version = 1
 
 cloudstream {
     language    = "id"
-    description = "Provider untuk Sarangfilm21"
+    description = "Provider untuk SARANGFILM21"
     authors     = listOf("MTS")
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries")
-    iconUrl     = "https://salvemlesvalls.org/favicon.ico"
+    tvTypes     = listOf("Anime", "TvSeries", "OVA")
+    iconUrl     = "https://corymcabee.net/favicon.ico"
 }
 
 android {

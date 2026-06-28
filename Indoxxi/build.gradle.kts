@@ -10,5 +10,5 @@ cloudstream {
 }
 
 android {
-    namespace = "com.mts.idlix"
+    namespace = "com.mts.indoxxi"
 }
