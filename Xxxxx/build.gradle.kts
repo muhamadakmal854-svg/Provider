@@ -5,7 +5,7 @@ cloudstream {
     description = "Provider untuk Free Porn Videos & XXX Movies: Sex Videos Tube"
     authors     = listOf("MTS")
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries")
+    tvTypes     = listOf("NSFW")
     iconUrl     = "https://xhaccess.com/favicon.ico"
 }
 

@@ -371,7 +371,6 @@ class PencurimoviesubmalayProvider : MainAPI() {
                         val cleanUrl = fixUrl(embedUrl)
                         if (cleanUrl.isNotEmpty()) {
                             targets.add(cleanUrl)
-                            break // Found link for this button, skip other actions
                         }
                     }
                 } catch (_: Exception) {}

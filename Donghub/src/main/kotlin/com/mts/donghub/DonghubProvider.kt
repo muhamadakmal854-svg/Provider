@@ -29,7 +29,10 @@ class DonghubProvider : MainAPI() {
         val path = request.data
         val cleanPath = path.removePrefix("/").removeSuffix("/")
         val pageUrl = if (path.startsWith("http")) {
-            path + if (page > 1) "page/$page/" else ""
+            val base = path.substringBefore("?").trimEnd('/')
+            val query = path.substringAfter("?", "")
+            val paged = if (page > 1) "$base/page/$page/" else "$base/"
+            if (query.isNotEmpty()) "$paged?$query" else paged
         } else {
             if (cleanPath.isEmpty()) {
                 mainUrl + if (page > 1) "/page/$page/" else "/"
@@ -160,6 +163,14 @@ class DonghubProvider : MainAPI() {
     ): Boolean {
         val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
         val targets = mutableListOf<String>()
+        val queuedTargets = mutableSetOf<String>()
+        val emittedSourceUrls = mutableSetOf<String>()
+        val callbackWrapper: (ExtractorLink) -> Unit = { link ->
+            val key = link.url.substringBefore("#").trim()
+            if (key.isNotBlank() && emittedSourceUrls.add(key)) {
+                callback(link)
+            }
+        }
 
         fun fixUrl(url: String): String {
             if (url.isBlank()) return ""
@@ -178,11 +189,87 @@ class DonghubProvider : MainAPI() {
             }
         }
 
+        fun isBlockedTarget(url: String): Boolean {
+            val lower = url.lowercase()
+            return lower.isBlank() ||
+                lower.startsWith("javascript:") ||
+                lower.startsWith("mailto:") ||
+                lower.contains("data:image") ||
+                lower.contains("googletagmanager") ||
+                lower.contains("googleads") ||
+                lower.contains("google-analytics") ||
+                lower.contains("analytics") ||
+                lower.contains("doubleclick") ||
+                lower.contains("facebook.com/tr") ||
+                lower.contains("histats") ||
+                lower.contains("adskeeper")
+        }
+
+        fun normalizeTarget(url: String): String {
+            return url.trim()
+                .replace("\\/", "/")
+                .replace("&amp;", "&")
+                .substringBefore("#")
+                .trimEnd('/')
+        }
+
+        fun queueTarget(rawUrl: String) {
+            if (rawUrl.isBlank() || isBlockedTarget(rawUrl)) return
+            val fixed = normalizeTarget(fixUrl(rawUrl))
+            if (fixed.startsWith("http") && !isBlockedTarget(fixed) && queuedTargets.add(fixed.lowercase())) {
+                targets.add(fixed)
+            }
+        }
+
+        fun decodedRedirectValue(value: String): String {
+            val cleaned = value.trim()
+            if (cleaned.isBlank()) return ""
+            return try {
+                val decodedBytes = android.util.Base64.decode(cleaned, android.util.Base64.DEFAULT)
+                String(decodedBytes, Charsets.UTF_8)
+            } catch (_: Exception) {
+                try {
+                    java.net.URLDecoder.decode(cleaned, "UTF-8")
+                } catch (_: Exception) {
+                    cleaned
+                }
+            }
+        }
+
+        suspend fun isPlayableDirectStream(url: String, referer: String): Boolean {
+            return try {
+                val response = app.get(
+                    url,
+                    referer = referer,
+                    headers = mapOf(
+                        "Range" to "bytes=0-1",
+                        "Accept" to "*/*"
+                    )
+                )
+                response.isSuccessful
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        fun sourceNameFor(url: String): String {
+            val host = try { java.net.URL(url).host.removePrefix("www.") } catch (_: Exception) { "" }
+            return when {
+                host.contains("streamwish", true) || host.contains("wishembed", true) -> "StreamWish"
+                host.contains("dood", true) || host.contains("dsvplay", true) -> "Dood"
+                host.contains("voe", true) -> "Voe"
+                host.contains("streamtape", true) -> "StreamTape"
+                host.contains("filemoon", true) -> "FileMoon"
+                host.contains("mp4upload", true) -> "Mp4Upload"
+                host.isNotBlank() -> host.substringBefore(".").replaceFirstChar { it.uppercase() }
+                else -> "Direct Stream"
+            }
+        }
+
         // 1. Direct video/source elements
         doc.select("source[src], video source[src], video[src]").forEach { el ->
             val src = el.attr("src").trim()
-            val finalUrl = fixUrl(src)
-            if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+            queueTarget(src)
         }
 
         // 2. Direct iframes (check common attributes and classes)
@@ -192,16 +279,14 @@ class DonghubProvider : MainAPI() {
                 .ifEmpty { iframe.attr("data-litespeed-src") }
                 .ifEmpty { iframe.attr("data-lazy-src") }
                 .trim()
-            val finalUrl = fixUrl(src)
-            if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+            queueTarget(src)
         }
 
         // 3. Option elements / Dropdowns (e.g. Server choices, mirror list)
         doc.select("select option, .mirror option, .server option, select.mirror option, select.server option, .mobius option").forEach { el ->
             listOf("value", "data-src", "data-link", "data-embed", "data-video", "data-url", "data-id").forEach { attr ->
                 val v = el.attr(attr).trim()
-                val finalUrl = fixUrl(v)
-                if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                queueTarget(v)
             }
         }
 
@@ -209,15 +294,11 @@ class DonghubProvider : MainAPI() {
         doc.select("a, button, li, div, span, .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
-                val finalUrl = fixUrl(href)
-                if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                queueTarget(href)
             }
             listOf("data-src", "data-link", "data-embed", "data-video", "data-id", "data-url", "data-content").forEach { attr ->
                 val v = el.attr(attr).trim()
-                val finalUrl = fixUrl(v)
-                if (finalUrl.isNotEmpty() && !v.contains("data:image")) {
-                    targets.add(finalUrl)
-                }
+                queueTarget(v)
             }
         }
 
@@ -277,11 +358,7 @@ class DonghubProvider : MainAPI() {
                         ?: if (json.trim().startsWith("http")) json.trim() else null
 
                     if (embedUrl != null) {
-                        val cleanUrl = fixUrl(embedUrl)
-                        if (cleanUrl.isNotEmpty()) {
-                            targets.add(cleanUrl)
-                            break // Found link for this button, skip other actions
-                        }
+                        queueTarget(embedUrl)
                     }
                 } catch (_: Exception) {}
             }
@@ -334,10 +411,7 @@ class DonghubProvider : MainAPI() {
                                 ?: if (json.trim().startsWith("http")) json.trim() else null
 
                             if (embedUrl != null) {
-                                val cleanUrl = fixUrl(embedUrl)
-                                if (cleanUrl.isNotEmpty()) {
-                                    targets.add(cleanUrl)
-                                }
+                                queueTarget(embedUrl)
                             }
                         }
                     }
@@ -345,24 +419,44 @@ class DonghubProvider : MainAPI() {
             }
         }
 
-        // 6. Harvest URLs directly from <script> tags
+        // 6. Harvest URLs directly from JSON blobs and <script> tags
+        doc.select("script[type=application/ld+json], script").forEach { script ->
+            val content = script.data().ifBlank { script.html() }
+            if (content.isBlank()) return@forEach
+            listOf("contentUrl", "embedUrl", "url", "file", "src").forEach { key ->
+                Regex(""""$key"\s*:\s*"([^"]+)"""").findAll(content).forEach { match ->
+                    val url = match.groupValues[1].replace("\\/", "/")
+                    if (url.startsWith("http") || url.startsWith("//")) {
+                        queueTarget(url)
+                    }
+                }
+            }
+            Regex("""(?:file|src)\s*[:=]\s*["']([^"']+)["']""").findAll(content).forEach { match ->
+                val url = match.groupValues[1].replace("\\/", "/")
+                if (url.startsWith("http") || url.startsWith("//")) {
+                    queueTarget(url)
+                }
+            }
+        }
+
         doc.select("script").forEach { script ->
             val content = script.data()
             if (content.isNotBlank()) {
                 Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+""").findAll(content).forEach { match ->
                     val url = match.value
                     if (!url.contains("google") && !url.contains("facebook") && !url.contains("analytics")) {
-                        val finalUrl = fixUrl(url)
-                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                        queueTarget(url)
                     }
                 }
             }
         }
 
         // 7. Process all collected targets (including base64 decoding & fallback routing)
-        targets.distinct().forEach { raw ->
+        var targetIndex = 0
+        while (targetIndex < targets.size) {
+            val raw = targets[targetIndex++]
             val cleanedRaw = raw.trim()
-            if (cleanedRaw.isBlank()) return@forEach
+            if (cleanedRaw.isBlank()) continue
 
             // Attempt base64 decoding
             var decodedUrl = ""
@@ -427,7 +521,7 @@ class DonghubProvider : MainAPI() {
                                         Regex("\"link\"\\s*:\\s*\"([^\"]+)\"").findAll(contentText).forEach { match ->
                                             val link = match.groupValues[1]
                                             if (link.startsWith("http")) {
-                                                callback(
+                                                callbackWrapper(
                                                     newExtractorLink(
                                                         source = "Gofile",
                                                         name = "Gofile",
@@ -448,37 +542,33 @@ class DonghubProvider : MainAPI() {
                 } else if (cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains(".mp4") || cleanUrlEscaped.contains("/hls/")) {
                     try {
                         val isM3u = cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains("/hls/")
-                        callback(
-                            newExtractorLink(
-                                source = "Direct Stream",
-                                name = "Direct Stream",
-                                url = cleanUrlEscaped,
-                                type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                            ) {
-                                this.referer = data
-                                this.quality = Qualities.Unknown.value
-                            }
-                        )
+                        if (isPlayableDirectStream(cleanUrlEscaped, data)) {
+                            val sourceName = sourceNameFor(cleanUrlEscaped)
+                            callbackWrapper(
+                                newExtractorLink(
+                                    source = sourceName,
+                                    name = sourceName,
+                                    url = cleanUrlEscaped,
+                                    type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                ) {
+                                    this.referer = data
+                                    this.quality = Qualities.Unknown.value
+                                }
+                            )
+                        }
                     } catch (_: Exception) {}
                 } else {
                     // Try to unwrap redirect parameters
-                    listOf("link", "url", "r", "to", "go").forEach { param ->
+                    listOf("link", "url", "u", "r", "to", "go", "target", "redirect", "redirect_url", "embed", "source").forEach { param ->
                         try {
                             val regex = Regex("[?&]" + param + "=([^&]+)")
                             val match = regex.find(cleanUrlEscaped)
                             val queryValue = match?.groupValues?.get(1)
                             if (queryValue != null && queryValue.isNotEmpty()) {
-                                val decodedParam = try {
-                                    val decodedBytes = android.util.Base64.decode(queryValue, android.util.Base64.DEFAULT)
-                                    String(decodedBytes, Charsets.UTF_8)
-                                } catch (_: Exception) {
-                                    java.net.URLDecoder.decode(queryValue, "UTF-8")
-                                }
+                                val decodedParam = decodedRedirectValue(queryValue)
                                 val finalDecoded = fixUrl(decodedParam)
                                 if (finalDecoded.startsWith("http") && !finalDecoded.contains("google") && !finalDecoded.contains("facebook")) {
-                                    try {
-                                        loadExtractor(finalDecoded, data, subtitleCallback, callback)
-                                    } catch (_: Exception) {}
+                                    queueTarget(finalDecoded)
                                 }
                             }
                         } catch (_: Exception) {}
@@ -499,37 +589,53 @@ class DonghubProvider : MainAPI() {
                         if (isSameDomain && cleanUrlEscaped != data) {
                             try {
                                 val subDoc = app.get(cleanUrlEscaped, referer = data).document
-                                subDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src]").forEach { iframe ->
-                                    val iframeSrc = iframe.attr("src").ifEmpty { iframe.attr("data-src") }.ifEmpty { iframe.attr("data-litespeed-src") }.trim()
+                                subDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src], source[src], video[src], [data-embed], [data-link], [data-url], [data-video]").forEach { iframe ->
+                                    val iframeSrc = iframe.attr("src")
+                                        .ifEmpty { iframe.attr("data-src") }
+                                        .ifEmpty { iframe.attr("data-litespeed-src") }
+                                        .ifEmpty { iframe.attr("data-lazy-src") }
+                                        .ifEmpty { iframe.attr("data-embed") }
+                                        .ifEmpty { iframe.attr("data-link") }
+                                        .ifEmpty { iframe.attr("data-url") }
+                                        .ifEmpty { iframe.attr("data-video") }
+                                        .trim()
                                     if (iframeSrc.isNotBlank()) {
                                         val finalIframeUrl = fixUrl(iframeSrc)
                                         if (finalIframeUrl.isNotEmpty() && finalIframeUrl != cleanUrlEscaped) {
                                             val cleanIf = finalIframeUrl.replace(92.toChar().toString(), "")
                                             if (cleanIf.contains("gofile.io/d/")) {
-                                                // Handle Gofile inside sub iframe
+                                                queueTarget(cleanIf)
                                             } else if (cleanIf.contains(".m3u8") || cleanIf.contains(".mp4") || cleanIf.contains("/hls/")) {
                                                 val isM3u = cleanIf.contains(".m3u8") || cleanIf.contains("/hls/")
-                                                callback(
-                                                    newExtractorLink(
-                                                        source = "Direct Stream",
-                                                        name = "Direct Stream",
-                                                        url = cleanIf,
-                                                        type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                                                    ) {
-                                                        this.referer = cleanUrlEscaped
-                                                    }
-                                                )
+                                                if (isPlayableDirectStream(cleanIf, cleanUrlEscaped)) {
+                                                    val sourceName = sourceNameFor(cleanIf)
+                                                    callbackWrapper(
+                                                        newExtractorLink(
+                                                            source = sourceName,
+                                                            name = sourceName,
+                                                            url = cleanIf,
+                                                            type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                        ) {
+                                                            this.referer = cleanUrlEscaped
+                                                        }
+                                                    )
+                                                }
                                             } else {
-                                                loadExtractor(cleanIf, cleanUrlEscaped, subtitleCallback, callback)
+                                                queueTarget(cleanIf)
                                             }
                                         }
                                     }
+                                }
+                                subDoc.select("script").forEach { script ->
+                                    Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~%]+""")
+                                        .findAll(script.data().ifBlank { script.html() })
+                                        .forEach { match -> queueTarget(match.value) }
                                 }
                             } catch (_: Exception) {}
                         }
 
                         // Smart Extractor Fallback Dispatcher
-                        val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
+                        val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "vidhide", "filelions", "vidguard", "vembed", "lulustream", "d0000d", "swhoi", "cdnwish", "playerwish", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
                         val isDood = listOf("dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
                         val isVoe = cleanUrlEscaped.contains("voe.sx", true) || cleanUrlEscaped.contains("voe", true)
                         val isStreamtape = cleanUrlEscaped.contains("streamtape", true)
@@ -540,56 +646,56 @@ class DonghubProvider : MainAPI() {
                         when {
                             isAbyss -> {
                                 try {
-                                    AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "AbyssExtractor failed: ${e.message}")
                                 }
                             }
                             isStreamWish -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "StreamWish extraction failed for $cleanUrlEscaped: ${e.message}")
                                 }
                             }
                             isDood -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "DoodLaExtractor extraction failed for $cleanUrlEscaped: ${e.message}")
                                 }
                             }
                             isVoe -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.Voe().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    com.lagradost.cloudstream3.extractors.Voe().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "Voe extraction failed: ${e.message}")
                                 }
                             }
                             isStreamtape -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.StreamTape().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    com.lagradost.cloudstream3.extractors.StreamTape().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "StreamTape extraction failed: ${e.message}")
                                 }
                             }
                             isFilemoon -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.FileMoon().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    com.lagradost.cloudstream3.extractors.FileMoon().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "FileMoon extraction failed: ${e.message}")
                                 }
                             }
                             isMp4Upload -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "Mp4Upload extraction failed: ${e.message}")
                                 }
                             }
                             else -> {
                                 try {
-                                    loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    loadExtractor(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
                                 } catch (e: Exception) {
                                     android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
                                 }
