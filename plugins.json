@@ -15,6 +15,7 @@
       "TvSeries",
       "OVA"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Anichin",
     "description": "Provider untuk Anichin – Fansub Donghua Subtitle Indonesia",
@@ -37,6 +38,7 @@
       "TvSeries",
       "OVA"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Donghub",
     "description": "Provider untuk Donghub",
@@ -59,6 +61,7 @@
       "TvSeries",
       "AsianDrama"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Pencurimovie",
     "description": "Provider untuk Pencurimovie",
@@ -81,6 +84,7 @@
       "TvSeries",
       "OVA"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Anoboy",
     "description": "Provider untuk anoBoy",
@@ -101,6 +105,7 @@
     "tvTypes": [
       "NSFW"
     ],
+    "isAdult": true,
     "version": 1,
     "internalName": "Lk21",
     "description": "Provider untuk Lk21",
@@ -123,6 +128,7 @@
       "TvSeries",
       "OVA"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Donghuastream",
     "description": "Provider untuk DonghuaStream",
@@ -143,6 +149,7 @@
     "tvTypes": [
       "NSFW"
     ],
+    "isAdult": true,
     "version": 1,
     "internalName": "Ngefilm",
     "description": "Provider untuk NGEFILM21",
@@ -165,6 +172,7 @@
       "TvSeries",
       "OVA"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Otakudesu",
     "description": "Provider untuk Otaku Desu",
@@ -187,6 +195,7 @@
       "TvSeries",
       "OVA"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Samehadaku",
     "description": "Provider untuk Samehadaku",
@@ -209,6 +218,7 @@
       "TvSeries",
       "OVA"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Animexin",
     "description": "Provider untuk AnimeXin",
@@ -231,6 +241,7 @@
       "TvSeries",
       "OVA"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Klikxxi",
     "description": "Provider untuk KLIKXXI",
@@ -253,6 +264,7 @@
       "TvSeries",
       "OVA"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Dutafilm",
     "description": "Provider untuk Dutafilm",
@@ -274,6 +286,7 @@
       "Movie",
       "TvSeries"
     ],
+    "isAdult": false,
     "version": 1,
     "internalName": "Idlix",
     "description": "Provider untuk INDOXXI",

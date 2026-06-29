@@ -7,9 +7,19 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
-class Porto : StreamWishExtractor() {
-    override val name = "Porto"
-    override val mainUrl = "https://porto"
+class DonghuastreamCoIn : StreamWishExtractor() {
+    override val name = "DonghuastreamCoIn"
+    override val mainUrl = "https://donghuastream.co.in"
+}
+
+class AssetscdnWatchdisneyfeCom : StreamWishExtractor() {
+    override val name = "AssetscdnWatchdisneyfeCom"
+    override val mainUrl = "https://assets-cdn.watchdisneyfe.com"
+}
+
+class DonghuastreamIn : StreamWishExtractor() {
+    override val name = "DonghuastreamIn"
+    override val mainUrl = "https://donghuastream.in"
 }
 
 class VikingfileCom : StreamWishExtractor() {

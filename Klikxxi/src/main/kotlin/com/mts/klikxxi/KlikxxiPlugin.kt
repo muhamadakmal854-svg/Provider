@@ -13,7 +13,7 @@ class KlikxxiPlugin : Plugin() {
         registerExtractorAPI(EmbedpyroxXyz())
         registerExtractorAPI(AbyssplayerCom())
         registerExtractorAPI(CvGenipspillionCom())
-        registerExtractorAPI(MorenciusCom())
+        registerExtractorAPI(MinochinosCom())
         registerExtractorAPI(PortalMgaOrgMt())
         registerExtractorAPI(RedorangeComMt())
         registerExtractorAPI(Server9HdigitalCom())
@@ -24,6 +24,5 @@ class KlikxxiPlugin : Plugin() {
         registerExtractorAPI(AppFive9Eu())
         registerExtractorAPI(GambleawareOrg())
         registerExtractorAPI(IYtimgCom())
-        registerExtractorAPI(YoutuBe())
     }
 }
