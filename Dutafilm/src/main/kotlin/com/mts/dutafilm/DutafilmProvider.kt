@@ -18,10 +18,10 @@ class DutafilmProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
-        "" to "Terbaru",
-        "series/?status=ongoing" to "Ongoing",
-        "series/?status=completed" to "Completed",
-        "series" to "Series"
+        "explore?media_type=movie" to "Movies",
+        "explore?media_type=tv" to "Series",
+        "explore?category=1&media_type=movie" to "Anime",
+        "explore?genre=action" to "Action"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -94,29 +94,38 @@ class DutafilmProvider : MainAPI() {
         )
     }
 
+    private fun isFlagImage(src: String): Boolean {
+        val lower = src.lowercase()
+        return lower.contains("/assets/img/") || lower.contains("/flags/") ||
+               lower.contains("/flag/") || lower.endsWith(".png") && lower.contains("/img/")
+    }
+
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
         val doc = app.get(pageUrl, headers = mapOf(
             "Referer" to mainUrl,
             "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
 
-        return doc.select("a[href*=/watch/]").mapNotNull { a ->
+        return doc.select("a[href]").filter { it.attr("href").contains("/watch/") }.mapNotNull { a ->
             val href = fixUrl(a.attr("href"))
             if (!href.contains("/watch/")) return@mapNotNull null
 
             val card = a.closest(".mv-item, .ml-item, .film-poster, .item, li, article, div") ?: a
-            val img = a.selectFirst("img") ?: card.selectFirst("img, [data-src], [data-lazy-src], [data-original]")
+            // Prefer img.mv-poster over flag/icon images
+            val img = a.selectFirst("img.mv-poster")
+                ?: card.selectFirst("img.mv-poster")
+                ?: (card.select("img").firstOrNull { !isFlagImage(it.attr("src")) })
+                ?: a.selectFirst("img")
             val title = a.attr("title").trim()
                 .ifEmpty { img?.attr("alt")?.trim() ?: "" }
                 .ifEmpty { img?.attr("title")?.trim() ?: "" }
-                .ifEmpty { card.selectFirst(".mli-info h2, .mli-info h3, .tt, .ttl, h2, h3, .name, .title")?.text()?.trim() ?: "" }
+                .ifEmpty { card.selectFirst(".mli-info h2, .mli-info h3, .tt, .ttl, h2, h3, .mv-title, .name, .title")?.text()?.trim() ?: "" }
                 .ifEmpty { a.text().trim() }
 
             if (title.isBlank() || isPlaceholderTitle(title)) return@mapNotNull null
 
             var poster = img?.posterUrl() ?: ""
             if (poster.isBlank()) poster = card.posterUrl()
-            if (poster.isBlank()) return@mapNotNull null
 
             val isSeries = href.contains("/episode/", true) ||
                 card.text().contains("series", true) ||
@@ -132,32 +141,53 @@ class DutafilmProvider : MainAPI() {
     
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
-        val title  = doc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")?.let {
-            if (it.tagName() == "img") it.attr("alt").trim() else it.text().trim()
-        }?.trim() ?: return null
-        val poster = doc.selectFirst(".thumb img, .seriesthumb img, .film-poster img, .entry-thumb img, .cover img")
-            ?.let { img ->
-                listOf("data-src","data-lazy-src","data-lazy","data-cfsrc","data-original","src")
-                    .map { img.attr(it) }
-                    .firstOrNull { it.isNotBlank() && it.startsWith("http") }
-            }
-        val plot   = doc.selectFirst(".entry-content p, .synp .deskripsi, [itemprop=description], .film-description p")
-            ?.text()?.trim()
-        val genres = doc.select(".genxed a, .genre-info a, .info-content .spe a[href*=genre], .film-genres a")
-            .map { it.text() }
-        val eps = doc.select(".eplister ul li a, .episodelist ul li a, .clps li a, .ep-list li a").mapNotNull { a ->
-            val epTitle = a.selectFirst(".epl-title, .epl-num, span")?.text()?.trim()
-                ?: a.text().trim()
-            val epUrl   = a.attr("href")
-            if (epUrl.isNotBlank()) newEpisode(epUrl) { this.name = epTitle } else null
-        }.reversed()
-        return if (eps.isNotEmpty()) {
+        // Title: try Dutafilm-specific selectors first, fall back to generic h1
+        val title = doc.selectFirst(
+            ".mv-title, .movie-title, h1.entry-title, .mv-info h1, h1, .heading-name, .film-name"
+        )?.text()?.trim() ?: return null
+        // Poster: prefer img.mv-poster (Dutafilm poster class)
+        val poster = doc.selectFirst(
+            "img.mv-poster, .mv-img img, .movie-thumb img, .film-poster img, " +
+            ".poster img, [class*=poster] img, img.wp-post-image, .thumb img, .cover img"
+        )?.let { img ->
+            listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc", "src")
+                .map { img.attr(it) }
+                .firstOrNull { it.isNotBlank() && it.startsWith("http") && !it.contains("/assets/img/") }
+        }
+        val plot = doc.selectFirst(
+            ".mv-desc p, .movie-desc p, .description p, .wp-content p, [itemprop=description], .overview"
+        )?.text()?.trim()
+        val year = doc.selectFirst(
+            ".mv-year, .movie-year, [class*=year], .date"
+        )?.text()?.filter { it.isDigit() }?.let {
+            if (it.length >= 4) it.substring(0, 4).toIntOrNull() else null
+        }
+        val genres = doc.select(
+            ".mv-genres a, .movie-genres a, .genres a, .genre a, [class*=genre] a, .categories a"
+        ).map { it.text() }.filter { it.isNotBlank() }
+        // Episode detection: series watch pages typically have episode list or season nav
+        val isTv = url.contains("/episode/", true) || url.contains("/season/", true) ||
+                   doc.select(
+                       ".episode-list li, .eps-list li, .list-episode li, .ep-list li, " +
+                       ".seasons li, .season-list li, [class*=episode-list] li"
+                   ).isNotEmpty()
+        return if (isTv) {
+            val eps = doc.select(
+                ".episode-list li a, .eps-list li a, .list-episode li a, .ep-list li a, " +
+                "[class*=episode-list] li a, [class*=episode] a[href]"
+            ).mapIndexed { i, a ->
+                newEpisode(fixUrl(a.attr("href"))) {
+                    this.name = a.selectFirst(".ep-title, .epl-title, span, .episode-title")
+                        ?.text()?.trim() ?: a.text().trim()
+                    this.episode = i + 1
+                }
+            }.filter { it.data.isNotBlank() }.distinctBy { it.data }
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, eps) {
-                this.posterUrl = poster; this.plot = plot; this.tags = genres
+                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster; this.plot = plot; this.tags = genres
+                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
             }
         }
     }
@@ -314,6 +344,75 @@ class DutafilmProvider : MainAPI() {
                 queueTarget(v)
             }
         }
+
+        // 4b. Dutafilm / Drakor API player: loadEpisode(movieId, tag) -> episode -> server -> video JSON.
+        Regex("""loadEpisode\(['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""")
+            .findAll(doc.html())
+            .map { it.groupValues[1] to it.groupValues[2] }
+            .distinct()
+            .forEach { (movieId, tag) ->
+                try {
+                    val apiBase = "https://api.drakor.bid/c_api"
+                    val ajaxHeaders = mapOf(
+                        "Referer" to data,
+                        "Origin" to mainUrl,
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125 Safari/537.36"
+                    )
+                    val epText = app.get(
+                        "$apiBase/episode_mob.php?is_mob=0&is_uc=0&movie_id=$movieId&tag=$tag",
+                        referer = data,
+                        headers = ajaxHeaders
+                    ).text
+                    val epId = Regex(""""first_ep_id"\s*:\s*"([^"]+)"""").find(epText)?.groupValues?.get(1)
+                        ?: Regex("""data-epid=\?"([^"\]+)""").find(epText)?.groupValues?.get(1)
+                    val serverXid = Regex(""""server_xid"\s*:\s*"([^"]+)"""").find(epText)?.groupValues?.get(1)
+                        ?: Regex("""data-server_xid=\?"([^"\]+)""").find(epText)?.groupValues?.get(1)
+                        ?: "f2"
+                    if (!epId.isNullOrBlank()) {
+                        val serverText = app.get(
+                            "$apiBase/server_mob.php?is_mob=0&is_uc=0&episode_id=$epId&tag=$tag&server_xid=$serverXid",
+                            referer = data,
+                            headers = ajaxHeaders
+                        ).text
+                        val qualityPairs = mutableSetOf<Pair<String, String>>()
+                        Regex(""""qua"\s*:\s*"([^"]+)"""").find(serverText)?.groupValues?.get(1)?.let { q ->
+                            qualityPairs.add(q to serverXid)
+                        }
+                        Regex("""qua=\?"([^"\]+)\?"[^>]+server_id=\?"([^"\]+)""")
+                            .findAll(serverText)
+                            .forEach { m -> qualityPairs.add(m.groupValues[1] to m.groupValues[2]) }
+                        if (qualityPairs.isEmpty()) qualityPairs.add("web" to serverXid)
+
+                        qualityPairs.forEach { (qua, serverId) ->
+                            try {
+                                val videoText = app.get(
+                                    "$apiBase/video.php?is_mob=0&is_uc=0&id=$epId&qua=$qua&server_id=$serverId&tag=$tag",
+                                    referer = data,
+                                    headers = ajaxHeaders
+                                ).text.replace("\/", "/").replace("&amp;", "&")
+                                Regex("""https?://[^"',<>\s]+""").findAll(videoText).forEach { match ->
+                                    val found = match.value.trim()
+                                    val lower = found.lowercase()
+                                    if (
+                                        lower.contains("/e/") ||
+                                        lower.contains(".m3u8") ||
+                                        lower.contains(".mp4") ||
+                                        lower.contains("stream") ||
+                                        lower.contains("dood") ||
+                                        lower.contains("filemoon") ||
+                                        lower.contains("sb") ||
+                                        lower.contains("handal") ||
+                                        lower.contains("dqt.my.id")
+                                    ) {
+                                        queueTarget(found)
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
 
         // 5. AJAX Options (ZetaFlix, DooPlay, Flavor themes)
         val ajaxBtns = doc.select("[data-post][data-nume], ul#playeroptionsul > li, li.zetaflix_player_option, .mirror-item")
@@ -798,7 +897,7 @@ class AbyssExtractor : ExtractorApi() {
 
                 val b64Once = android.util.Base64.encodeToString(encryptedPathBytes, android.util.Base64.NO_WRAP)
                 val b64Twice = android.util.Base64.encodeToString(b64Once.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-                val cleanPath = b64Twice.replace("=", "").replace("\n", "").replace("\r", "")
+                val cleanPath = b64Twice.replace("=", "").replace("", "").replace("\r", "")
 
                 val finalStreamUrl = "https://$domain/sora/$size/$cleanPath"
 

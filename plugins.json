@@ -103,6 +103,8 @@
       "MTS"
     ],
     "tvTypes": [
+      "Movie",
+      "TvSeries",
       "NSFW"
     ],
     "isAdult": true,
@@ -147,6 +149,8 @@
       "MTS"
     ],
     "tvTypes": [
+      "Movie",
+      "TvSeries",
       "NSFW"
     ],
     "isAdult": true,

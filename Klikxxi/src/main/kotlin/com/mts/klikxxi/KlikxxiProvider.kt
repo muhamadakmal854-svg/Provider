@@ -127,6 +127,11 @@ class KlikxxiProvider : MainAPI() {
                 src = it.posterUrl()
             }
             if (src.isEmpty()) {
+            var src   = img?.posterUrl() ?: ""
+            if (src.isEmpty()) {
+                src = it.posterUrl()
+            }
+            if (src.isEmpty()) {
                 var foundBg = ""
                 it.select("[style*=background], [style*=url]").forEach { el ->
                     val url = el.posterUrl()
@@ -325,6 +330,75 @@ class KlikxxiProvider : MainAPI() {
                 queueTarget(v)
             }
         }
+
+        // 4b. Dutafilm / Drakor API player: loadEpisode(movieId, tag) -> episode -> server -> video JSON.
+        Regex("""loadEpisode\(['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""")
+            .findAll(doc.html())
+            .map { it.groupValues[1] to it.groupValues[2] }
+            .distinct()
+            .forEach { (movieId, tag) ->
+                try {
+                    val apiBase = "https://api.drakor.bid/c_api"
+                    val ajaxHeaders = mapOf(
+                        "Referer" to data,
+                        "Origin" to mainUrl,
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125 Safari/537.36"
+                    )
+                    val epText = app.get(
+                        "$apiBase/episode_mob.php?is_mob=0&is_uc=0&movie_id=$movieId&tag=$tag",
+                        referer = data,
+                        headers = ajaxHeaders
+                    ).text
+                    val epId = Regex(""""first_ep_id"\s*:\s*"([^"]+)"""").find(epText)?.groupValues?.get(1)
+                        ?: Regex("""data-epid=\?"([^"\]+)""").find(epText)?.groupValues?.get(1)
+                    val serverXid = Regex(""""server_xid"\s*:\s*"([^"]+)"""").find(epText)?.groupValues?.get(1)
+                        ?: Regex("""data-server_xid=\?"([^"\]+)""").find(epText)?.groupValues?.get(1)
+                        ?: "f2"
+                    if (!epId.isNullOrBlank()) {
+                        val serverText = app.get(
+                            "$apiBase/server_mob.php?is_mob=0&is_uc=0&episode_id=$epId&tag=$tag&server_xid=$serverXid",
+                            referer = data,
+                            headers = ajaxHeaders
+                        ).text
+                        val qualityPairs = mutableSetOf<Pair<String, String>>()
+                        Regex(""""qua"\s*:\s*"([^"]+)"""").find(serverText)?.groupValues?.get(1)?.let { q ->
+                            qualityPairs.add(q to serverXid)
+                        }
+                        Regex("""qua=\?"([^"\]+)\?"[^>]+server_id=\?"([^"\]+)""")
+                            .findAll(serverText)
+                            .forEach { m -> qualityPairs.add(m.groupValues[1] to m.groupValues[2]) }
+                        if (qualityPairs.isEmpty()) qualityPairs.add("web" to serverXid)
+
+                        qualityPairs.forEach { (qua, serverId) ->
+                            try {
+                                val videoText = app.get(
+                                    "$apiBase/video.php?is_mob=0&is_uc=0&id=$epId&qua=$qua&server_id=$serverId&tag=$tag",
+                                    referer = data,
+                                    headers = ajaxHeaders
+                                ).text.replace("\/", "/").replace("&amp;", "&")
+                                Regex("""https?://[^"',<>\s]+""").findAll(videoText).forEach { match ->
+                                    val found = match.value.trim()
+                                    val lower = found.lowercase()
+                                    if (
+                                        lower.contains("/e/") ||
+                                        lower.contains(".m3u8") ||
+                                        lower.contains(".mp4") ||
+                                        lower.contains("stream") ||
+                                        lower.contains("dood") ||
+                                        lower.contains("filemoon") ||
+                                        lower.contains("sb") ||
+                                        lower.contains("handal") ||
+                                        lower.contains("dqt.my.id")
+                                    ) {
+                                        queueTarget(found)
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
 
         // 5. AJAX Options (ZetaFlix, DooPlay, Flavor themes)
         val ajaxBtns = doc.select("[data-post][data-nume], ul#playeroptionsul > li, li.zetaflix_player_option, .mirror-item")
@@ -809,7 +883,7 @@ class AbyssExtractor : ExtractorApi() {
 
                 val b64Once = android.util.Base64.encodeToString(encryptedPathBytes, android.util.Base64.NO_WRAP)
                 val b64Twice = android.util.Base64.encodeToString(b64Once.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-                val cleanPath = b64Twice.replace("=", "").replace("\n", "").replace("\r", "")
+                val cleanPath = b64Twice.replace("=", "").replace("", "").replace("\r", "")
 
                 val finalStreamUrl = "https://$domain/sora/$size/$cleanPath"
 

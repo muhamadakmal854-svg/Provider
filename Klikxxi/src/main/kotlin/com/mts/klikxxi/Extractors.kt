@@ -144,7 +144,7 @@ class AbyssplayerCom : ExtractorApi() {
 
                 val b64Once = android.util.Base64.encodeToString(encryptedPathBytes, android.util.Base64.NO_WRAP)
                 val b64Twice = android.util.Base64.encodeToString(b64Once.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-                val cleanPath = b64Twice.replace("=", "").replace("\n", "").replace("\r", "")
+                val cleanPath = b64Twice.replace("=", "").replace("", "").replace("\r", "")
 
                 val finalStreamUrl = "https://$domain/sora/$size/$cleanPath"
 

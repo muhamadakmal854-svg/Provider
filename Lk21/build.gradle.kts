@@ -5,7 +5,7 @@ cloudstream {
     description = "Provider untuk Lk21"
     authors     = listOf("MTS")
     status      = 1
-    tvTypes     = listOf("NSFW")
+    tvTypes     = listOf("Movie", "TvSeries", "NSFW")
     iconUrl     = "https://tv11.lk21official.cc/favicon.ico"
 }
 

@@ -5,7 +5,7 @@ cloudstream {
     description = "Provider untuk NGEFILM21"
     authors     = listOf("MTS")
     status      = 1
-    tvTypes     = listOf("NSFW")
+    tvTypes     = listOf("Movie", "TvSeries", "NSFW")
     iconUrl     = "https://new37.ngefilm.site/favicon.ico"
 }
 
