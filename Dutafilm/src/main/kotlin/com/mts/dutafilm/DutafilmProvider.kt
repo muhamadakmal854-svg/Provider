@@ -15,13 +15,13 @@ class DutafilmProvider : MainAPI() {
     override var name           = "Dutafilm"
     override var lang           = "id"
     override val hasMainPage    = true
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
         "" to "Terbaru",
         "series/?status=ongoing" to "Ongoing",
         "series/?status=completed" to "Completed",
-        "series" to "Semua Anime"
+        "series" to "Series"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -43,7 +43,13 @@ class DutafilmProvider : MainAPI() {
                 "$mainUrl/$pagedPath$query"
             }
         }
-        return newHomePageResponse(request.name, scrapeList(pageUrl))
+        val items = scrapeList(pageUrl)
+        val fallbackItems = if (items.isEmpty() && pageUrl.trimEnd('/') != mainUrl.trimEnd('/')) {
+            scrapeList(mainUrl)
+        } else {
+            items
+        }
+        return newHomePageResponse(request.name, fallbackItems)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -68,20 +74,24 @@ class DutafilmProvider : MainAPI() {
         }
         val style = this.attr("style")
         if (style.contains("background") && style.contains("url(")) {
-            val urlStart = style.indexOf("url(") + 4
-            val raw = style.substring(urlStart)
-            val dq = 34.toChar().toString()
-            val sq = 39.toChar().toString()
-            val cleaned = raw.replace(dq, "").replace(sq, "")
-            val urlEnd = cleaned.indexOf(")")
-            if (urlEnd > 0) {
-                val candidate = cleaned.substring(0, urlEnd).trim()
-                if (candidate.startsWith("http") || candidate.startsWith("//")) {
-                    return if (candidate.startsWith("//")) "https:$candidate" else candidate
-                }
+            val candidate = style.substringAfter("url(")
+                .replace(34.toChar().toString(), "")
+                .replace(39.toChar().toString(), "")
+                .substringBefore(")")
+                .trim()
+            if (candidate.startsWith("http") || candidate.startsWith("//")) {
+                return if (candidate.startsWith("//")) "https:$candidate" else candidate
             }
         }
         return ""
+    }
+
+    private fun isPlaceholderTitle(title: String): Boolean {
+        val normalized = title.trim().lowercase()
+        return normalized in setOf(
+            "movies list", "movie list", "series list", "anime", "anime list",
+            "terbaru", "ongoing", "completed", "semua anime", "home", "movies", "series"
+        )
     }
 
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
@@ -89,31 +99,35 @@ class DutafilmProvider : MainAPI() {
             "Referer" to mainUrl,
             "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
-        return doc.select(".content, div.content, .mv-content-items, div.mv-content-items, .mv-content, div.mv-content, .index-content, div.index-content, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
-            val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
-            val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
-            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
-            val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
-                ?.text()?.trim()
-                ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }.ifEmpty { img?.attr("title")?.trim() ?: "" }.ifEmpty { a.text().trim() }
-            if (title.isBlank()) return@mapNotNull null
-            var src   = img?.posterUrl() ?: ""
-            if (src.isEmpty()) {
-                src = it.posterUrl()
+
+        return doc.select("a[href*=/watch/]").mapNotNull { a ->
+            val href = fixUrl(a.attr("href"))
+            if (!href.contains("/watch/")) return@mapNotNull null
+
+            val card = a.closest(".mv-item, .ml-item, .film-poster, .item, li, article, div") ?: a
+            val img = a.selectFirst("img") ?: card.selectFirst("img, [data-src], [data-lazy-src], [data-original]")
+            val title = a.attr("title").trim()
+                .ifEmpty { img?.attr("alt")?.trim() ?: "" }
+                .ifEmpty { img?.attr("title")?.trim() ?: "" }
+                .ifEmpty { card.selectFirst(".mli-info h2, .mli-info h3, .tt, .ttl, h2, h3, .name, .title")?.text()?.trim() ?: "" }
+                .ifEmpty { a.text().trim() }
+
+            if (title.isBlank() || isPlaceholderTitle(title)) return@mapNotNull null
+
+            var poster = img?.posterUrl() ?: ""
+            if (poster.isBlank()) poster = card.posterUrl()
+            if (poster.isBlank()) return@mapNotNull null
+
+            val isSeries = href.contains("/episode/", true) ||
+                card.text().contains("series", true) ||
+                card.text().contains("episode", true)
+
+            if (isSeries) {
+                newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = poster }
+            } else {
+                newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = poster }
             }
-            if (src.isEmpty()) {
-                var foundBg = ""
-                it.select("[style*=background], [style*=url]").forEach { el ->
-                    val url = el.posterUrl()
-                    if (url.isNotEmpty()) {
-                        foundBg = url
-                        return@forEach
-                    }
-                }
-                src = foundBg
-            }
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
-        }.distinctBy { it.url }
+        }.distinctBy { it.url.substringBefore("?").trimEnd('/') }
     }
     
     override suspend fun load(url: String): LoadResponse? {

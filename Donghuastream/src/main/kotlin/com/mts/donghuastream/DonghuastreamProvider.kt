@@ -44,7 +44,13 @@ class DonghuastreamProvider : MainAPI() {
                 "$mainUrl/$pagedPath$query"
             }
         }
-        return newHomePageResponse(request.name, scrapeList(pageUrl))
+        val items = scrapeList(pageUrl)
+        val fallbackItems = if (items.isEmpty() && pageUrl.trimEnd('/') != mainUrl.trimEnd('/')) {
+            scrapeList(mainUrl)
+        } else {
+            items
+        }
+        return newHomePageResponse(request.name, fallbackItems)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -85,14 +91,34 @@ class DonghuastreamProvider : MainAPI() {
         return ""
     }
 
+    private fun isFallbackContentUrl(url: String): Boolean {
+        val clean = url.substringBefore("#").trimEnd('/')
+        val path = clean.removePrefix(mainUrl).substringBefore("?")
+        val parts = path.trim('/').split('/').filter { it.isNotBlank() }
+        val isDatedPost = parts.size >= 3 && parts[0].length == 4 && parts[0].all { c -> c.isDigit() } && parts[1].length == 2 && parts[1].all { c -> c.isDigit() }
+        return clean.startsWith(mainUrl) && (
+            path.contains("/anime/", ignoreCase = true) ||
+            clean.contains("?p=") ||
+            isDatedPost
+        )
+    }
+
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
         val doc = app.get(pageUrl, headers = mapOf(
             "Referer" to mainUrl,
             "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
-        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
+        val primaryCards = doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry")
+        val cards = if (primaryCards.isNotEmpty()) primaryCards else {
+            doc.select("a[href]").mapNotNull { a ->
+                val href = fixUrl(a.attr("href"))
+                val title = a.attr("title").trim().ifEmpty { a.text().trim() }
+                if (href.isNotBlank() && title.isNotBlank() && isFallbackContentUrl(href)) a else null
+            }.distinct()
+        }
+        return cards.mapNotNull {
             val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
-            val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
+            val href  = fixUrl(a.attr("href"))
             val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
             val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
                 ?.text()?.trim()
