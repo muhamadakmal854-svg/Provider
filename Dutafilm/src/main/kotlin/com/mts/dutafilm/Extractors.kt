@@ -27,11 +27,6 @@ class ThreadsCom : StreamWishExtractor() {
     override val mainUrl = "https://threads.com"
 }
 
-class OrOnenessparmackCom : StreamWishExtractor() {
-    override val name = "OrOnenessparmackCom"
-    override val mainUrl = "https://or.onenessparmack.com"
-}
-
 class Dutafilm77MantabMen : StreamWishExtractor() {
     override val name = "Dutafilm77MantabMen"
     override val mainUrl = "https://dutafilm77.mantab.men"
