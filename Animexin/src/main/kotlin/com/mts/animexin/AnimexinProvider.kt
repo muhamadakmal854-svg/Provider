@@ -128,11 +128,6 @@ class AnimexinProvider : MainAPI() {
                 src = it.posterUrl()
             }
             if (src.isEmpty()) {
-            var src   = img?.posterUrl() ?: ""
-            if (src.isEmpty()) {
-                src = it.posterUrl()
-            }
-            if (src.isEmpty()) {
                 var foundBg = ""
                 it.select("[style*=background], [style*=url]").forEach { el ->
                     val url = el.posterUrl()
