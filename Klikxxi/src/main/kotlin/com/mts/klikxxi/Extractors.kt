@@ -177,9 +177,9 @@ class CvGenipspillionCom : StreamWishExtractor() {
     override val mainUrl = "https://cv.genipspillion.com"
 }
 
-class MinochinosCom : StreamWishExtractor() {
-    override val name = "MinochinosCom"
-    override val mainUrl = "https://minochinos.com"
+class MorenciusCom : StreamWishExtractor() {
+    override val name = "MorenciusCom"
+    override val mainUrl = "https://morencius.com"
 }
 
 class PortalMgaOrgMt : StreamWishExtractor() {
@@ -230,4 +230,9 @@ class GambleawareOrg : StreamWishExtractor() {
 class IYtimgCom : StreamWishExtractor() {
     override val name = "IYtimgCom"
     override val mainUrl = "https://i.ytimg.com"
+}
+
+class YoutuBe : StreamWishExtractor() {
+    override val name = "YoutuBe"
+    override val mainUrl = "https://youtu.be"
 }

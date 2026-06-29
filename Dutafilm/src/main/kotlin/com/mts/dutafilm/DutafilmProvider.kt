@@ -18,10 +18,10 @@ class DutafilmProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
-        "explore?media_type=movie" to "Movies",
-        "explore?media_type=tv" to "Series",
-        "explore?category=1&media_type=movie" to "Anime",
-        "explore?genre=action" to "Action"
+        "" to "Terbaru",
+        "series/?status=ongoing" to "Ongoing",
+        "series/?status=completed" to "Completed",
+        "series" to "Semua Anime"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {

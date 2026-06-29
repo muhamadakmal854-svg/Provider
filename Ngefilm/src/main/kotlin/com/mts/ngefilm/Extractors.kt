@@ -22,11 +22,6 @@ class Gratu89Com : StreamWishExtractor() {
     override val mainUrl = "https://gratu89.com"
 }
 
-class HistoryJlfafafa3Com : StreamWishExtractor() {
-    override val name = "HistoryJlfafafa3Com"
-    override val mainUrl = "https://history.jlfafafa3.com"
-}
-
 class Judi89News : StreamWishExtractor() {
     override val name = "Judi89News"
     override val mainUrl = "https://judi89.news"
@@ -50,6 +45,16 @@ class HalalhomecookingCom : StreamWishExtractor() {
 class WapBm88Net : StreamWishExtractor() {
     override val name = "WapBm88Net"
     override val mainUrl = "https://wap.bm-88.net"
+}
+
+class HistoryJlfafafa3Com : StreamWishExtractor() {
+    override val name = "HistoryJlfafafa3Com"
+    override val mainUrl = "https://history.jlfafafa3.com"
+}
+
+class CdnAmpprojectOrg : StreamWishExtractor() {
+    override val name = "CdnAmpprojectOrg"
+    override val mainUrl = "https://cdn.ampproject.org"
 }
 
 class CampaignPastiwddarikdslotCom : StreamWishExtractor() {
@@ -82,6 +87,16 @@ class TautinApp : StreamWishExtractor() {
     override val mainUrl = "https://tautin.app"
 }
 
+class CdnLivechatincCom : StreamWishExtractor() {
+    override val name = "CdnLivechatincCom"
+    override val mainUrl = "https://cdn.livechatinc.com"
+}
+
+class Jseu1HsscriptsCom : StreamWishExtractor() {
+    override val name = "Jseu1HsscriptsCom"
+    override val mainUrl = "https://js-eu1.hs-scripts.com"
+}
+
 class MyLivechatincCom : StreamWishExtractor() {
     override val name = "MyLivechatincCom"
     override val mainUrl = "https://my.livechatinc.com"
@@ -112,6 +127,11 @@ class CMicrosoftCom : StreamWishExtractor() {
     override val mainUrl = "https://c.microsoft.com"
 }
 
+class StaticsTeamsCdnLiveNet : StreamWishExtractor() {
+    override val name = "StaticsTeamsCdnLiveNet"
+    override val mainUrl = "https://statics.teams.cdn.live.net"
+}
+
 class ApiLivechatincCom : StreamWishExtractor() {
     override val name = "ApiLivechatincCom"
     override val mainUrl = "https://api.livechatinc.com"
@@ -120,6 +140,11 @@ class ApiLivechatincCom : StreamWishExtractor() {
 class KdslotproSpace : StreamWishExtractor() {
     override val name = "KdslotproSpace"
     override val mainUrl = "https://kdslotpro.space"
+}
+
+class DewajudiInk : StreamWishExtractor() {
+    override val name = "DewajudiInk"
+    override val mainUrl = "https://dewajudi.ink"
 }
 
 class ApkdepotS3Apnortheast1AmazonawsCom : StreamWishExtractor() {

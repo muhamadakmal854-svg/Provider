@@ -18,13 +18,14 @@ class IdlixProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "" to "Movies Terbaru",
-        "tv" to "TV Series Terbaru",
+        "movies" to "Filem Terbaru",
+        "tvshows" to "TV Series Terbaru",
         "category/film-semi" to "FILM SEMI",
         "category/film-semi/semi-indonesia" to "Semi Indonesia",
         "category/film-semi/semi-jepang" to "Semi Jepang",
         "category/film-semi/semi-filipina" to "Semi Filipina",
         "category/film-semi/semi-korea" to "Semi Korea",
+        "category/film-semi" to "Film Semi",
         "category/kelas-bintang" to "Kelas Bintang"
     )
 

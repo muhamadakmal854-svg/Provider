@@ -8,21 +8,9 @@ import android.content.Context
 class AnimexinPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(AnimexinProvider())
-        registerExtractorAPI(AhCuneiblabbedCyou())
+        registerExtractorAPI(DqEndebedouseShop())
         registerExtractorAPI(GeoDailymotionCom())
         registerExtractorAPI(MirroredTo())
-        registerExtractorAPI(RedditCom())
-        registerExtractorAPI(CdnWuxiaworldCom())
-        registerExtractorAPI(ForumWuxiaworldCom())
-        registerExtractorAPI(MerchWuxiaworldCom())
-        registerExtractorAPI(AppleCom())
-        registerExtractorAPI(CareerspageCom())
-        registerExtractorAPI(StripeCom())
-        registerExtractorAPI(AppleComCn())
-        registerExtractorAPI(SupportAppleCom())
-        registerExtractorAPI(TvAppleCom())
-        registerExtractorAPI(FilemakerCom())
-        registerExtractorAPI(YoutuBe())
-        registerExtractorAPI(AmTeindpumpageCfd())
+        registerExtractorAPI(IsLysategriphusCfd())
     }
 }

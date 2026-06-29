@@ -17,9 +17,14 @@ class G66MoonMe : StreamWishExtractor() {
     override val mainUrl = "https://g66moon.me"
 }
 
-class MayflowerchicagoCom : StreamWishExtractor() {
-    override val name = "MayflowerchicagoCom"
-    override val mainUrl = "https://mayflowerchicago.com"
+class Tinig22Com : StreamWishExtractor() {
+    override val name = "Tinig22Com"
+    override val mainUrl = "https://tinig22.com"
+}
+
+class Dsuown9Evwz4YCloudfrontNet : StreamWishExtractor() {
+    override val name = "Dsuown9Evwz4YCloudfrontNet"
+    override val mainUrl = "https://dsuown9evwz4y.cloudfront.net"
 }
 
 class JuningroupCom : StreamWishExtractor() {
@@ -27,19 +32,14 @@ class JuningroupCom : StreamWishExtractor() {
     override val mainUrl = "https://juningroup.com"
 }
 
+class CdnAmpprojectOrg : StreamWishExtractor() {
+    override val name = "CdnAmpprojectOrg"
+    override val mainUrl = "https://cdn.ampproject.org"
+}
+
 class ApkblockS3Apnortheast1AmazonawsCom : StreamWishExtractor() {
     override val name = "ApkblockS3Apnortheast1AmazonawsCom"
     override val mainUrl = "https://apk-block.s3.ap-northeast-1.amazonaws.com"
-}
-
-class Tinig22Com : StreamWishExtractor() {
-    override val name = "Tinig22Com"
-    override val mainUrl = "https://tinig22.com"
-}
-
-class ApkdepotS3Apnortheast1AmazonawsCom : StreamWishExtractor() {
-    override val name = "ApkdepotS3Apnortheast1AmazonawsCom"
-    override val mainUrl = "https://apk-depot.s3.ap-northeast-1.amazonaws.com"
 }
 
 class HistoryJlfafafa3Com : StreamWishExtractor() {
@@ -47,9 +47,9 @@ class HistoryJlfafafa3Com : StreamWishExtractor() {
     override val mainUrl = "https://history.jlfafafa3.com"
 }
 
-class CdnAmpprojectOrg : StreamWishExtractor() {
-    override val name = "CdnAmpprojectOrg"
-    override val mainUrl = "https://cdn.ampproject.org"
+class ApkdepotS3Apnortheast1AmazonawsCom : StreamWishExtractor() {
+    override val name = "ApkdepotS3Apnortheast1AmazonawsCom"
+    override val mainUrl = "https://apk-depot.s3.ap-northeast-1.amazonaws.com"
 }
 
 class SlotjanjiCom : StreamWishExtractor() {
@@ -70,11 +70,6 @@ class GacortokyoCom : StreamWishExtractor() {
 class JgjayaCom : StreamWishExtractor() {
     override val name = "JgjayaCom"
     override val mainUrl = "https://jg-jaya.com"
-}
-
-class AboutRoyal22Com : StreamWishExtractor() {
-    override val name = "AboutRoyal22Com"
-    override val mainUrl = "https://about.royal22.com"
 }
 
 class Royal22Fun : StreamWishExtractor() {
@@ -122,12 +117,12 @@ class WapBmmega88Com : StreamWishExtractor() {
     override val mainUrl = "https://wap.bmmega88.com"
 }
 
+class D2Rzzcn1Jnr24XCloudfrontNet : StreamWishExtractor() {
+    override val name = "D2Rzzcn1Jnr24XCloudfrontNet"
+    override val mainUrl = "https://d2rzzcn1jnr24x.cloudfront.net"
+}
+
 class WapBm88Net : StreamWishExtractor() {
     override val name = "WapBm88Net"
     override val mainUrl = "https://wap.bm-88.net"
-}
-
-class LoaderAllezpayAsia : StreamWishExtractor() {
-    override val name = "LoaderAllezpayAsia"
-    override val mainUrl = "https://loader.allezpay.asia"
 }

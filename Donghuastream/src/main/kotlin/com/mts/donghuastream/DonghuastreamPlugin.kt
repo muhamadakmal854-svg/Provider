@@ -8,9 +8,7 @@ import android.content.Context
 class DonghuastreamPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(DonghuastreamProvider())
-        registerExtractorAPI(DonghuastreamCoIn())
-        registerExtractorAPI(AssetscdnWatchdisneyfeCom())
-        registerExtractorAPI(DonghuastreamIn())
+        registerExtractorAPI(Porto())
         registerExtractorAPI(VikingfileCom())
     }
 }
