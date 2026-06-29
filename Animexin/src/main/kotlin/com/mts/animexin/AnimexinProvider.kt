@@ -372,7 +372,7 @@ class AnimexinProvider : MainAPI() {
                                     "$apiBase/video.php?is_mob=0&is_uc=0&id=$epId&qua=$qua&server_id=$serverId&tag=$tag",
                                     referer = data,
                                     headers = ajaxHeaders
-                                ).text.replace("\/", "/").replace("&amp;", "&")
+                                ).text.replace("\\/", "/").replace("&amp;", "&")
                                 Regex("""https?://[^"',<>\s]+""").findAll(videoText).forEach { match ->
                                     val found = match.value.trim()
                                     val lower = found.lowercase()
@@ -879,7 +879,7 @@ class AbyssExtractor : ExtractorApi() {
 
                 val b64Once = android.util.Base64.encodeToString(encryptedPathBytes, android.util.Base64.NO_WRAP)
                 val b64Twice = android.util.Base64.encodeToString(b64Once.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-                val cleanPath = b64Twice.replace("=", "").replace("", "").replace("\r", "")
+                val cleanPath = b64Twice.replace("=", "").replace("\n", "").replace("\r", "")
 
                 val finalStreamUrl = "https://$domain/sora/$size/$cleanPath"
 
