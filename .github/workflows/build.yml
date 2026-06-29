@@ -53,6 +53,20 @@ jobs:
           ./gradlew make makePluginsJson
           cp **/build/*.cs3 ${{ github.workspace }}/builds/
           cp build/plugins.json ${{ github.workspace }}/builds/
+          python3 - <<'PY'
+          import glob, json, os, sys
+          plugins = json.load(open(os.path.join(os.environ["GITHUB_WORKSPACE"], "builds", "plugins.json")))
+          expected = sorted(p["internalName"] for p in plugins)
+          actual = sorted(os.path.splitext(os.path.basename(p))[0] for p in glob.glob(os.path.join(os.environ["GITHUB_WORKSPACE"], "builds", "*.cs3")))
+          missing = sorted(set(expected) - set(actual))
+          extra = sorted(set(actual) - set(expected))
+          if missing or extra:
+              print("Plugin artifact mismatch")
+              print("missing:", missing)
+              print("extra:", extra)
+              sys.exit(1)
+          print(f"Validated {len(actual)} plugin artifacts")
+          PY
 
       - name: Update plugins.json size & hash
         working-directory: ${{ github.workspace }}/builds
