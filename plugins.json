@@ -105,9 +105,9 @@
     "tvTypes": [
       "Movie",
       "TvSeries",
-      "NSFW"
+      "AsianDrama"
     ],
-    "isAdult": true,
+    "isAdult": false,
     "version": 1,
     "internalName": "Lk21",
     "description": "Provider untuk Lk21",
@@ -151,9 +151,9 @@
     "tvTypes": [
       "Movie",
       "TvSeries",
-      "NSFW"
+      "AsianDrama"
     ],
-    "isAdult": true,
+    "isAdult": false,
     "version": 1,
     "internalName": "Ngefilm",
     "description": "Provider untuk NGEFILM21",

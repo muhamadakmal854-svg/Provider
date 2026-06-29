@@ -263,19 +263,7 @@ class DonghuastreamProvider : MainAPI() {
         }
 
         suspend fun isPlayableDirectStream(url: String, referer: String): Boolean {
-            return try {
-                val response = app.get(
-                    url,
-                    referer = referer,
-                    headers = mapOf(
-                        "Range" to "bytes=0-1",
-                        "Accept" to "*/*"
-                    )
-                )
-                response.isSuccessful
-            } catch (_: Exception) {
-                false
-            }
+            return true
         }
 
         fun sourceNameFor(url: String): String {
@@ -737,6 +725,9 @@ class DonghuastreamProvider : MainAPI() {
                         val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
                         val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
                         val isAbyss = listOf("abyssplayer.com", "abyss.to", "abysscdn.com", "iamcdn.net", "sssrr").any { cleanUrlEscaped.contains(it, true) }
+                        val isMixdrop = cleanUrlEscaped.contains("mixdrop", true)
+                        val isUqload = cleanUrlEscaped.contains("uqload", true)
+                        val isUpstream = cleanUrlEscaped.contains("upstream.to", true)
 
                         when {
                             isAbyss -> {
@@ -744,6 +735,27 @@ class DonghuastreamProvider : MainAPI() {
                                     AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "AbyssExtractor failed: ${e.message}")
+                                }
+                            }
+                            isMixdrop -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.MixDrop().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "MixDrop failed: ${e.message}")
+                                }
+                            }
+                            isUqload -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.Uqload().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "Uqload failed: ${e.message}")
+                                }
+                            }
+                            isUpstream -> {
+                                try {
+                                    com.lagradost.cloudstream3.extractors.UpstreamExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "Upstream failed: ${e.message}")
                                 }
                             }
                             isStreamWish -> {
