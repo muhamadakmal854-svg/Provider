@@ -177,6 +177,32 @@ class DutafilmProvider : MainAPI() {
             }
         }
 
+        // 0. Process player page tabs (e.g. ?player= or ?server= or sub-pages)
+        val playerTabs = mutableListOf<String>()
+        doc.select("ul.muvipro-player-tabs li a, ul.gmr-player-tabs li a, .gmr-player-nav a, .gmr-player-tabs a, ul.nav-tabs li a, .gmr-server-wrap a").forEach { el ->
+            val href = el.attr("href").trim()
+            if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
+                val resolved = fixUrl(href)
+                if (resolved.contains("?player=") || resolved.contains("?server=") || resolved.contains("&player=") || resolved.contains("&server=")) {
+                    playerTabs.add(resolved)
+                }
+            }
+        }
+        playerTabs.distinct().forEach { tabUrl ->
+            try {
+                val tabDoc = app.get(tabUrl, headers = mapOf("Referer" to data)).document
+                tabDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src]").forEach { iframe ->
+                    val src = iframe.attr("src")
+                        .ifEmpty { iframe.attr("data-src") }
+                        .ifEmpty { iframe.attr("data-litespeed-src") }
+                        .ifEmpty { iframe.attr("data-lazy-src") }
+                        .trim()
+                    val finalUrl = fixUrl(src)
+                    if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                }
+            } catch (_: Exception) {}
+        }
+
         // 1. Direct video/source elements
         doc.select("source[src], video source[src], video[src]").forEach { el ->
             val src = el.attr("src").trim()
