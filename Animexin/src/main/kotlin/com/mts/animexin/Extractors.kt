@@ -208,16 +208,16 @@ class FilelionsOnline : FileLionAnimexin() {
 // DoodStream variants
 // ─────────────────────────────────────────────────────────────────────────────
 class DoodsPro : DoodLaExtractor() {
-    override val name = "DoodsPro"
+    override var name = "DoodsPro"
     override var mainUrl = "https://doods.pro"
 }
 
 class DoodStreamCom : DoodLaExtractor() {
-    override val name = "DoodStream"
+    override var name = "DoodStream"
     override var mainUrl = "https://doodstream.com"
 }
 
 class Ds2Play : DoodLaExtractor() {
-    override val name = "Ds2Play"
+    override var name = "Ds2Play"
     override var mainUrl = "https://ds2play.com"
 }
