@@ -29,10 +29,7 @@ class DonghuastreamProvider : MainAPI() {
         val path = request.data
         val cleanPath = path.removePrefix("/").removeSuffix("/")
         val pageUrl = if (path.startsWith("http")) {
-            val base = path.substringBefore("?").trimEnd('/')
-            val query = path.substringAfter("?", "")
-            val paged = if (page > 1) "$base/page/$page/" else "$base/"
-            if (query.isNotEmpty()) "$paged?$query" else paged
+            path + if (page > 1) "page/$page/" else ""
         } else {
             if (cleanPath.isEmpty()) {
                 mainUrl + if (page > 1) "/page/$page/" else "/"
@@ -44,13 +41,7 @@ class DonghuastreamProvider : MainAPI() {
                 "$mainUrl/$pagedPath$query"
             }
         }
-        val items = scrapeList(pageUrl)
-        val fallbackItems = if (items.isEmpty() && pageUrl.trimEnd('/') != mainUrl.trimEnd('/')) {
-            scrapeList(mainUrl)
-        } else {
-            items
-        }
-        return newHomePageResponse(request.name, fallbackItems)
+        return newHomePageResponse(request.name, scrapeList(pageUrl))
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -91,34 +82,14 @@ class DonghuastreamProvider : MainAPI() {
         return ""
     }
 
-    private fun isFallbackContentUrl(url: String): Boolean {
-        val clean = url.substringBefore("#").trimEnd('/')
-        val path = clean.removePrefix(mainUrl).substringBefore("?")
-        val parts = path.trim('/').split('/').filter { it.isNotBlank() }
-        val isDatedPost = parts.size >= 3 && parts[0].length == 4 && parts[0].all { c -> c.isDigit() } && parts[1].length == 2 && parts[1].all { c -> c.isDigit() }
-        return clean.startsWith(mainUrl) && (
-            path.contains("/anime/", ignoreCase = true) ||
-            clean.contains("?p=") ||
-            isDatedPost
-        )
-    }
-
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
         val doc = app.get(pageUrl, headers = mapOf(
             "Referer" to mainUrl,
             "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
-        val primaryCards = doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry")
-        val cards = if (primaryCards.isNotEmpty()) primaryCards else {
-            doc.select("a[href]").mapNotNull { a ->
-                val href = fixUrl(a.attr("href"))
-                val title = a.attr("title").trim().ifEmpty { a.text().trim() }
-                if (href.isNotBlank() && title.isNotBlank() && isFallbackContentUrl(href)) a else null
-            }.distinct()
-        }
-        return cards.mapNotNull {
+        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
             val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
-            val href  = fixUrl(a.attr("href"))
+            val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
             val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
             val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
                 ?.text()?.trim()
@@ -189,14 +160,6 @@ class DonghuastreamProvider : MainAPI() {
     ): Boolean {
         val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
         val targets = mutableListOf<String>()
-        val queuedTargets = mutableSetOf<String>()
-        val emittedSourceUrls = mutableSetOf<String>()
-        val callbackWrapper: (ExtractorLink) -> Unit = { link ->
-            val key = link.url.substringBefore("#").trim()
-            if (key.isNotBlank() && emittedSourceUrls.add(key)) {
-                callback(link)
-            }
-        }
 
         fun fixUrl(url: String): String {
             if (url.isBlank()) return ""
@@ -215,75 +178,11 @@ class DonghuastreamProvider : MainAPI() {
             }
         }
 
-        fun isBlockedTarget(url: String): Boolean {
-            val lower = url.lowercase()
-            return lower.isBlank() ||
-                lower.startsWith("javascript:") ||
-                lower.startsWith("mailto:") ||
-                lower.contains("data:image") ||
-                lower.contains("googletagmanager") ||
-                lower.contains("googleads") ||
-                lower.contains("google-analytics") ||
-                lower.contains("analytics") ||
-                lower.contains("doubleclick") ||
-                lower.contains("facebook.com/tr") ||
-                lower.contains("histats") ||
-                lower.contains("adskeeper")
-        }
-
-        fun normalizeTarget(url: String): String {
-            return url.trim()
-                .replace("\\/", "/")
-                .replace("&amp;", "&")
-                .substringBefore("#")
-                .trimEnd('/')
-        }
-
-        fun queueTarget(rawUrl: String) {
-            if (rawUrl.isBlank() || isBlockedTarget(rawUrl)) return
-            val fixed = normalizeTarget(fixUrl(rawUrl))
-            if (fixed.startsWith("http") && !isBlockedTarget(fixed) && queuedTargets.add(fixed.lowercase())) {
-                targets.add(fixed)
-            }
-        }
-
-        fun decodedRedirectValue(value: String): String {
-            val cleaned = value.trim()
-            if (cleaned.isBlank()) return ""
-            return try {
-                val decodedBytes = android.util.Base64.decode(cleaned, android.util.Base64.DEFAULT)
-                String(decodedBytes, Charsets.UTF_8)
-            } catch (_: Exception) {
-                try {
-                    java.net.URLDecoder.decode(cleaned, "UTF-8")
-                } catch (_: Exception) {
-                    cleaned
-                }
-            }
-        }
-
-        suspend fun isPlayableDirectStream(url: String, referer: String): Boolean {
-            return true
-        }
-
-        fun sourceNameFor(url: String): String {
-            val host = try { java.net.URL(url).host.removePrefix("www.") } catch (_: Exception) { "" }
-            return when {
-                host.contains("streamwish", true) || host.contains("wishembed", true) -> "StreamWish"
-                host.contains("dood", true) || host.contains("dsvplay", true) -> "Dood"
-                host.contains("voe", true) -> "Voe"
-                host.contains("streamtape", true) -> "StreamTape"
-                host.contains("filemoon", true) -> "FileMoon"
-                host.contains("mp4upload", true) -> "Mp4Upload"
-                host.isNotBlank() -> host.substringBefore(".").replaceFirstChar { it.uppercase() }
-                else -> "Direct Stream"
-            }
-        }
-
         // 1. Direct video/source elements
         doc.select("source[src], video source[src], video[src]").forEach { el ->
             val src = el.attr("src").trim()
-            queueTarget(src)
+            val finalUrl = fixUrl(src)
+            if (finalUrl.isNotEmpty()) targets.add(finalUrl)
         }
 
         // 2. Direct iframes (check common attributes and classes)
@@ -293,97 +192,54 @@ class DonghuastreamProvider : MainAPI() {
                 .ifEmpty { iframe.attr("data-litespeed-src") }
                 .ifEmpty { iframe.attr("data-lazy-src") }
                 .trim()
-            queueTarget(src)
+            val finalUrl = fixUrl(src)
+            if (finalUrl.isNotEmpty()) targets.add(finalUrl)
         }
 
         // 3. Option elements / Dropdowns (e.g. Server choices, mirror list)
         doc.select("select option, .mirror option, .server option, select.mirror option, select.server option, .mobius option").forEach { el ->
             listOf("value", "data-src", "data-link", "data-embed", "data-video", "data-url", "data-id").forEach { attr ->
                 val v = el.attr(attr).trim()
-                queueTarget(v)
+                if (v.isBlank()) return@forEach
+                // If the value is a real URL, add directly
+                if (v.startsWith("http") || v.startsWith("//")) {
+                    targets.add(if (v.startsWith("//")) "https:$v" else v)
+                    return@forEach
+                }
+                // Try base64 decode (for mobius/mirror selectors with encoded iframes)
+                try {
+                    val decoded = android.util.Base64.decode(v, android.util.Base64.DEFAULT)
+                    val htmlContent = String(decoded, Charsets.UTF_8)
+                    val parsedIfr = Jsoup.parse(htmlContent).selectFirst("iframe, IFRAME, [src]")
+                    val iframeSrc = parsedIfr?.attr("src")?.ifEmpty { parsedIfr.attr("data-src") } ?: ""
+                    if (iframeSrc.isNotBlank()) {
+                        val href = fixUrl(iframeSrc)
+                        if (href.isNotEmpty()) targets.add(href)
+                    }
+                } catch (_: Exception) {
+                    // Not base64, try as-is via fixUrl
+                    val finalUrl = fixUrl(v)
+                    if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                }
             }
         }
+
 
         // 4. Clickable elements, links, buttons, lists
         doc.select("a, button, li, div, span, .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
-                queueTarget(href)
+                val finalUrl = fixUrl(href)
+                if (finalUrl.isNotEmpty()) targets.add(finalUrl)
             }
             listOf("data-src", "data-link", "data-embed", "data-video", "data-id", "data-url", "data-content").forEach { attr ->
                 val v = el.attr(attr).trim()
-                queueTarget(v)
+                val finalUrl = fixUrl(v)
+                if (finalUrl.isNotEmpty() && !v.contains("data:image")) {
+                    targets.add(finalUrl)
+                }
             }
         }
-
-        // 4b. Dutafilm / Drakor API player: loadEpisode(movieId, tag) -> episode -> server -> video JSON.
-        Regex("""loadEpisode\(['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""")
-            .findAll(doc.html())
-            .map { it.groupValues[1] to it.groupValues[2] }
-            .distinct()
-            .forEach { (movieId, tag) ->
-                try {
-                    val apiBase = "https://api.drakor.bid/c_api"
-                    val ajaxHeaders = mapOf(
-                        "Referer" to data,
-                        "Origin" to mainUrl,
-                        "X-Requested-With" to "XMLHttpRequest",
-                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125 Safari/537.36"
-                    )
-                    val epText = app.get(
-                        "$apiBase/episode_mob.php?is_mob=0&is_uc=0&movie_id=$movieId&tag=$tag",
-                        referer = data,
-                        headers = ajaxHeaders
-                    ).text
-                    val epId = Regex(""""first_ep_id"\s*:\s*"([^"]+)"""").find(epText)?.groupValues?.get(1)
-                        ?: Regex("""data-epid=\?"([^"\]+)""").find(epText)?.groupValues?.get(1)
-                    val serverXid = Regex(""""server_xid"\s*:\s*"([^"]+)"""").find(epText)?.groupValues?.get(1)
-                        ?: Regex("""data-server_xid=\?"([^"\]+)""").find(epText)?.groupValues?.get(1)
-                        ?: "f2"
-                    if (!epId.isNullOrBlank()) {
-                        val serverText = app.get(
-                            "$apiBase/server_mob.php?is_mob=0&is_uc=0&episode_id=$epId&tag=$tag&server_xid=$serverXid",
-                            referer = data,
-                            headers = ajaxHeaders
-                        ).text
-                        val qualityPairs = mutableSetOf<Pair<String, String>>()
-                        Regex(""""qua"\s*:\s*"([^"]+)"""").find(serverText)?.groupValues?.get(1)?.let { q ->
-                            qualityPairs.add(q to serverXid)
-                        }
-                        Regex("""qua=\?"([^"\]+)\?"[^>]+server_id=\?"([^"\]+)""")
-                            .findAll(serverText)
-                            .forEach { m -> qualityPairs.add(m.groupValues[1] to m.groupValues[2]) }
-                        if (qualityPairs.isEmpty()) qualityPairs.add("web" to serverXid)
-
-                        qualityPairs.forEach { (qua, serverId) ->
-                            try {
-                                val videoText = app.get(
-                                    "$apiBase/video.php?is_mob=0&is_uc=0&id=$epId&qua=$qua&server_id=$serverId&tag=$tag",
-                                    referer = data,
-                                    headers = ajaxHeaders
-                                ).text.replace("\\/", "/").replace("&amp;", "&")
-                                Regex("""https?://[^"',<>\s]+""").findAll(videoText).forEach { match ->
-                                    val found = match.value.trim()
-                                    val lower = found.lowercase()
-                                    if (
-                                        lower.contains("/e/") ||
-                                        lower.contains(".m3u8") ||
-                                        lower.contains(".mp4") ||
-                                        lower.contains("stream") ||
-                                        lower.contains("dood") ||
-                                        lower.contains("filemoon") ||
-                                        lower.contains("sb") ||
-                                        lower.contains("handal") ||
-                                        lower.contains("dqt.my.id")
-                                    ) {
-                                        queueTarget(found)
-                                    }
-                                }
-                            } catch (_: Exception) {}
-                        }
-                    }
-                } catch (_: Exception) {}
-            }
 
         // 5. AJAX Options (ZetaFlix, DooPlay, Flavor themes)
         val ajaxBtns = doc.select("[data-post][data-nume], ul#playeroptionsul > li, li.zetaflix_player_option, .mirror-item")
@@ -441,105 +297,34 @@ class DonghuastreamProvider : MainAPI() {
                         ?: if (json.trim().startsWith("http")) json.trim() else null
 
                     if (embedUrl != null) {
-                        queueTarget(embedUrl)
-                    }
-                } catch (_: Exception) {}
-            }
-        }
-
-        // 5b. MuviPro / GMR AJAX Player loading
-        val muviproPlayer = doc.selectFirst(".muvipro_player_content, #muvipro_player_content_id")
-        val muviproPostId = muviproPlayer?.attr("data-id") ?: ""
-        if (muviproPostId.isNotEmpty()) {
-            val muviproTabs = doc.select(".muvipro-player-tabs a, .tab-content-ajax").mapNotNull { 
-                val href = it.attr("href").orEmpty()
-                if (href.startsWith("#")) {
-                    href.substring(1)
-                } else {
-                    val id = it.attr("id").orEmpty()
-                    if (id.isNotEmpty()) id else null
-                }
-            }.distinct()
-            
-            muviproTabs.forEach { tab ->
-                try {
-                    val pageBase = try {
-                        val u = java.net.URL(data)
-                        "${u.protocol}://${u.host}"
-                    } catch (_: Exception) { mainUrl }
-                    val response = app.post(
-                        url = "$pageBase/wp-admin/admin-ajax.php",
-                        data = mapOf(
-                            "action" to "muvipro_player_content",
-                            "tab" to tab,
-                            "post_id" to muviproPostId
-                        ),
-                        referer = data,
-                        headers = mapOf(
-                            "X-Requested-With" to "XMLHttpRequest",
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                        )
-                    )
-                    if (response.isSuccessful) {
-                        val json = response.text
-                        if (json.isNotBlank() && json != "0" && json != "false") {
-                            val parsedDoc = Jsoup.parse(json)
-                            val iframeSrc = parsedDoc.selectFirst("iframe[src], iframe[data-src]")?.let { 
-                                it.attr("src").ifEmpty { it.attr("data-src") } 
-                            }
-                            val embedUrl = iframeSrc
-                                ?: Regex("""src=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
-                                ?: Regex("""href=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
-                                ?: Regex("""["'](https?:[^"']+)["']""").find(json)?.groupValues?.get(1)
-                                ?: if (json.trim().startsWith("http")) json.trim() else null
-
-                            if (embedUrl != null) {
-                                queueTarget(embedUrl)
-                            }
+                        val cleanUrl = fixUrl(embedUrl)
+                        if (cleanUrl.isNotEmpty()) {
+                            targets.add(cleanUrl)
+                            break // Found link for this button, skip other actions
                         }
                     }
                 } catch (_: Exception) {}
             }
         }
 
-        // 6. Harvest URLs directly from JSON blobs and <script> tags
-        doc.select("script[type=application/ld+json], script").forEach { script ->
-            val content = script.data().ifBlank { script.html() }
-            if (content.isBlank()) return@forEach
-            listOf("contentUrl", "embedUrl", "url", "file", "src").forEach { key ->
-                Regex(""""$key"\s*:\s*"([^"]+)"""").findAll(content).forEach { match ->
-                    val url = match.groupValues[1].replace("\\/", "/")
-                    if (url.startsWith("http") || url.startsWith("//")) {
-                        queueTarget(url)
-                    }
-                }
-            }
-            Regex("""(?:file|src)\s*[:=]\s*["']([^"']+)["']""").findAll(content).forEach { match ->
-                val url = match.groupValues[1].replace("\\/", "/")
-                if (url.startsWith("http") || url.startsWith("//")) {
-                    queueTarget(url)
-                }
-            }
-        }
-
+        // 6. Harvest URLs directly from <script> tags
         doc.select("script").forEach { script ->
             val content = script.data()
             if (content.isNotBlank()) {
                 Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+""").findAll(content).forEach { match ->
                     val url = match.value
                     if (!url.contains("google") && !url.contains("facebook") && !url.contains("analytics")) {
-                        queueTarget(url)
+                        val finalUrl = fixUrl(url)
+                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
                     }
                 }
             }
         }
 
         // 7. Process all collected targets (including base64 decoding & fallback routing)
-        var targetIndex = 0
-        while (targetIndex < targets.size) {
-            val raw = targets[targetIndex++]
+        targets.distinct().forEach { raw ->
             val cleanedRaw = raw.trim()
-            if (cleanedRaw.isBlank()) continue
+            if (cleanedRaw.isBlank()) return@forEach
 
             // Attempt base64 decoding
             var decodedUrl = ""
@@ -604,7 +389,7 @@ class DonghuastreamProvider : MainAPI() {
                                         Regex("\"link\"\\s*:\\s*\"([^\"]+)\"").findAll(contentText).forEach { match ->
                                             val link = match.groupValues[1]
                                             if (link.startsWith("http")) {
-                                                callbackWrapper(
+                                                callback(
                                                     newExtractorLink(
                                                         source = "Gofile",
                                                         name = "Gofile",
@@ -625,33 +410,37 @@ class DonghuastreamProvider : MainAPI() {
                 } else if (cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains(".mp4") || cleanUrlEscaped.contains("/hls/")) {
                     try {
                         val isM3u = cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains("/hls/")
-                        if (isPlayableDirectStream(cleanUrlEscaped, data)) {
-                            val sourceName = sourceNameFor(cleanUrlEscaped)
-                            callbackWrapper(
-                                newExtractorLink(
-                                    source = sourceName,
-                                    name = sourceName,
-                                    url = cleanUrlEscaped,
-                                    type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                                ) {
-                                    this.referer = data
-                                    this.quality = Qualities.Unknown.value
-                                }
-                            )
-                        }
+                        callback(
+                            newExtractorLink(
+                                source = "Direct Stream",
+                                name = "Direct Stream",
+                                url = cleanUrlEscaped,
+                                type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = data
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
                     } catch (_: Exception) {}
                 } else {
                     // Try to unwrap redirect parameters
-                    listOf("link", "url", "u", "r", "to", "go", "target", "redirect", "redirect_url", "embed", "source").forEach { param ->
+                    listOf("link", "url", "r", "to", "go").forEach { param ->
                         try {
                             val regex = Regex("[?&]" + param + "=([^&]+)")
                             val match = regex.find(cleanUrlEscaped)
                             val queryValue = match?.groupValues?.get(1)
                             if (queryValue != null && queryValue.isNotEmpty()) {
-                                val decodedParam = decodedRedirectValue(queryValue)
+                                val decodedParam = try {
+                                    val decodedBytes = android.util.Base64.decode(queryValue, android.util.Base64.DEFAULT)
+                                    String(decodedBytes, Charsets.UTF_8)
+                                } catch (_: Exception) {
+                                    java.net.URLDecoder.decode(queryValue, "UTF-8")
+                                }
                                 val finalDecoded = fixUrl(decodedParam)
                                 if (finalDecoded.startsWith("http") && !finalDecoded.contains("google") && !finalDecoded.contains("facebook")) {
-                                    queueTarget(finalDecoded)
+                                    try {
+                                        loadExtractor(finalDecoded, data, subtitleCallback, callback)
+                                    } catch (_: Exception) {}
                                 }
                             }
                         } catch (_: Exception) {}
@@ -672,137 +461,97 @@ class DonghuastreamProvider : MainAPI() {
                         if (isSameDomain && cleanUrlEscaped != data) {
                             try {
                                 val subDoc = app.get(cleanUrlEscaped, referer = data).document
-                                subDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src], source[src], video[src], [data-embed], [data-link], [data-url], [data-video]").forEach { iframe ->
-                                    val iframeSrc = iframe.attr("src")
-                                        .ifEmpty { iframe.attr("data-src") }
-                                        .ifEmpty { iframe.attr("data-litespeed-src") }
-                                        .ifEmpty { iframe.attr("data-lazy-src") }
-                                        .ifEmpty { iframe.attr("data-embed") }
-                                        .ifEmpty { iframe.attr("data-link") }
-                                        .ifEmpty { iframe.attr("data-url") }
-                                        .ifEmpty { iframe.attr("data-video") }
-                                        .trim()
+                                subDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src]").forEach { iframe ->
+                                    val iframeSrc = iframe.attr("src").ifEmpty { iframe.attr("data-src") }.ifEmpty { iframe.attr("data-litespeed-src") }.trim()
                                     if (iframeSrc.isNotBlank()) {
                                         val finalIframeUrl = fixUrl(iframeSrc)
                                         if (finalIframeUrl.isNotEmpty() && finalIframeUrl != cleanUrlEscaped) {
                                             val cleanIf = finalIframeUrl.replace(92.toChar().toString(), "")
                                             if (cleanIf.contains("gofile.io/d/")) {
-                                                queueTarget(cleanIf)
+                                                // Handle Gofile inside sub iframe
                                             } else if (cleanIf.contains(".m3u8") || cleanIf.contains(".mp4") || cleanIf.contains("/hls/")) {
                                                 val isM3u = cleanIf.contains(".m3u8") || cleanIf.contains("/hls/")
-                                                if (isPlayableDirectStream(cleanIf, cleanUrlEscaped)) {
-                                                    val sourceName = sourceNameFor(cleanIf)
-                                                    callbackWrapper(
-                                                        newExtractorLink(
-                                                            source = sourceName,
-                                                            name = sourceName,
-                                                            url = cleanIf,
-                                                            type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                                                        ) {
-                                                            this.referer = cleanUrlEscaped
-                                                        }
-                                                    )
-                                                }
+                                                callback(
+                                                    newExtractorLink(
+                                                        source = "Direct Stream",
+                                                        name = "Direct Stream",
+                                                        url = cleanIf,
+                                                        type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                    ) {
+                                                        this.referer = cleanUrlEscaped
+                                                    }
+                                                )
                                             } else {
-                                                queueTarget(cleanIf)
+                                                loadExtractor(cleanIf, cleanUrlEscaped, subtitleCallback, callback)
                                             }
                                         }
                                     }
-                                }
-                                subDoc.select("script").forEach { script ->
-                                    Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~%]+""")
-                                        .findAll(script.data().ifBlank { script.html() })
-                                        .forEach { match -> queueTarget(match.value) }
                                 }
                             } catch (_: Exception) {}
                         }
 
                         // Smart Extractor Fallback Dispatcher
-                        val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "vidhide", "filelions", "vidguard", "vembed", "lulustream", "d0000d", "swhoi", "cdnwish", "playerwish", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
+                        val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
                         val isDood = listOf("dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
                         val isVoe = cleanUrlEscaped.contains("voe.sx", true) || cleanUrlEscaped.contains("voe", true)
                         val isStreamtape = cleanUrlEscaped.contains("streamtape", true)
                         val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
                         val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
                         val isAbyss = listOf("abyssplayer.com", "abyss.to", "abysscdn.com", "iamcdn.net", "sssrr").any { cleanUrlEscaped.contains(it, true) }
-                        val isMixdrop = cleanUrlEscaped.contains("mixdrop", true)
-                        val isUqload = cleanUrlEscaped.contains("uqload", true)
-                        val isUpstream = cleanUrlEscaped.contains("upstream.to", true)
 
                         when {
                             isAbyss -> {
                                 try {
-                                    AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                    AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "AbyssExtractor failed: ${e.message}")
                                 }
                             }
-                            isMixdrop -> {
-                                try {
-                                    com.lagradost.cloudstream3.extractors.MixDrop().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
-                                } catch (e: Exception) {
-                                    android.util.Log.e("FallbackExtractor", "MixDrop failed: ${e.message}")
-                                }
-                            }
-                            isUqload -> {
-                                try {
-                                    com.lagradost.cloudstream3.extractors.Uqload().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
-                                } catch (e: Exception) {
-                                    android.util.Log.e("FallbackExtractor", "Uqload failed: ${e.message}")
-                                }
-                            }
-                            isUpstream -> {
-                                try {
-                                    com.lagradost.cloudstream3.extractors.UpstreamExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
-                                } catch (e: Exception) {
-                                    android.util.Log.e("FallbackExtractor", "Upstream failed: ${e.message}")
-                                }
-                            }
                             isStreamWish -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                    com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "StreamWish extraction failed for $cleanUrlEscaped: ${e.message}")
                                 }
                             }
                             isDood -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                    com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "DoodLaExtractor extraction failed for $cleanUrlEscaped: ${e.message}")
                                 }
                             }
                             isVoe -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.Voe().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                    com.lagradost.cloudstream3.extractors.Voe().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "Voe extraction failed: ${e.message}")
                                 }
                             }
                             isStreamtape -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.StreamTape().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                    com.lagradost.cloudstream3.extractors.StreamTape().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "StreamTape extraction failed: ${e.message}")
                                 }
                             }
                             isFilemoon -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.FileMoon().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                    com.lagradost.cloudstream3.extractors.FileMoon().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "FileMoon extraction failed: ${e.message}")
                                 }
                             }
                             isMp4Upload -> {
                                 try {
-                                    com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                    com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "Mp4Upload extraction failed: ${e.message}")
                                 }
                             }
                             else -> {
                                 try {
-                                    loadExtractor(cleanUrlEscaped, data, subtitleCallback, callbackWrapper)
+                                    loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
                                 }

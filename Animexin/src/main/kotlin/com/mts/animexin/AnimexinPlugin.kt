@@ -8,9 +8,28 @@ import android.content.Context
 class AnimexinPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(AnimexinProvider())
-        registerExtractorAPI(DqEndebedouseShop())
-        registerExtractorAPI(GeoDailymotionCom())
-        registerExtractorAPI(MirroredTo())
-        registerExtractorAPI(IsLysategriphusCfd())
+        // Dailymotion
+        registerExtractorAPI(DailymotionAnimexin())
+        registerExtractorAPI(GeoDailymotionAnimexin())
+        // OK.ru
+        registerExtractorAPI(OkRuAnimexin())
+        registerExtractorAPI(OkRuAnimexinSSL())
+        registerExtractorAPI(OkRuAnimexinHTTP())
+        // Rumble
+        registerExtractorAPI(RumbleAnimexin())
+        // StreamWish
+        registerExtractorAPI(EmbedWishAnimexin())
+        registerExtractorAPI(StreamWishAnimexin())
+        registerExtractorAPI(StreamWishToAnimexin())
+        // FileLion
+        registerExtractorAPI(FileLionAnimexin())
+        registerExtractorAPI(FilelionsLive())
+        registerExtractorAPI(FilelionsCom())
+        registerExtractorAPI(FilelionsTo())
+        registerExtractorAPI(FilelionsOnline())
+        // Dood
+        registerExtractorAPI(DoodsPro())
+        registerExtractorAPI(DoodStreamCom())
+        registerExtractorAPI(Ds2Play())
     }
 }

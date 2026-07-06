@@ -168,9 +168,9 @@ class NgefilmProvider : MainAPI() {
                                 extractXshotcok(url, callback)
                             } else if (url.contains("short.icu")) {
                                 val finalUrl = app.get(url, headers = mapOf("Referer" to fixedUrl)).url
-                                if (finalUrl.contains("abyss")) loadExtractor(finalUrl, fixedUrl, subtitleCallback, callback)
+                                if (finalUrl.contains("abyss")) loadExtractor(finalUrl, subtitleCallback, callback)
                             } else {
-                                loadExtractor(url, fixedUrl, subtitleCallback, callback)
+                                loadExtractor(url, subtitleCallback, callback)
                             }
                         }
                     } catch (e: Exception) { e.printStackTrace() }

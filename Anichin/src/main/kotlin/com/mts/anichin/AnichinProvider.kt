@@ -110,14 +110,37 @@ class AnichinProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(fixUrl(data)).document
-        document.select(".mobius option").forEach { server ->
-            val base64 = server.attr("value")
-            if (base64.isNotBlank()) {
+
+        // Load default embedded iframe in player
+        val defaultIframeSrc = document.selectFirst("#pembed iframe, .player-embed iframe, #embed_holder iframe")?.attr("src")
+        if (!defaultIframeSrc.isNullOrBlank()) {
+            val defaultHref = if (defaultIframeSrc.startsWith("//")) "https:$defaultIframeSrc" else defaultIframeSrc
+            if (defaultHref.startsWith("http")) {
+                loadExtractor(defaultHref, data, subtitleCallback, callback)
+            }
+        }
+
+        // Process options
+        document.select(".mobius option, select.mirror option, select option[value]").forEach { server ->
+            val base64 = server.attr("value").trim()
+            if (base64.isBlank()) return@forEach
+            if (base64.startsWith("http") || base64.startsWith("//")) {
+                val href = if (base64.startsWith("//")) "https:$base64" else base64
+                loadExtractor(href, data, subtitleCallback, callback)
+                return@forEach
+            }
+            try {
                 val decoded = base64Decode(base64)
                 val doc = Jsoup.parse(decoded)
-                val href = fixUrl(doc.select("iframe").attr("src"))
-                loadExtractor(href, data, subtitleCallback, callback)
-            }
+                val iframeSrc = doc.selectFirst("iframe")?.attr("src")
+                    ?: doc.selectFirst("[src]")?.attr("src")
+                if (!iframeSrc.isNullOrBlank()) {
+                    val href = if (iframeSrc.startsWith("//")) "https:$iframeSrc"
+                    else if (iframeSrc.startsWith("http")) iframeSrc
+                    else return@forEach
+                    loadExtractor(href, data, subtitleCallback, callback)
+                }
+            } catch (_: Exception) {}
         }
         return true
     }
