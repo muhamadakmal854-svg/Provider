@@ -18,11 +18,9 @@ class AnimixplayProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "movies" to "Filem Terbaru",
-        "tvshows" to "TV Series Terbaru",
-        "genre/action" to "Aksi",
-        "genre/horror" to "Seram",
-        "genre/comedy" to "Komedi"
+        "" to "Home",
+        "schedule" to "Schedule",
+        "az-list" to "AZ List"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -129,10 +127,38 @@ class AnimixplayProvider : MainAPI() {
     
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
-        val title = doc.selectFirst(
+        var currentDoc = doc
+        var targetUrl = url
+
+        // Parent redirection logic for episode pages
+        val isEpisodePage = !url.contains("/anime/") && !url.contains("/series/") && !url.contains("/tvshows/") && !url.contains("/movies/")
+        if (isEpisodePage) {
+            val parentLink = doc.select("a[href]").map { it.attr("href") }.firstOrNull { href ->
+                val h = href.lowercase()
+                (h.contains("/anime/") && !h.endsWith("/anime/") && !h.endsWith("/anime")) ||
+                (h.contains("/series/") && !h.endsWith("/series/") && !h.endsWith("/series")) ||
+                (h.contains("/tvshows/") && !h.endsWith("/tvshows/") && !h.endsWith("/tvshows"))
+            }
+            if (!parentLink.isNullOrBlank()) {
+                val resolved = if (parentLink.startsWith("http")) parentLink else {
+                    val base = mainUrl.rstrip("/")
+                    if (parentLink.startsWith("/")) "$base$parentLink" else "$base/$parentLink"
+                }
+                try {
+                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url)).document
+                    val newTitle = parentDoc.selectFirst(".sheader .data h1, h1.entry-title, .data h1, h1, .heading-name, .film-name")
+                    if (newTitle != null) {
+                        currentDoc = parentDoc
+                        targetUrl = resolved
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        val title = currentDoc.selectFirst(
             ".sheader .data h1, h1.entry-title, .data h1, h1, .heading-name, .film-name"
         )?.text()?.trim() ?: return null
-        val poster = doc.selectFirst(
+        val poster = currentDoc.selectFirst(
             ".poster img, .sheader .poster img, .film-poster img, [class*=poster] img, " +
             ".entry-thumbnail img, .thumb img, img.wp-post-image, .cover img"
         )?.let { img ->
@@ -140,26 +166,27 @@ class AnimixplayProvider : MainAPI() {
                 .map { img.attr(it) }
                 .firstOrNull { it.isNotBlank() && it.startsWith("http") }
         }
-        val plot = doc.selectFirst(
+        val plot = currentDoc.selectFirst(
             ".description p, .wp-content p, .entry-content p, [itemprop=description], " +
             ".film-description, .synops p, .overview"
         )?.text()?.trim()
-        val year = doc.selectFirst(
+        val year = currentDoc.selectFirst(
             ".date, .extra .year, [itemprop=dateCreated], .film-stats span, [class*=year]"
         )?.text()?.filter { it.isDigit() }?.let {
             if (it.length >= 4) it.substring(0, 4).toIntOrNull() else null
         }
-        val genres = doc.select(
+        val genres = currentDoc.select(
             ".sgeneros a, .genres a, .genre a, .film-genres a, [class*=genre] a, .categories a"
         ).map { it.text() }.filter { it.isNotBlank() }
-        val isTv = url.contains("/tvshows/") || url.contains("/series/") ||
-                   url.contains("/tv/") || url.contains("/season/") ||
-                   doc.select(
+        val isTv = targetUrl.contains("/tvshows/") || targetUrl.contains("/series/") ||
+                   targetUrl.contains("/tv/") || targetUrl.contains("/season/") ||
+                   targetUrl.contains("/anime/") ||
+                   currentDoc.select(
                        ".episodes-list li, .episodios li, #seasons .se-c, " +
                        ".eplister li, .episodelist li, .clps li, #episodes li"
                    ).isNotEmpty()
         return if (isTv) {
-            val eps = doc.select(
+            val eps = currentDoc.select(
                 ".episodes-list li a, .episodios li a, #episodes .episodiotitle a, " +
                 ".eplister ul li a, .episodelist ul li a, .ep-list li a, .clps li a, " +
                 "[class*=episode-list] li a, [class*=episode] a[href]"
@@ -170,11 +197,11 @@ class AnimixplayProvider : MainAPI() {
                     this.episode = i + 1
                 }
             }.filter { it.data.isNotBlank() }.distinctBy { it.data }
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, eps) {
+            newTvSeriesLoadResponse(title, targetUrl, TvType.TvSeries, eps) {
                 this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
+            newMovieLoadResponse(title, targetUrl, TvType.Movie, targetUrl) {
                 this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
             }
         }
@@ -319,6 +346,55 @@ class AnimixplayProvider : MainAPI() {
                     }
                 }
             }
+        }
+
+        // 4.6. Search for playlist/sources JSON arrays in script blocks (for custom players like hotfile/cdn/etc)
+        doc.select("script").forEach { script ->
+            val code = script.data()
+            if (code.isNotBlank()) {
+                val match = Regex("""(?:SOURCES|sources|playlist)\s*=\s*(\[[\s\S]*?\])""").find(code)
+                val jsonStr = match?.groupValues?.get(1)
+                if (jsonStr != null) {
+                    try {
+                        val arr = org.json.JSONArray(jsonStr)
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.getJSONObject(i)
+                            val link = obj.optString("link", "").ifEmpty { obj.optString("file", "").ifEmpty { obj.optString("url", "") } }
+                            if (link.startsWith("http") || link.startsWith("//")) {
+                                val cleanLink = if (link.startsWith("//")) "https:$link" else link
+                                val type = obj.optString("type", "").lowercase()
+                                val label = obj.optString("label", "Server")
+                                val isM3u = type.contains("hls") || type.contains("m3u8") || cleanLink.contains(".m3u8") || cleanLink.contains("/auto")
+                                callback(
+                                    newExtractorLink(
+                                        source = name,
+                                        name = "$name - $label",
+                                        url = cleanLink,
+                                        type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                    ) {
+                                        this.referer = data
+                                    }
+                                )
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+
+        // 4.7. Search for player-payload JSON script blocks (for kisskh/etc)
+        doc.select("script#player-payload, #player-payload").forEach { el ->
+            try {
+                val jsonStr = el.text().trim()
+                val json = org.json.JSONObject(jsonStr)
+                if (json.has("source")) {
+                    val src = json.getString("source")
+                    if (src.isNotBlank()) {
+                        val finalUrl = fixUrl(src)
+                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                    }
+                }
+            } catch (_: Exception) {}
         }
 
         // 5. AJAX Options (ZetaFlix, DooPlay, Flavor themes)
@@ -578,8 +654,16 @@ class AnimixplayProvider : MainAPI() {
                         val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
                         val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
                         val isAbyss = listOf("abyssplayer.com", "abyss.to", "abysscdn.com", "iamcdn.net", "sssrr").any { cleanUrlEscaped.contains(it, true) }
+                        val isSeekPlayer = cleanUrlEscaped.contains("seekplayer", true)
 
                         when {
+                            isSeekPlayer -> {
+                                try {
+                                    SeekplayerVip().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "SeekplayerVip failed: ${e.message}")
+                                }
+                            }
                             isAbyss -> {
                                 try {
                                     AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
@@ -742,6 +826,93 @@ class AbyssExtractor : ExtractorApi() {
                         }
                     }
                 )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+}
+
+class SeekplayerVip : ExtractorApi() {
+    override var name = "SeekPlayer"
+    override var mainUrl = "https://drakorku.seekplayer.vip"
+    override val requiresReferer = true
+
+    private fun decryptAesCbc(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
+        val spec = javax.crypto.spec.SecretKeySpec(key, "AES")
+        val parameterSpec = javax.crypto.spec.IvParameterSpec(iv)
+        val cipher = javax.crypto.Cipher.getInstance("AES/CBC/NoPadding")
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, spec, parameterSpec)
+        val decrypted = cipher.doFinal(ciphertext)
+        if (decrypted.isEmpty()) return decrypted
+        val pad = decrypted[decrypted.size - 1].toInt()
+        if (pad in 1..16) {
+            return decrypted.copyOfRange(0, decrypted.size - pad)
+        }
+        return decrypted
+    }
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+        callback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit
+    ) {
+        try {
+            val id = if (url.contains("#")) {
+                url.substringAfter("#").substringBefore("?").substringBefore("&")
+            } else if (url.contains("id=")) {
+                url.substringAfter("id=").substringBefore("&")
+            } else {
+                url.substringAfter("/video/").substringBefore("?").substringBefore("&")
+            }
+            if (id.isEmpty()) return
+
+            val domain = try { java.net.URL(url).host } catch (_: Exception) { "drakorku.seekplayer.vip" }
+            val apiUrl = "https://$domain/api/v1/video?id=$id"
+            
+            val response = app.get(apiUrl, headers = mapOf("Referer" to url)).text
+            val encBytes = response.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+            val key = "kiemtienmua911ca".toByteArray(Charsets.UTF_8)
+            val iv = "1234567890oiuytr".toByteArray(Charsets.UTF_8)
+
+            val decryptedBytes = decryptAesCbc(encBytes, key, iv)
+            val decryptedStr = String(decryptedBytes, Charsets.UTF_8)
+
+            val json = org.json.JSONObject(decryptedStr)
+            val title = if (json.has("title")) json.getString("title") else "SeekPlayer"
+            
+            if (json.has("source")) {
+                val sourceUrl = json.getString("source")
+                if (sourceUrl.isNotBlank()) {
+                    callback(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name - $title",
+                            url = sourceUrl,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://$domain/"
+                        }
+                    )
+                }
+            }
+
+            if (json.has("cfNative")) {
+                val cfUrl = json.getString("cfNative")
+                if (cfUrl.isNotBlank()) {
+                    callback(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name - $title (Cloudflare)",
+                            url = cfUrl,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://$domain/"
+                        }
+                    )
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()

@@ -15,29 +15,30 @@ class DutafilmProvider : MainAPI() {
     override var name           = "Dutafilm"
     override var lang           = "id"
     override val hasMainPage    = true
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "" to "Terbaru",
-        "series/?status=ongoing" to "Ongoing",
-        "series/?status=completed" to "Completed",
-        "series" to "Semua Anime"
+        "explore?media_type=movie" to "Filem Terbaru",
+        "explore?media_type=tv" to "TV Series Terbaru",
+        "explore?category=1" to "Anime Terbaru",
+        "explore?genre=action" to "Aksi",
+        "explore?genre=horror" to "Seram",
+        "explore?genre=comedy" to "Komedi"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val path = request.data
         val cleanPath = path.removePrefix("/").removeSuffix("/")
         val pageUrl = if (path.startsWith("http")) {
-            path + if (page > 1) "page/$page/" else ""
+            val separator = if (path.contains("?")) "&" else "?"
+            path + if (page > 1) "${separator}page=$page" else ""
         } else {
             if (cleanPath.isEmpty()) {
-                mainUrl + if (page > 1) "/page/$page/" else "/"
+                mainUrl + if (page > 1) "?page=$page" else ""
             } else {
-                val parts = cleanPath.split("?")
-                val basePath = parts[0].removeSuffix("/")
-                val query = if (parts.size > 1) "?" + parts[1] else ""
-                val pagedPath = if (page > 1) "$basePath/page/$page/" else "$basePath/"
-                "$mainUrl/$pagedPath$query"
+                val separator = if (cleanPath.contains("?")) "&" else "?"
+                val pagedPath = if (page > 1) "$cleanPath${separator}page=$page" else cleanPath
+                "$mainUrl/$pagedPath"
             }
         }
         return newHomePageResponse(request.name, scrapeList(pageUrl))
@@ -84,63 +85,126 @@ class DutafilmProvider : MainAPI() {
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
         val doc = app.get(pageUrl, headers = mapOf(
             "Referer" to mainUrl,
-            "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
-        return doc.select(".content, div.content, .mv-content-items, div.mv-content-items, .mv-content, div.mv-content, .index-content, div.index-content, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
-            val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
-            val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
-            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
-            val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
-                ?.text()?.trim()
-                ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }.ifEmpty { img?.attr("title")?.trim() ?: "" }.ifEmpty { a.text().trim() }
+        return doc.select(".content, div.content, .mv-content-items, div.mv-content-items, .mv-content, div.mv-content, .index-content, div.index-content, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, article, .post, .entry, .film-poster-ahref").mapNotNull {
+            val a = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
+            val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
+            if (href.isBlank() || href == mainUrl || href.contains("javascript")) return@mapNotNull null
+            val img = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
+            val title = it.selectFirst(
+                ".entry-title, h2.entry-title, h2, h3, .title, .film-name, .movie-title, .item-title"
+            )?.text()?.trim()
+                ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }
+                    .ifEmpty { img?.attr("title")?.trim() ?: "" }
+                    .ifEmpty { a.text().trim() }
             if (title.isBlank()) return@mapNotNull null
-            var src   = img?.posterUrl() ?: ""
+            var src = img?.posterUrl() ?: ""
+            if (src.isEmpty()) src = it.posterUrl()
             if (src.isEmpty()) {
-                src = it.posterUrl()
-            }
-            if (src.isEmpty()) {
-                var foundBg = ""
                 it.select("[style*=background], [style*=url]").forEach { el ->
-                    val url = el.posterUrl()
-                    if (url.isNotEmpty()) {
-                        foundBg = url
-                        return@forEach
-                    }
+                    val u = el.posterUrl()
+                    if (u.isNotEmpty()) { src = u; return@forEach }
                 }
-                src = foundBg
             }
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+            // Smart type detection based on URL pattern and page metadata
+            val hrefLower = href.lowercase()
+            val typeLabel = it.selectFirst(
+                ".type, .label, .badge, [class*=type], [class*=label], .quality"
+            )?.text()?.lowercase() ?: ""
+            when {
+                hrefLower.contains("/movie") || hrefLower.contains("/film") ||
+                hrefLower.contains("/movies/") ->
+                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+                hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
+                hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
+                typeLabel.contains("series") || typeLabel.contains("drama") ||
+                typeLabel.contains("episode") ->
+                    newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+                else ->
+                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+            }
         }.distinctBy { it.url }
     }
     
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
-        val title  = doc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")?.let {
-            if (it.tagName() == "img") it.attr("alt").trim() else it.text().trim()
-        }?.trim() ?: return null
-        val poster = doc.selectFirst(".thumb img, .seriesthumb img, .film-poster img, .entry-thumb img, .cover img")
-            ?.let { img ->
-                listOf("data-src","data-lazy-src","data-lazy","data-cfsrc","data-original","src")
-                    .map { img.attr(it) }
-                    .firstOrNull { it.isNotBlank() && it.startsWith("http") }
+        var currentDoc = doc
+        var targetUrl = url
+
+        // Parent redirection logic for episode pages
+        val isEpisodePage = !url.contains("/anime/") && !url.contains("/series/") && !url.contains("/tvshows/") && !url.contains("/movies/")
+        if (isEpisodePage) {
+            val parentLink = doc.select("a[href]").map { it.attr("href") }.firstOrNull { href ->
+                val h = href.lowercase()
+                (h.contains("/anime/") && !h.endsWith("/anime/") && !h.endsWith("/anime")) ||
+                (h.contains("/series/") && !h.endsWith("/series/") && !h.endsWith("/series")) ||
+                (h.contains("/tvshows/") && !h.endsWith("/tvshows/") && !h.endsWith("/tvshows"))
             }
-        val plot   = doc.selectFirst(".entry-content p, .synp .deskripsi, [itemprop=description], .film-description p")
-            ?.text()?.trim()
-        val genres = doc.select(".genxed a, .genre-info a, .info-content .spe a[href*=genre], .film-genres a")
-            .map { it.text() }
-        val eps = doc.select(".eplister ul li a, .episodelist ul li a, .clps li a, .ep-list li a").mapNotNull { a ->
-            val epTitle = a.selectFirst(".epl-title, .epl-num, span")?.text()?.trim()
-                ?: a.text().trim()
-            val epUrl   = a.attr("href")
-            if (epUrl.isNotBlank()) newEpisode(epUrl) { this.name = epTitle } else null
-        }.reversed()
-        return if (eps.isNotEmpty()) {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, eps) {
-                this.posterUrl = poster; this.plot = plot; this.tags = genres
+            if (!parentLink.isNullOrBlank()) {
+                val resolved = if (parentLink.startsWith("http")) parentLink else {
+                    val base = mainUrl.rstrip("/")
+                    if (parentLink.startsWith("/")) "$base$parentLink" else "$base/$parentLink"
+                }
+                try {
+                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url)).document
+                    val newTitle = parentDoc.selectFirst(".sheader .data h1, h1.entry-title, .data h1, h1, .heading-name, .film-name")
+                    if (newTitle != null) {
+                        currentDoc = parentDoc
+                        targetUrl = resolved
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        val title = currentDoc.selectFirst(
+            ".sheader .data h1, h1.entry-title, .data h1, h1, .heading-name, .film-name"
+        )?.text()?.trim() ?: return null
+        val poster = currentDoc.selectFirst(
+            ".poster img, .sheader .poster img, .film-poster img, [class*=poster] img, " +
+            ".entry-thumbnail img, .thumb img, img.wp-post-image, .cover img"
+        )?.let { img ->
+            listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc", "src")
+                .map { img.attr(it) }
+                .firstOrNull { it.isNotBlank() && it.startsWith("http") }
+        }
+        val plot = currentDoc.selectFirst(
+            ".description p, .wp-content p, .entry-content p, [itemprop=description], " +
+            ".film-description, .synops p, .overview"
+        )?.text()?.trim()
+        val year = currentDoc.selectFirst(
+            ".date, .extra .year, [itemprop=dateCreated], .film-stats span, [class*=year]"
+        )?.text()?.filter { it.isDigit() }?.let {
+            if (it.length >= 4) it.substring(0, 4).toIntOrNull() else null
+        }
+        val genres = currentDoc.select(
+            ".sgeneros a, .genres a, .genre a, .film-genres a, [class*=genre] a, .categories a"
+        ).map { it.text() }.filter { it.isNotBlank() }
+        val isTv = targetUrl.contains("/tvshows/") || targetUrl.contains("/series/") ||
+                   targetUrl.contains("/tv/") || targetUrl.contains("/season/") ||
+                   targetUrl.contains("/anime/") ||
+                   currentDoc.select(
+                       ".episodes-list li, .episodios li, #seasons .se-c, " +
+                       ".eplister li, .episodelist li, .clps li, #episodes li"
+                   ).isNotEmpty()
+        return if (isTv) {
+            val eps = currentDoc.select(
+                ".episodes-list li a, .episodios li a, #episodes .episodiotitle a, " +
+                ".eplister ul li a, .episodelist ul li a, .ep-list li a, .clps li a, " +
+                "[class*=episode-list] li a, [class*=episode] a[href]"
+            ).mapIndexed { i, a ->
+                newEpisode(fixUrl(a.attr("href"))) {
+                    this.name = a.selectFirst(".epl-title, .epl-num, span, .episode-title")
+                        ?.text()?.trim() ?: a.text().trim()
+                    this.episode = i + 1
+                }
+            }.filter { it.data.isNotBlank() }.distinctBy { it.data }
+            newTvSeriesLoadResponse(title, targetUrl, TvType.TvSeries, eps) {
+                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster; this.plot = plot; this.tags = genres
+            newMovieLoadResponse(title, targetUrl, TvType.Movie, targetUrl) {
+                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
             }
         }
     }
@@ -284,6 +348,55 @@ class DutafilmProvider : MainAPI() {
                     }
                 }
             }
+        }
+
+        // 4.6. Search for playlist/sources JSON arrays in script blocks (for custom players like hotfile/cdn/etc)
+        doc.select("script").forEach { script ->
+            val code = script.data()
+            if (code.isNotBlank()) {
+                val match = Regex("""(?:SOURCES|sources|playlist)\s*=\s*(\[[\s\S]*?\])""").find(code)
+                val jsonStr = match?.groupValues?.get(1)
+                if (jsonStr != null) {
+                    try {
+                        val arr = org.json.JSONArray(jsonStr)
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.getJSONObject(i)
+                            val link = obj.optString("link", "").ifEmpty { obj.optString("file", "").ifEmpty { obj.optString("url", "") } }
+                            if (link.startsWith("http") || link.startsWith("//")) {
+                                val cleanLink = if (link.startsWith("//")) "https:$link" else link
+                                val type = obj.optString("type", "").lowercase()
+                                val label = obj.optString("label", "Server")
+                                val isM3u = type.contains("hls") || type.contains("m3u8") || cleanLink.contains(".m3u8") || cleanLink.contains("/auto")
+                                callback(
+                                    newExtractorLink(
+                                        source = name,
+                                        name = "$name - $label",
+                                        url = cleanLink,
+                                        type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                    ) {
+                                        this.referer = data
+                                    }
+                                )
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+
+        // 4.7. Search for player-payload JSON script blocks (for kisskh/etc)
+        doc.select("script#player-payload, #player-payload").forEach { el ->
+            try {
+                val jsonStr = el.text().trim()
+                val json = org.json.JSONObject(jsonStr)
+                if (json.has("source")) {
+                    val src = json.getString("source")
+                    if (src.isNotBlank()) {
+                        val finalUrl = fixUrl(src)
+                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                    }
+                }
+            } catch (_: Exception) {}
         }
 
         // 5. AJAX Options (ZetaFlix, DooPlay, Flavor themes)
@@ -543,8 +656,16 @@ class DutafilmProvider : MainAPI() {
                         val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
                         val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
                         val isAbyss = listOf("abyssplayer.com", "abyss.to", "abysscdn.com", "iamcdn.net", "sssrr").any { cleanUrlEscaped.contains(it, true) }
+                        val isSeekPlayer = cleanUrlEscaped.contains("seekplayer", true)
 
                         when {
+                            isSeekPlayer -> {
+                                try {
+                                    SeekplayerVip().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "SeekplayerVip failed: ${e.message}")
+                                }
+                            }
                             isAbyss -> {
                                 try {
                                     AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
@@ -707,6 +828,93 @@ class AbyssExtractor : ExtractorApi() {
                         }
                     }
                 )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+}
+
+class SeekplayerVip : ExtractorApi() {
+    override var name = "SeekPlayer"
+    override var mainUrl = "https://drakorku.seekplayer.vip"
+    override val requiresReferer = true
+
+    private fun decryptAesCbc(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
+        val spec = javax.crypto.spec.SecretKeySpec(key, "AES")
+        val parameterSpec = javax.crypto.spec.IvParameterSpec(iv)
+        val cipher = javax.crypto.Cipher.getInstance("AES/CBC/NoPadding")
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, spec, parameterSpec)
+        val decrypted = cipher.doFinal(ciphertext)
+        if (decrypted.isEmpty()) return decrypted
+        val pad = decrypted[decrypted.size - 1].toInt()
+        if (pad in 1..16) {
+            return decrypted.copyOfRange(0, decrypted.size - pad)
+        }
+        return decrypted
+    }
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+        callback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit
+    ) {
+        try {
+            val id = if (url.contains("#")) {
+                url.substringAfter("#").substringBefore("?").substringBefore("&")
+            } else if (url.contains("id=")) {
+                url.substringAfter("id=").substringBefore("&")
+            } else {
+                url.substringAfter("/video/").substringBefore("?").substringBefore("&")
+            }
+            if (id.isEmpty()) return
+
+            val domain = try { java.net.URL(url).host } catch (_: Exception) { "drakorku.seekplayer.vip" }
+            val apiUrl = "https://$domain/api/v1/video?id=$id"
+            
+            val response = app.get(apiUrl, headers = mapOf("Referer" to url)).text
+            val encBytes = response.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+
+            val key = "kiemtienmua911ca".toByteArray(Charsets.UTF_8)
+            val iv = "1234567890oiuytr".toByteArray(Charsets.UTF_8)
+
+            val decryptedBytes = decryptAesCbc(encBytes, key, iv)
+            val decryptedStr = String(decryptedBytes, Charsets.UTF_8)
+
+            val json = org.json.JSONObject(decryptedStr)
+            val title = if (json.has("title")) json.getString("title") else "SeekPlayer"
+            
+            if (json.has("source")) {
+                val sourceUrl = json.getString("source")
+                if (sourceUrl.isNotBlank()) {
+                    callback(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name - $title",
+                            url = sourceUrl,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://$domain/"
+                        }
+                    )
+                }
+            }
+
+            if (json.has("cfNative")) {
+                val cfUrl = json.getString("cfNative")
+                if (cfUrl.isNotBlank()) {
+                    callback(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name - $title (Cloudflare)",
+                            url = cfUrl,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://$domain/"
+                        }
+                    )
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()

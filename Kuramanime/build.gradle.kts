@@ -5,7 +5,7 @@ cloudstream {
     description = "Provider untuk Kuramanime"
     authors     = listOf("MTS")
     status      = 1
-    tvTypes     = listOf("Anime", "TvSeries", "OVA")
+    tvTypes     = listOf("Movie", "TvSeries")
     iconUrl     = "https://m2.kuramanime.ing/favicon.ico"
 }
 
