@@ -311,7 +311,7 @@ class KlikxxidProvider : MainAPI() {
             if (code.isNotBlank()) {
                 val regex = Regex("\"(https?:)?//[^\"\\s]+\"|'(https?:)?//[^'\\s]+'")
                 regex.findAll(code).forEach { match ->
-                    val rawUrl = match.value.replace(""", "").replace("'", "")
+                    val rawUrl = match.value.replace("\"", "").replace("'", "")
                     val finalUrl = fixUrl(rawUrl)
                     if (finalUrl.isNotBlank() && (
                         finalUrl.contains(".mp4") || finalUrl.contains(".m3u8") ||
