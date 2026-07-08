@@ -309,7 +309,7 @@ class KlikxxidProvider : MainAPI() {
         doc.select("script").forEach { script ->
             val code = script.html()
             if (code.isNotBlank()) {
-                val regex = """"(https?:)?//[^"\s]+"|'(https?:)?//[^'\s]+'""".toRegex()
+                val regex = Regex("\"(https?:)?//[^\"\\s]+\"|'(https?:)?//[^'\\s]+'")
                 regex.findAll(code).forEach { match ->
                     val rawUrl = match.value.replace(""", "").replace("'", "")
                     val finalUrl = fixUrl(rawUrl)
