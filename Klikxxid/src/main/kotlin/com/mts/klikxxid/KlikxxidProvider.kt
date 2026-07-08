@@ -953,25 +953,7 @@ class TamilEmbed : ExtractorApi() {
             val bloggerUrl = bloggerIfr?.attr("src")?.trim()
             if (!bloggerUrl.isNullOrBlank()) {
                 val cleanUrl = if (bloggerUrl.startsWith("//")) "https:$bloggerUrl" else bloggerUrl
-                try {
-                    com.lagradost.cloudstream3.extractors.BloggerCom().getUrl(cleanUrl, url, subtitleCallback, callback)
-                } catch (e: Exception) {
-                    val blogDoc = app.get(cleanUrl, headers = mapOf("Referer" to url)).document
-                    val blogHtml = blogDoc.html()
-                    val match = Regex(""play_url"\s*:\s*"([^"]+)"").findAll(blogHtml)
-                    match.forEach { m ->
-                        val rawUrl = m.groupValues[1].replace("\/", "/")
-                        callback(
-                            com.lagradost.cloudstream3.utils.ExtractorLink(
-                                source = "Blogger",
-                                name = "Blogger - Direct",
-                                url = rawUrl,
-                                referer = cleanUrl,
-                                quality = com.lagradost.cloudstream3.utils.Qualities.P720.value
-                            )
-                        )
-                    }
-                }
+                com.lagradost.cloudstream3.utils.loadExtractor(cleanUrl, url, subtitleCallback, callback)
             }
         } catch (e: Exception) {
             e.printStackTrace()
