@@ -1,4 +1,4 @@
-package com.mts.oploverz
+package com.mts.kisskh
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -9,11 +9,11 @@ import javax.crypto.spec.SecretKeySpec
 import javax.crypto.spec.IvParameterSpec
 import java.security.MessageDigest
 
-class OploverzProvider : MainAPI() {
+class KisskhProvider : MainAPI() {
 
-    override var mainUrl        = "https://oploverz.ch"
-    override var name           = "Oploverz"
-    override var lang           = "id"
+    override var mainUrl        = "https://kisskh.buzz"
+    override var name           = "Kisskh"
+    override var lang           = "en"
     override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
 
@@ -86,7 +86,7 @@ class OploverzProvider : MainAPI() {
             "Referer" to mainUrl,
             "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
-        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
+        return doc.select(".wp-block-post-featured-image, .embla__slide-card, div.embla__slide-card, .embla__slide, div.embla__slide, .embla__container, div.embla__container, .embla__viewport, div.embla__viewport, .is-layout-flow, div.is-layout-flow, .wp-block-group, div.wp-block-group, .has-surface-color-background-color, div.has-surface-color-background-color, .has-background, div.has-background, .wp-container-core-group-is-layout-c982a6be, div.wp-container-core-group-is-layout-c982a6be, .wp-block-group-is-layout-flow, div.wp-block-group-is-layout-flow, .wp-block-post, li.wp-block-post, .post, li.post, .type-post, li.type-post, .status-publish, li.status-publish, .format-standard, li.format-standard, .has-post-thumbnail, li.has-post-thumbnail, .hentry, li.hentry, .category-latest-update, li.category-latest-update, .alignfull, div.alignfull, .category-ongoing, li.category-ongoing, .category-china, li.category-china, .category-lgbtq, li.category-lgbtq, .category-thailand, li.category-thailand, .category-south-korean, li.category-south-korean, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item").mapNotNull {
             val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
             val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
             val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")

@@ -1,4 +1,4 @@
-package com.mts.oploverz
+package com.mts.kuronime
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -9,19 +9,20 @@ import javax.crypto.spec.SecretKeySpec
 import javax.crypto.spec.IvParameterSpec
 import java.security.MessageDigest
 
-class OploverzProvider : MainAPI() {
+class KuronimeProvider : MainAPI() {
 
-    override var mainUrl        = "https://oploverz.ch"
-    override var name           = "Oploverz"
+    override var mainUrl        = "https://kuronime.sbs"
+    override var name           = "Kuronime"
     override var lang           = "id"
     override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
         "" to "Terbaru",
-        "series/?status=ongoing" to "Ongoing",
-        "series/?status=completed" to "Completed",
-        "series" to "Semua Anime"
+        "anime?list" to "Anime Lists",
+        "movies" to "Movies",
+        "ongoing-anime" to "Ongoing",
+        "popular-anime" to "Popular"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {

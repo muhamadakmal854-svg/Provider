@@ -2,18 +2,12 @@ package com.mts.oploverz
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-
-class AcscdnCom : StreamWishExtractor() {
-    override val name = "AcscdnCom"
-    override val mainUrl = "https://acscdn.com"
-}
 
 class BloggerCom : ExtractorApi() {
     override val name = "BloggerCom"

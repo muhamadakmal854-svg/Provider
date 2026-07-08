@@ -1,4 +1,4 @@
-package com.mts.oploverz
+package com.mts.kuramanime
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -9,19 +9,19 @@ import javax.crypto.spec.SecretKeySpec
 import javax.crypto.spec.IvParameterSpec
 import java.security.MessageDigest
 
-class OploverzProvider : MainAPI() {
+class KuramanimeProvider : MainAPI() {
 
-    override var mainUrl        = "https://oploverz.ch"
-    override var name           = "Oploverz"
-    override var lang           = "id"
+    override var mainUrl        = "https://m2.kuramanime.ing"
+    override var name           = "Kuramanime"
+    override var lang           = "ms"
     override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
         "" to "Terbaru",
-        "series/?status=ongoing" to "Ongoing",
-        "series/?status=completed" to "Completed",
-        "series" to "Semua Anime"
+        "anime?order_by=text" to "Daftar Anime",
+        "quick/ongoing?order_by=text" to "Ongoing",
+        "quick/finished?order_by=text" to "Completed"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -86,7 +86,7 @@ class OploverzProvider : MainAPI() {
             "Referer" to mainUrl,
             "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
-        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
+        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
             val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
             val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
             val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
