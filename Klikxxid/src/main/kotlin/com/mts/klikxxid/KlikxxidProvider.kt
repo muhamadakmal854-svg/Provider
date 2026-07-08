@@ -12,7 +12,7 @@ import java.security.MessageDigest
 class KlikxxidProvider : MainAPI() {
 
     override var mainUrl        = "https://klikxxi.me"
-    override var name           = "KlikXXi – Streaming Film terbaru sub indo"
+    override var name           = "Klikxxid"
     override var lang           = "id"
     override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)

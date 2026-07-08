@@ -12,17 +12,17 @@ import java.security.MessageDigest
 class SorastreamProvider : MainAPI() {
 
     override var mainUrl        = "https://sorastream.fun"
-    override var name           = "Watch Full Movies and TV Shows Online Free Download With Any Subtitles"
+    override var name           = "Sorastream"
     override var lang           = "en"
     override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "movies" to "Filem Terbaru",
-        "tvshows" to "TV Series Terbaru",
-        "genre/action" to "Aksi",
-        "genre/horror" to "Seram",
-        "genre/comedy" to "Komedi"
+        "playing" to "Filem Terbaru",
+        "airing" to "TV Series Terbaru",
+        "toprated" to "Top Rated",
+        "upcoming" to "Upcoming Movies",
+        "popular" to "Popular TV Series"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {

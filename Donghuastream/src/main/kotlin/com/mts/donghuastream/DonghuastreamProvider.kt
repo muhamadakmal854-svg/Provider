@@ -12,7 +12,7 @@ import java.security.MessageDigest
 class DonghuastreamProvider : MainAPI() {
 
     override var mainUrl        = "https://donghuastream.org"
-    override var name           = "DonghuaStream"
+    override var name           = "Donghuastream"
     override var lang           = "en"
     override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)

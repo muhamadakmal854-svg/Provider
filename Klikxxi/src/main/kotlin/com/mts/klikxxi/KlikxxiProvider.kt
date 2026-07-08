@@ -12,7 +12,7 @@ import java.security.MessageDigest
 class KlikxxiProvider : MainAPI() {
 
     override var mainUrl        = "https://flagsio.com"
-    override var name           = "KLIKXXI"
+    override var name           = "Klikxxi"
     override var lang           = "id"
     override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
