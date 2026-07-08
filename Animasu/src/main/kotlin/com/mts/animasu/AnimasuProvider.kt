@@ -625,8 +625,16 @@ class AnimasuProvider : MainAPI() {
                         val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
                         val isAbyss = listOf("abyssplayer.com", "abyss.to", "abysscdn.com", "iamcdn.net", "sssrr").any { cleanUrlEscaped.contains(it, true) }
                         val isSeekPlayer = cleanUrlEscaped.contains("seekplayer", true)
+                        val isTamilEmbed = cleanUrlEscaped.contains("tamilembed", true)
 
                         when {
+                            isTamilEmbed -> {
+                                try {
+                                    TamilEmbed().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "TamilEmbed failed: ${e.message}")
+                                }
+                            }
                             isSeekPlayer -> {
                                 try {
                                     SeekplayerVip().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
@@ -882,6 +890,49 @@ class SeekplayerVip : ExtractorApi() {
                             this.referer = "https://$domain/"
                         }
                     )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+}
+
+class TamilEmbed : ExtractorApi() {
+    override var name = "TamilEmbed"
+    override var mainUrl = "https://tamilembed.lol"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+        callback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit
+    ) {
+        try {
+            val doc = app.get(url, headers = mapOf("Referer" to (referer ?: "")), timeout = 15).document
+            val bloggerIfr = doc.selectFirst("iframe[src*=blogger.com]")
+            val bloggerUrl = bloggerIfr?.attr("src")?.trim()
+            if (!bloggerUrl.isNullOrBlank()) {
+                val cleanUrl = if (bloggerUrl.startsWith("//")) "https:$bloggerUrl" else bloggerUrl
+                try {
+                    com.lagradost.cloudstream3.extractors.BloggerCom().getUrl(cleanUrl, url, subtitleCallback, callback)
+                } catch (e: Exception) {
+                    val blogDoc = app.get(cleanUrl, headers = mapOf("Referer" to url)).document
+                    val blogHtml = blogDoc.html()
+                    val match = Regex(""play_url"\s*:\s*"([^"]+)"").findAll(blogHtml)
+                    match.forEach { m ->
+                        val rawUrl = m.groupValues[1].replace("\/", "/")
+                        callback(
+                            com.lagradost.cloudstream3.utils.ExtractorLink(
+                                source = "Blogger",
+                                name = "Blogger - Direct",
+                                url = rawUrl,
+                                referer = cleanUrl,
+                                quality = com.lagradost.cloudstream3.utils.Qualities.P720.value
+                            )
+                        )
+                    }
                 }
             }
         } catch (e: Exception) {
