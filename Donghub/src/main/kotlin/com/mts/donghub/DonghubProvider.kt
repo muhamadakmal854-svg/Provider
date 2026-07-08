@@ -273,7 +273,7 @@ class DonghubProvider : MainAPI() {
             if (code.isNotBlank()) {
                 val regex = """"(https?:)?//[^"\s]+"|'(https?:)?//[^'\s]+'""".toRegex()
                 regex.findAll(code).forEach { match ->
-                    val rawUrl = match.value.trim('"', ''')
+                    val rawUrl = match.value.replace(""", "").replace("'", "")
                     val finalUrl = fixUrl(rawUrl)
                     if (finalUrl.isNotBlank() && (
                         finalUrl.contains(".mp4") || finalUrl.contains(".m3u8") ||
