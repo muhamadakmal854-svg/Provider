@@ -157,7 +157,10 @@ class AnimasuProvider : MainAPI() {
             ?.text()?.trim()
         val genres = currentDoc.select(".genxed a, .genre-info a, .info-content .spe a[href*=genre], .film-genres a")
             .map { it.text() }
-        val eps = currentDoc.select(".eplister ul li a, .episodelist ul li a, .clps li a, .ep-list li a").mapNotNull { a ->
+        val eps = currentDoc.select(
+            ".eplister ul li a, .episodelist ul li a, .clps li a, .ep-list li a, " +
+            "#daftarepisode li a, #daftarepisode a, .epcheck li a, [id*=episode] li a, [id*=episode] a"
+        ).mapNotNull { a ->
             val epTitle = a.selectFirst(".epl-title, .epl-num, span")?.text()?.trim()
                 ?: a.text().trim()
             val epUrl   = a.attr("href")

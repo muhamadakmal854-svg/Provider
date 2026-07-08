@@ -185,13 +185,15 @@ class JuraganfilmProvider : MainAPI() {
                    targetUrl.contains("/anime/") ||
                    currentDoc.select(
                        ".episodes-list li, .episodios li, #seasons .se-c, " +
-                       ".eplister li, .episodelist li, .clps li, #episodes li"
+                       ".eplister li, .episodelist li, .clps li, #episodes li, " +
+                       "#daftarepisode li, #daftarepisode, .epcheck li"
                    ).isNotEmpty()
         return if (isTv) {
             val eps = currentDoc.select(
                 ".episodes-list li a, .episodios li a, #episodes .episodiotitle a, " +
                 ".eplister ul li a, .episodelist ul li a, .ep-list li a, .clps li a, " +
-                "[class*=episode-list] li a, [class*=episode] a[href]"
+                "[class*=episode-list] li a, [class*=episode] a[href], " +
+                "#daftarepisode li a, #daftarepisode a, .epcheck li a, [id*=episode] li a, [id*=episode] a"
             ).mapIndexed { i, a ->
                 newEpisode(fixUrl(a.attr("href"))) {
                     this.name = a.selectFirst(".epl-title, .epl-num, span, .episode-title")
