@@ -16,8 +16,8 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 class AbyssplayerCom : ExtractorApi() {
-    override val name = "AbyssplayerCom"
-    override val mainUrl = "https://abyssplayer.com"
+    override var name = "AbyssplayerCom"
+    override var mainUrl = "https://abyssplayer.com"
     override val requiresReferer = true
 
     private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
@@ -118,13 +118,13 @@ class AbyssplayerCom : ExtractorApi() {
 }
 
 class KisskhMegaplaySu : StreamWishExtractor() {
-    override val name = "KisskhMegaplaySu"
-    override val mainUrl = "https://kisskh.megaplay.su"
+    override var name = "KisskhMegaplaySu"
+    override var mainUrl = "https://kisskh.megaplay.su"
 }
 
 class BloggerCom : ExtractorApi() {
-    override val name = "BloggerCom"
-    override val mainUrl = "https://blogger.com"
+    override var name = "BloggerCom"
+    override var mainUrl = "https://blogger.com"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -175,36 +175,36 @@ class BloggerCom : ExtractorApi() {
 }
 
 class GembengCom : StreamWishExtractor() {
-    override val name = "GembengCom"
-    override val mainUrl = "https://gembeng.com"
+    override var name = "GembengCom"
+    override var mainUrl = "https://gembeng.com"
 }
 
 class PsLarinpaymentCom : StreamWishExtractor() {
-    override val name = "PsLarinpaymentCom"
-    override val mainUrl = "https://ps.larinpayment.com"
+    override var name = "PsLarinpaymentCom"
+    override var mainUrl = "https://ps.larinpayment.com"
 }
 
 class Prx1328AntVmwesaOnline : StreamWishExtractor() {
-    override val name = "Prx1328AntVmwesaOnline"
-    override val mainUrl = "https://prx-1328-ant.vmwesa.online"
+    override var name = "Prx1328AntVmwesaOnline"
+    override var mainUrl = "https://prx-1328-ant.vmwesa.online"
 }
 
 class StreamtapeCom : StreamTape() {
-    override val name = "StreamtapeCom"
-    override val mainUrl = "https://streamtape.com"
+    override var name = "StreamtapeCom"
+    override var mainUrl = "https://streamtape.com"
 }
 
 class PzEerfumerelCom : StreamWishExtractor() {
-    override val name = "PzEerfumerelCom"
-    override val mainUrl = "https://pz.eerfumerel.com"
+    override var name = "PzEerfumerelCom"
+    override var mainUrl = "https://pz.eerfumerel.com"
 }
 
 class Prx1546AntVmwesaOnline : StreamWishExtractor() {
-    override val name = "Prx1546AntVmwesaOnline"
-    override val mainUrl = "https://prx-1546-ant.vmwesa.online"
+    override var name = "Prx1546AntVmwesaOnline"
+    override var mainUrl = "https://prx-1546-ant.vmwesa.online"
 }
 
 class Prx1317AntVmwesaOnline : StreamWishExtractor() {
-    override val name = "Prx1317AntVmwesaOnline"
-    override val mainUrl = "https://prx-1317-ant.vmwesa.online"
+    override var name = "Prx1317AntVmwesaOnline"
+    override var mainUrl = "https://prx-1317-ant.vmwesa.online"
 }

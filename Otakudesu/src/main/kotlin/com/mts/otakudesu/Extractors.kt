@@ -11,13 +11,13 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 class RebrandLy : StreamWishExtractor() {
-    override val name = "RebrandLy"
-    override val mainUrl = "https://rebrand.ly"
+    override var name = "RebrandLy"
+    override var mainUrl = "https://rebrand.ly"
 }
 
 class BloggerCom : ExtractorApi() {
-    override val name = "BloggerCom"
-    override val mainUrl = "https://blogger.com"
+    override var name = "BloggerCom"
+    override var mainUrl = "https://blogger.com"
     override val requiresReferer = true
 
     override suspend fun getUrl(

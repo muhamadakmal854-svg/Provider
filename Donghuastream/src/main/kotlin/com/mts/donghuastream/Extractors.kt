@@ -8,11 +8,11 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 class Porto : StreamWishExtractor() {
-    override val name = "Porto"
-    override val mainUrl = "https://porto"
+    override var name = "Porto"
+    override var mainUrl = "https://porto"
 }
 
 class VikingfileCom : StreamWishExtractor() {
-    override val name = "VikingfileCom"
-    override val mainUrl = "https://vikingfile.com"
+    override var name = "VikingfileCom"
+    override var mainUrl = "https://vikingfile.com"
 }

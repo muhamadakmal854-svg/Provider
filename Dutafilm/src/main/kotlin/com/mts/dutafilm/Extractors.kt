@@ -8,31 +8,31 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 class MessengerCom : StreamWishExtractor() {
-    override val name = "MessengerCom"
-    override val mainUrl = "https://messenger.com"
+    override var name = "MessengerCom"
+    override var mainUrl = "https://messenger.com"
 }
 
 class MetaCom : StreamWishExtractor() {
-    override val name = "MetaCom"
-    override val mainUrl = "https://meta.com"
+    override var name = "MetaCom"
+    override var mainUrl = "https://meta.com"
 }
 
 class MetaAi : StreamWishExtractor() {
-    override val name = "MetaAi"
-    override val mainUrl = "https://meta.ai"
+    override var name = "MetaAi"
+    override var mainUrl = "https://meta.ai"
 }
 
 class ThreadsCom : StreamWishExtractor() {
-    override val name = "ThreadsCom"
-    override val mainUrl = "https://threads.com"
+    override var name = "ThreadsCom"
+    override var mainUrl = "https://threads.com"
 }
 
 class OrOnenessparmackCom : StreamWishExtractor() {
-    override val name = "OrOnenessparmackCom"
-    override val mainUrl = "https://or.onenessparmack.com"
+    override var name = "OrOnenessparmackCom"
+    override var mainUrl = "https://or.onenessparmack.com"
 }
 
 class Dutafilm77MantabMen : StreamWishExtractor() {
-    override val name = "Dutafilm77MantabMen"
-    override val mainUrl = "https://dutafilm77.mantab.men"
+    override var name = "Dutafilm77MantabMen"
+    override var mainUrl = "https://dutafilm77.mantab.men"
 }

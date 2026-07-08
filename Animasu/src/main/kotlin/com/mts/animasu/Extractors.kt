@@ -11,38 +11,38 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 class I1WpCom : StreamWishExtractor() {
-    override val name = "I1WpCom"
-    override val mainUrl = "https://i1.wp.com"
+    override var name = "I1WpCom"
+    override var mainUrl = "https://i1.wp.com"
 }
 
 class I0WpCom : StreamWishExtractor() {
-    override val name = "I0WpCom"
-    override val mainUrl = "https://i0.wp.com"
+    override var name = "I0WpCom"
+    override var mainUrl = "https://i0.wp.com"
 }
 
 class I2WpCom : StreamWishExtractor() {
-    override val name = "I2WpCom"
-    override val mainUrl = "https://i2.wp.com"
+    override var name = "I2WpCom"
+    override var mainUrl = "https://i2.wp.com"
 }
 
 class I3WpCom : StreamWishExtractor() {
-    override val name = "I3WpCom"
-    override val mainUrl = "https://i3.wp.com"
+    override var name = "I3WpCom"
+    override var mainUrl = "https://i3.wp.com"
 }
 
 class AnimasuWork : StreamWishExtractor() {
-    override val name = "AnimasuWork"
-    override val mainUrl = "https://animasu.work"
+    override var name = "AnimasuWork"
+    override var mainUrl = "https://animasu.work"
 }
 
 class AnimasuDev : StreamWishExtractor() {
-    override val name = "AnimasuDev"
-    override val mainUrl = "https://animasu.dev"
+    override var name = "AnimasuDev"
+    override var mainUrl = "https://animasu.dev"
 }
 
 class BloggerCom : ExtractorApi() {
-    override val name = "BloggerCom"
-    override val mainUrl = "https://blogger.com"
+    override var name = "BloggerCom"
+    override var mainUrl = "https://blogger.com"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -93,8 +93,8 @@ class BloggerCom : ExtractorApi() {
 }
 
 class DraftBloggerCom : ExtractorApi() {
-    override val name = "DraftBloggerCom"
-    override val mainUrl = "https://draft.blogger.com"
+    override var name = "DraftBloggerCom"
+    override var mainUrl = "https://draft.blogger.com"
     override val requiresReferer = true
 
     override suspend fun getUrl(

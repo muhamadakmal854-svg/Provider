@@ -15,18 +15,18 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 class ZombiemealCom : StreamWishExtractor() {
-    override val name = "ZombiemealCom"
-    override val mainUrl = "https://zombiemeal.com"
+    override var name = "ZombiemealCom"
+    override var mainUrl = "https://zombiemeal.com"
 }
 
 class VipIdlix21Pro : StreamWishExtractor() {
-    override val name = "VipIdlix21Pro"
-    override val mainUrl = "https://vip.idlix21.pro"
+    override var name = "VipIdlix21Pro"
+    override var mainUrl = "https://vip.idlix21.pro"
 }
 
 class EmbedpyroxXyz : ExtractorApi() {
-    override val name = "EmbedpyroxXyz"
-    override val mainUrl = "https://embedpyrox.xyz"
+    override var name = "EmbedpyroxXyz"
+    override var mainUrl = "https://embedpyrox.xyz"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -71,8 +71,8 @@ class EmbedpyroxXyz : ExtractorApi() {
 }
 
 class AbyssplayerCom : ExtractorApi() {
-    override val name = "AbyssplayerCom"
-    override val mainUrl = "https://abyssplayer.com"
+    override var name = "AbyssplayerCom"
+    override var mainUrl = "https://abyssplayer.com"
     override val requiresReferer = true
 
     private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
@@ -173,66 +173,66 @@ class AbyssplayerCom : ExtractorApi() {
 }
 
 class CvGenipspillionCom : StreamWishExtractor() {
-    override val name = "CvGenipspillionCom"
-    override val mainUrl = "https://cv.genipspillion.com"
+    override var name = "CvGenipspillionCom"
+    override var mainUrl = "https://cv.genipspillion.com"
 }
 
 class MorenciusCom : StreamWishExtractor() {
-    override val name = "MorenciusCom"
-    override val mainUrl = "https://morencius.com"
+    override var name = "MorenciusCom"
+    override var mainUrl = "https://morencius.com"
 }
 
 class PortalMgaOrgMt : StreamWishExtractor() {
-    override val name = "PortalMgaOrgMt"
-    override val mainUrl = "https://portal.mga.org.mt"
+    override var name = "PortalMgaOrgMt"
+    override var mainUrl = "https://portal.mga.org.mt"
 }
 
 class RedorangeComMt : StreamWishExtractor() {
-    override val name = "RedorangeComMt"
-    override val mainUrl = "https://redorange.com.mt"
+    override var name = "RedorangeComMt"
+    override var mainUrl = "https://redorange.com.mt"
 }
 
 class Server9HdigitalCom : StreamWishExtractor() {
-    override val name = "Server9HdigitalCom"
-    override val mainUrl = "https://9hdigital.com"
+    override var name = "Server9HdigitalCom"
+    override var mainUrl = "https://9hdigital.com"
 }
 
 class UseTypekitNet : StreamWishExtractor() {
-    override val name = "UseTypekitNet"
-    override val mainUrl = "https://use.typekit.net"
+    override var name = "UseTypekitNet"
+    override var mainUrl = "https://use.typekit.net"
 }
 
 class VincentdesignCa : StreamWishExtractor() {
-    override val name = "VincentdesignCa"
-    override val mainUrl = "https://vincentdesign.ca"
+    override var name = "VincentdesignCa"
+    override var mainUrl = "https://vincentdesign.ca"
 }
 
 class ResponsiblegamblingOrg : StreamWishExtractor() {
-    override val name = "ResponsiblegamblingOrg"
-    override val mainUrl = "https://responsiblegambling.org"
+    override var name = "ResponsiblegamblingOrg"
+    override var mainUrl = "https://responsiblegambling.org"
 }
 
 class AjaxAspnetcdnCom : StreamWishExtractor() {
-    override val name = "AjaxAspnetcdnCom"
-    override val mainUrl = "https://ajax.aspnetcdn.com"
+    override var name = "AjaxAspnetcdnCom"
+    override var mainUrl = "https://ajax.aspnetcdn.com"
 }
 
 class AppFive9Eu : StreamWishExtractor() {
-    override val name = "AppFive9Eu"
-    override val mainUrl = "https://app.five9.eu"
+    override var name = "AppFive9Eu"
+    override var mainUrl = "https://app.five9.eu"
 }
 
 class GambleawareOrg : StreamWishExtractor() {
-    override val name = "GambleawareOrg"
-    override val mainUrl = "https://gambleaware.org"
+    override var name = "GambleawareOrg"
+    override var mainUrl = "https://gambleaware.org"
 }
 
 class IYtimgCom : StreamWishExtractor() {
-    override val name = "IYtimgCom"
-    override val mainUrl = "https://i.ytimg.com"
+    override var name = "IYtimgCom"
+    override var mainUrl = "https://i.ytimg.com"
 }
 
 class YoutuBe : StreamWishExtractor() {
-    override val name = "YoutuBe"
-    override val mainUrl = "https://youtu.be"
+    override var name = "YoutuBe"
+    override var mainUrl = "https://youtu.be"
 }

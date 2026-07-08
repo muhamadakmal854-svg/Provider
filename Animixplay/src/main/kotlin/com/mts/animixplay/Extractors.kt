@@ -8,26 +8,26 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 class EoBilstedquotasCom : StreamWishExtractor() {
-    override val name = "EoBilstedquotasCom"
-    override val mainUrl = "https://eo.bilstedquotas.com"
+    override var name = "EoBilstedquotasCom"
+    override var mainUrl = "https://eo.bilstedquotas.com"
 }
 
 class TamilembedLol : StreamWishExtractor() {
-    override val name = "TamilembedLol"
-    override val mainUrl = "https://tamilembed.lol"
+    override var name = "TamilembedLol"
+    override var mainUrl = "https://tamilembed.lol"
 }
 
 class KwikCx : StreamWishExtractor() {
-    override val name = "KwikCx"
-    override val mainUrl = "https://kwik.cx"
+    override var name = "KwikCx"
+    override var mainUrl = "https://kwik.cx"
 }
 
 class GogoanimetvEs : StreamWishExtractor() {
-    override val name = "GogoanimetvEs"
-    override val mainUrl = "https://gogoanimetv.es"
+    override var name = "GogoanimetvEs"
+    override var mainUrl = "https://gogoanimetv.es"
 }
 
 class AnimesamaSe : StreamWishExtractor() {
-    override val name = "AnimesamaSe"
-    override val mainUrl = "https://animesama.se"
+    override var name = "AnimesamaSe"
+    override var mainUrl = "https://animesama.se"
 }

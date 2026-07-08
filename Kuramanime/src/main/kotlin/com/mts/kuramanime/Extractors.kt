@@ -8,21 +8,21 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 class KuramaSubindoNet : StreamWishExtractor() {
-    override val name = "KuramaSubindoNet"
-    override val mainUrl = "https://kurama.subindo.net"
+    override var name = "KuramaSubindoNet"
+    override var mainUrl = "https://kurama.subindo.net"
 }
 
 class KuramashopNet : StreamWishExtractor() {
-    override val name = "KuramashopNet"
-    override val mainUrl = "https://kuramashop.net"
+    override var name = "KuramashopNet"
+    override var mainUrl = "https://kuramashop.net"
 }
 
 class TrakteerId : StreamWishExtractor() {
-    override val name = "TrakteerId"
-    override val mainUrl = "https://trakteer.id"
+    override var name = "TrakteerId"
+    override var mainUrl = "https://trakteer.id"
 }
 
 class SaweriaCo : StreamWishExtractor() {
-    override val name = "SaweriaCo"
-    override val mainUrl = "https://saweria.co"
+    override var name = "SaweriaCo"
+    override var mainUrl = "https://saweria.co"
 }

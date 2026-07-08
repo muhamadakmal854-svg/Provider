@@ -651,8 +651,8 @@ class KlikxxidProvider : MainAPI() {
 }
 
 class AbyssExtractor : ExtractorApi() {
-    override val name = "Abyss"
-    override val mainUrl = "https://abyssplayer.com"
+    override var name = "Abyss"
+    override var mainUrl = "https://abyssplayer.com"
     override val requiresReferer = true
 
     private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
