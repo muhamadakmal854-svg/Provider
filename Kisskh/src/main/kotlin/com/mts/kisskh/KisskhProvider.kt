@@ -131,7 +131,7 @@ class KisskhProvider : MainAPI() {
             }
             if (!parentLink.isNullOrBlank()) {
                 val resolved = if (parentLink.startsWith("http")) parentLink else {
-                    val base = mainUrl.rstrip("/")
+                    val base = mainUrl.removeSuffix("/")
                     if (parentLink.startsWith("/")) "$base$parentLink" else "$base/$parentLink"
                 }
                 try {
