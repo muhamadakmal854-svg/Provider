@@ -266,6 +266,26 @@ class KlikxxiProvider : MainAPI() {
             }
         }
 
+        // 4.5. Search for URLs inside script blocks (Regex extraction for Custom PHP/JS players)
+        doc.select("script").forEach { script ->
+            val code = script.html()
+            if (code.isNotBlank()) {
+                val regex = """"(https?:)?//[^"\s]+"|'(https?:)?//[^'\s]+'""".toRegex()
+                regex.findAll(code).forEach { match ->
+                    val rawUrl = match.value.trim('"', ''')
+                    val finalUrl = fixUrl(rawUrl)
+                    if (finalUrl.isNotBlank() && (
+                        finalUrl.contains(".mp4") || finalUrl.contains(".m3u8") ||
+                        finalUrl.contains(".mkv") || finalUrl.contains("/embed/") ||
+                        finalUrl.contains("/player/") || finalUrl.contains("/e/") ||
+                        finalUrl.contains("/v/") || finalUrl.contains("cloudfront.net")
+                    )) {
+                        targets.add(finalUrl)
+                    }
+                }
+            }
+        }
+
         // 5. AJAX Options (ZetaFlix, DooPlay, Flavor themes)
         val ajaxBtns = doc.select("[data-post][data-nume], ul#playeroptionsul > li, li.zetaflix_player_option, .mirror-item")
         val ajaxOptions = ajaxBtns.mapNotNull {
