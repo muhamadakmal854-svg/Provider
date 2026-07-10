@@ -653,25 +653,34 @@ class AbyssExtractor : ExtractorApi() {
             val decodedBytes = android.util.Base64.decode(base64Str, android.util.Base64.DEFAULT)
             val latin1Str = String(decodedBytes, Charsets.ISO_8859_1)
 
-            val json = org.json.JSONObject(latin1Str)
-            val slug = json.getString("slug")
-            val userId = json.getString("user_id")
-            val md5Id = json.getString("md5_id")
-            val media = json.getString("media")
+            val slugStart = latin1Str.indexOf("\"slug\":\"") + 8
+            val slugEnd = latin1Str.indexOf("\"", slugStart)
+            val slug = latin1Str.substring(slugStart, slugEnd)
+
+            val userIdStart = latin1Str.indexOf("\"user_id\":") + 10
+            val userIdEnd = latin1Str.indexOf(",", userIdStart)
+            val userId = latin1Str.substring(userIdStart, userIdEnd)
+
+            val md5IdStart = latin1Str.indexOf("\"md5_id\":") + 9
+            val md5IdEnd = latin1Str.indexOf(",", md5IdStart)
+            val md5Id = latin1Str.substring(md5IdStart, md5IdEnd)
+
+            val mediaStart = latin1Str.indexOf("\"media\":\"") + 9
+            val mediaEnd = latin1Str.indexOf("\",\"config\"")
+            val media = latin1Str.substring(mediaStart, mediaEnd)
 
             val keyStr = "$userId:$slug:$md5Id"
             val keyBytesStr = md5(keyStr.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
             val key = keyBytesStr.toByteArray(Charsets.UTF_8)
             val iv = key.sliceArray(0 until 16)
 
-            val mediaCiphertext = android.util.Base64.decode(media, android.util.Base64.DEFAULT)
+            val mediaCiphertext = media.toByteArray(Charsets.ISO_8859_1)
             val decryptedMediaBytes = decryptAesCtr(mediaCiphertext, key, iv)
             val decryptedMediaStr = String(decryptedMediaBytes, Charsets.UTF_8)
 
             val mediaJson = org.json.JSONObject(decryptedMediaStr)
             val mp4 = mediaJson.getJSONObject("mp4")
             val sources = mp4.getJSONArray("sources")
-            val domainsObj = if (mp4.has("domains")) mp4.getJSONObject("domains") else if (mediaJson.has("domains")) mediaJson.getJSONObject("domains") else org.json.JSONObject()
 
             for (i in 0 until sources.length()) {
                 val src = sources.getJSONObject(i)
@@ -680,7 +689,24 @@ class AbyssExtractor : ExtractorApi() {
                 val label = src.getString("label")
                 val sub = src.getString("sub")
 
-                val domain = domainsObj.getString(sub)
+                var domain = ""
+                try {
+                    val domainsObj = if (mp4.has("domains")) mp4.get("domains") else if (mediaJson.has("domains")) mediaJson.get("domains") else null
+                    if (domainsObj is org.json.JSONArray) {
+                        for (d in 0 until domainsObj.length()) {
+                            val dStr = domainsObj.getString(d)
+                            if (dStr.contains(sub)) {
+                                domain = dStr
+                                break
+                            }
+                        }
+                    } else if (domainsObj is org.json.JSONObject) {
+                        domain = domainsObj.getString(sub)
+                    }
+                } catch (_: Exception) {}
+                if (domain.isEmpty()) {
+                    domain = "$sub.sssrr.org"
+                }
 
                 val pathStr = "/mp4/$md5Id/$resId/$size?v=$slug"
                 
