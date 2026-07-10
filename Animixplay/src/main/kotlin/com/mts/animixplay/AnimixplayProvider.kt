@@ -349,6 +349,24 @@ class AnimixplayProvider : BaseFixProvider() {
         val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
         val targets = mutableListOf<String>()
 
+        // 0. Parse buttons containing loadMi Base64 iframe html
+        doc.select("button[onclick*='loadMi']").forEach { button ->
+            val onclick = button.attr("onclick")
+            val base64 = onclick.substringAfter("value:").substringAfter("'").substringBefore("'").trim()
+            if (base64.isNotEmpty()) {
+                try {
+                    val decodedBytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+                    val html = String(decodedBytes, Charsets.UTF_8)
+                    val parsedIfr = Jsoup.parse(html).selectFirst("iframe[src], iframe[data-src], iframe[data-lazy-src]")
+                    val src = parsedIfr?.attr("src")?.ifEmpty { parsedIfr.attr("data-src") }?.ifEmpty { parsedIfr.attr("data-lazy-src") } ?: ""
+                    if (src.isNotBlank()) {
+                        val finalUrl = fixAnimixplayUrl(src, data)
+                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
         // 1. Direct video/source elements
         doc.select("source[src], video source[src], video[src]").forEach { el ->
             val src = el.attr("src").trim()
@@ -476,7 +494,14 @@ class TamilEmbed : ExtractorApi() {
         callback: (com.lagradost.cloudstream3.utils.ExtractorLink) -> Unit
     ) {
         try {
-            val doc = app.get(url, headers = mapOf("Referer" to (referer ?: "")), timeout = 15).document
+            val doc = app.get(
+                url = url,
+                headers = mapOf(
+                    "Referer" to (referer ?: ""),
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+                timeout = 15
+            ).document
             val bloggerIfr = doc.selectFirst("iframe[src*=blogger.com]")
             val bloggerUrl = bloggerIfr?.attr("src")?.trim()
             if (!bloggerUrl.isNullOrBlank()) {
