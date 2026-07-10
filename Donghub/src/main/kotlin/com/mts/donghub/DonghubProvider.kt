@@ -270,7 +270,6 @@ class DonghubProvider : BaseFixProvider() {
         // 3. Extractor loading
         targets.distinct().forEach { cleanUrl ->
             val cleanUrlEscaped = cleanUrl.replace(" ", "%20")
-            val isTamilEmbed = cleanUrlEscaped.contains("tamilembed", true)
             val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
             val isDood = listOf("dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
             val isVoe = cleanUrlEscaped.contains("voe.sx", true) || cleanUrlEscaped.contains("voe", true)
@@ -304,11 +303,6 @@ class DonghubProvider : BaseFixProvider() {
                                 )
                             }
                         }
-                    } catch (_: Exception) {}
-                }
-                isTamilEmbed -> {
-                    try {
-                        TamilEmbed().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                     } catch (_: Exception) {}
                 }
                 isStreamWish -> {
