@@ -98,8 +98,8 @@ abstract class BaseFixProvider : MainAPI() {
         }
     }
 
+    @Suppress("DEPRECATION")
     suspend fun parseMultiRowHome(
-        request: MainPageRequest,
         entries: List<Pair<String, String>>,
         itemSelector: String
     ): HomePageResponse {
@@ -113,7 +113,7 @@ abstract class BaseFixProvider : MainAPI() {
             }
             HomePageList(label, items)
         }.filter { it.list.isNotEmpty() }
-        return newHomePageResponse(request, lists, hasNext = false)
+        return HomePageResponse(lists)
     }
 }
 
@@ -182,7 +182,7 @@ class DrakoridProvider : BaseFixProvider() {
                              "data-original", "data-image", "data-bg", "src")) {
             val v = this.attr(attr)
             if (v.isNotBlank() && !v.contains("data:image") &&
-                (v.startsWith("http" ) || v.startsWith("//"))) {
+                (v.startsWith("http") || v.startsWith("//"))) {
                 return if (v.startsWith("//")) "https:$v" else v
             }
         }
@@ -260,6 +260,7 @@ class DrakoridProvider : BaseFixProvider() {
         }.distinctBy { it.url }
     }
 
+    @Suppress("DEPRECATION")
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val path = request.data
         if (path.contains("section=hot-series")) {
@@ -273,7 +274,7 @@ class DrakoridProvider : BaseFixProvider() {
             } else {
                 emptyList()
             }
-            return newHomePageResponse(request, listOf(HomePageList(request.name, items)), hasNext = false)
+            return HomePageResponse(listOf(HomePageList(request.name, items)))
         } else if (path.contains("section=latest-release")) {
             val pageUrl = if (page > 1) {
                 "$mainUrl/series/page/$page/?status=&type=&order=update"
@@ -281,7 +282,7 @@ class DrakoridProvider : BaseFixProvider() {
                 "$mainUrl/series/?status=&type=&order=update"
             }
             val items = scrapeList(pageUrl)
-            return newHomePageResponse(request, listOf(HomePageList(request.name, items)), hasNext = true)
+            return HomePageResponse(listOf(HomePageList(request.name, items)))
         } else {
             val cleanPath = path.removePrefix("/").removeSuffix("/")
             val pageUrl = if (page > 1) {
@@ -290,7 +291,7 @@ class DrakoridProvider : BaseFixProvider() {
                 "$mainUrl/$cleanPath/"
             }
             val items = scrapeList(pageUrl)
-            return newHomePageResponse(request, listOf(HomePageList(request.name, items)), hasNext = true)
+            return HomePageResponse(listOf(HomePageList(request.name, items)))
         }
     }
 
