@@ -399,8 +399,8 @@ class OploverzProvider : BaseFixProvider() {
         }
 
 
-        // 4. Clickable elements, links, buttons, lists
-        doc.select("a, button, li, div, span, .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
+        // 4. Clickable elements, links, buttons, lists (Optimized to avoid selecting all divs/spans)
+        doc.select("a, button, [data-src], [data-link], [data-embed], [data-video], [data-url], [data-id], .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
                 val finalUrl = fixUrl(href)
@@ -550,7 +550,7 @@ class OploverzProvider : BaseFixProvider() {
             }
         }
 
-        // 6. Harvest URLs directly from <script> tags
+        // 6. Harvest URLs directly from <script> tags (Optimized to keep only potential video/embed URLs)
         doc.select("script").forEach { script ->
             val content = script.data()
             if (content.isNotBlank()) {
@@ -558,7 +558,17 @@ class OploverzProvider : BaseFixProvider() {
                     val url = match.value
                     if (!url.contains("google") && !url.contains("facebook") && !url.contains("analytics")) {
                         val finalUrl = fixUrl(url)
-                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                        if (finalUrl.isNotEmpty() && (
+                            finalUrl.contains(".mp4") || finalUrl.contains(".m3u8") ||
+                            finalUrl.contains(".mkv") || finalUrl.contains("/embed/") ||
+                            finalUrl.contains("/player/") || finalUrl.contains("/e/") ||
+                            finalUrl.contains("/v/") || finalUrl.contains("playerx") ||
+                            finalUrl.contains("ezplayer") || finalUrl.contains("abyss") ||
+                            finalUrl.contains("seekplayer") || finalUrl.contains("streamwish") ||
+                            finalUrl.contains("voe") || finalUrl.contains("dood")
+                        )) {
+                            targets.add(finalUrl)
+                        }
                     }
                 }
             }
