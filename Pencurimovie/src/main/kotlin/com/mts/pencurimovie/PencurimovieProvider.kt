@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.mts.pencurimovie
 
 import com.lagradost.api.Log

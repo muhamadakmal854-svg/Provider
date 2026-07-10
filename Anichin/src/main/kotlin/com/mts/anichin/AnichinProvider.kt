@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.mts.anichin
 
 import org.jsoup.nodes.Element

@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.mts.ngefilm
 
 import com.lagradost.cloudstream3.*

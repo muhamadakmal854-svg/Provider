@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.mts.otakudesu
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties

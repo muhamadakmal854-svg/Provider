@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.mts.lk21
 
 import com.lagradost.api.Log
