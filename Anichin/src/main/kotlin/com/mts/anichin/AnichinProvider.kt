@@ -7,7 +7,6 @@ import org.jsoup.Jsoup
 
 
 abstract class BaseFixProvider : MainAPI() {
-    override var hasMainPage = true
 
     fun fixUrl(url: String, referer: String): String {
         if (url.isBlank()) return ""
@@ -26,7 +25,7 @@ abstract class BaseFixProvider : MainAPI() {
         }
     }
 
-    fun Element.posterUrl(): String {
+    fun Element.extractPosterUrl(): String {
         for (attr in listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc",
                              "data-original", "data-image", "data-bg", "src")) {
             val v = this.attr(attr)
@@ -75,11 +74,11 @@ abstract class BaseFixProvider : MainAPI() {
         
         if (title.isBlank()) return null
         
-        var src = img?.posterUrl() ?: ""
-        if (src.isEmpty()) src = this.posterUrl()
+        var src = img?.extractPosterUrl() ?: ""
+        if (src.isEmpty()) src = this.extractPosterUrl()
         if (src.isEmpty()) {
             this.select("[style*=background], [style*=url]").forEach { el ->
-                val u = el.posterUrl()
+                val u = el.extractPosterUrl()
                 if (u.isNotEmpty()) { src = u; return@forEach }
             }
         }
@@ -113,7 +112,7 @@ abstract class BaseFixProvider : MainAPI() {
             }
             HomePageList(label, items)
         }.filter { it.list.isNotEmpty() }
-        return HomePageResponse(lists)
+        return newHomePageResponse(lists)
     }
 }
 
