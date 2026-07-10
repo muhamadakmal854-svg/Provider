@@ -542,7 +542,7 @@ class AnimasuProvider : BaseFixProvider() {
                         }
                     } catch (_: Exception) {}
 
-                    val cleanHtml = targetHtml.replace("\/", "/").replace("\"", """)
+                    val cleanHtml = targetHtml.replace("\\/", "/").replace("\\" + 34.toChar().toString(), 34.toChar().toString())
                     val parsedDoc = Jsoup.parse(cleanHtml)
                     val iframeSrc = parsedDoc.selectFirst("iframe[src], iframe[data-src]")?.let { 
                         it.attr("src").ifEmpty { it.attr("data-src") } 
