@@ -104,6 +104,7 @@ abstract class BaseFixProvider : MainAPI() {
     }
 
     suspend fun parseMultiRowHome(
+        request: MainPageRequest,
         entries: List<Pair<String, String>>,
         itemSelector: String
     ): HomePageResponse {
@@ -117,7 +118,7 @@ abstract class BaseFixProvider : MainAPI() {
             }
             HomePageList(label, items)
         }.filter { it.list.isNotEmpty() }
-        return newHomePageResponse(lists)
+        return newHomePageResponse(request, lists, hasNext = false)
     }
 }
 

@@ -103,6 +103,7 @@ abstract class BaseFixProvider : MainAPI() {
     }
 
     suspend fun parseMultiRowHome(
+        request: MainPageRequest,
         entries: List<Pair<String, String>>,
         itemSelector: String
     ): HomePageResponse {
@@ -116,7 +117,7 @@ abstract class BaseFixProvider : MainAPI() {
             }
             HomePageList(label, items)
         }.filter { it.list.isNotEmpty() }
-        return newHomePageResponse(lists)
+        return newHomePageResponse(request, lists, hasNext = false)
     }
 }
 
@@ -125,7 +126,7 @@ class OploverzProvider : BaseFixProvider() {
     override var mainUrl        = "https://oploverz.ch"
     override var name           = "Oploverz"
     override var lang           = "id"
-    override val hasMainPage    = true
+    override var hasMainPage    = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
@@ -154,6 +155,7 @@ class OploverzProvider : BaseFixProvider() {
         val items = scrapeList(pageUrl)
         if (items.isEmpty() && page == 1) {
             return parseMultiRowHome(
+                request,
                 mainPage.map { Pair(it.data, it.name) },
                 ".bsx, .bs, article.bs, article, .animpost, .animepost, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, .post, .entry, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .hentry, .gmr-box-content"
             )
