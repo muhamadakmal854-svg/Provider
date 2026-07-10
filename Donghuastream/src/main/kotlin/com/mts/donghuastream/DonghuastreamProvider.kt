@@ -893,6 +893,64 @@ class DonghuastreamProvider : BaseFixProvider() {
                                                     }
                                                 }
                                             }
+
+                                            embedDoc.select("iframe[src], iframe[data-src], iframe[data-lazy-src]").forEach { iframe ->
+                                                val iframeSrc = iframe.attr("src").ifEmpty { iframe.attr("data-src") }.ifEmpty { iframe.attr("data-lazy-src") }.trim()
+                                                if (iframeSrc.isNotBlank()) {
+                                                    val finalIframeUrl = fixUrl(iframeSrc)
+                                                    if (finalIframeUrl.isNotEmpty() && finalIframeUrl != cleanUrlEscaped) {
+                                                        val cleanIf = finalIframeUrl.replace(92.toChar().toString(), "")
+                                                        val loadedSub = loadExtractor(cleanIf, cleanUrlEscaped, subtitleCallback, callback)
+                                                        if (!loadedSub) {
+                                                            try {
+                                                                val subDoc = app.get(cleanIf, referer = cleanUrlEscaped).document
+                                                                
+                                                                subDoc.select("source[src], video source[src], video[src]").forEach { el ->
+                                                                    val src = el.attr("src").trim()
+                                                                    val finalUrl = fixUrl(src)
+                                                                    if (finalUrl.isNotEmpty()) {
+                                                                        val cleanUrl2 = finalUrl.replace(92.toChar().toString(), "")
+                                                                        val isM3u = cleanUrl2.contains(".m3u8") || cleanUrl2.contains("/hls/")
+                                                                        callback(
+                                                                            newExtractorLink(
+                                                                                source = "Direct Stream",
+                                                                                name = "Direct Stream",
+                                                                                url = cleanUrl2,
+                                                                                type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                                            ) {
+                                                                                this.referer = cleanIf
+                                                                            }
+                                                                        )
+                                                                    }
+                                                                }
+                                                                
+                                                                subDoc.select("script").forEach { script ->
+                                                                    val code = script.data()
+                                                                    if (code.isNotBlank()) {
+                                                                        Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+\.(?:m3u8|mp4|mkv)(?:\?[^"']*)?""").findAll(code).forEach { match ->
+                                                                            val urlStr = match.value
+                                                                            val finalUrl = fixUrl(urlStr)
+                                                                            if (finalUrl.isNotEmpty()) {
+                                                                                val isM3u = finalUrl.contains(".m3u8") || finalUrl.contains("/hls/")
+                                                                                callback(
+                                                                                    newExtractorLink(
+                                                                                        source = "Direct Stream",
+                                                                                        name = "Direct Stream",
+                                                                                        url = finalUrl,
+                                                                                        type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                                                    ) {
+                                                                                        this.referer = cleanIf
+                                                                                    }
+                                                                                )
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } catch (_: Exception) {}
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 } catch (e: Exception) {
