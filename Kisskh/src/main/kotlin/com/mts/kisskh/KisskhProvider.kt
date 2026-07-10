@@ -526,20 +526,34 @@ class KisskhProvider : BaseFixProvider() {
                         )
                     )
                     if (!response.isSuccessful) continue
-                    val json = response.text
+                    val json = response.text.trim()
                     if (json.isBlank() || json == "0" || json == "false" || json == "null") continue
 
-                    // Extract iframe or URL from response HTML/JSON
-                    val parsedDoc = Jsoup.parse(json)
+                    var targetHtml = json
+                    try {
+                        if (json.startsWith("{")) {
+                            val jsonObj = org.json.JSONObject(json)
+                            targetHtml = jsonObj.optString("embed_url").ifEmpty {
+                                jsonObj.optString("embed").ifEmpty {
+                                    jsonObj.optString("url").ifEmpty {
+                                        jsonObj.optString("html").ifEmpty { json }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    val cleanHtml = targetHtml.replace("\/", "/").replace("\"", """)
+                    val parsedDoc = Jsoup.parse(cleanHtml)
                     val iframeSrc = parsedDoc.selectFirst("iframe[src], iframe[data-src]")?.let { 
                         it.attr("src").ifEmpty { it.attr("data-src") } 
                     }
 
                     val embedUrl = iframeSrc
-                        ?: Regex("""src=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
-                        ?: Regex("""href=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
-                        ?: Regex("""["'](https?:[^"']+)["']""").find(json)?.groupValues?.get(1)
-                        ?: if (json.trim().startsWith("http")) json.trim() else null
+                        ?: Regex("""src=["']([^"']+)["']""").find(cleanHtml)?.groupValues?.get(1)
+                        ?: Regex("""href=["']([^"']+)["']""").find(cleanHtml)?.groupValues?.get(1)
+                        ?: Regex("""["'](https?:[^"']+)["']""").find(cleanHtml)?.groupValues?.get(1)
+                        ?: if (cleanHtml.trim().startsWith("http")) cleanHtml.trim() else null
 
                     if (embedUrl != null) {
                         val cleanUrl = fixUrl(embedUrl)
@@ -830,7 +844,58 @@ class KisskhProvider : BaseFixProvider() {
                             }
                             else -> {
                                 try {
-                                    loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    val loaded = loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                                    if (!loaded) {
+                                        if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
+                                            !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
+                                            !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
+                                            !cleanUrlEscaped.contains("adskeeper")) {
+                                            
+                                            val embedDoc = app.get(cleanUrlEscaped, referer = data).document
+                                            
+                                            embedDoc.select("source[src], video source[src], video[src]").forEach { el ->
+                                                val src = el.attr("src").trim()
+                                                val finalUrl = fixUrl(src)
+                                                if (finalUrl.isNotEmpty()) {
+                                                    val cleanIf = finalUrl.replace(92.toChar().toString(), "")
+                                                    val isM3u = cleanIf.contains(".m3u8") || cleanIf.contains("/hls/")
+                                                    callback(
+                                                        newExtractorLink(
+                                                            source = "Direct Stream",
+                                                            name = "Direct Stream",
+                                                            url = cleanIf,
+                                                            type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                        ) {
+                                                            this.referer = cleanUrlEscaped
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                            
+                                            embedDoc.select("script").forEach { script ->
+                                                val code = script.data()
+                                                if (code.isNotBlank()) {
+                                                    Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+\.(?:m3u8|mp4|mkv)(?:\?[^"']*)?""").findAll(code).forEach { match ->
+                                                        val urlStr = match.value
+                                                        val finalUrl = fixUrl(urlStr)
+                                                        if (finalUrl.isNotEmpty()) {
+                                                            val isM3u = finalUrl.contains(".m3u8") || finalUrl.contains("/hls/")
+                                                            callback(
+                                                                newExtractorLink(
+                                                                    source = "Direct Stream",
+                                                                    name = "Direct Stream",
+                                                                    url = finalUrl,
+                                                                    type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                                ) {
+                                                                    this.referer = cleanUrlEscaped
+                                                                }
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 } catch (e: Exception) {
                                     android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
                                 }
