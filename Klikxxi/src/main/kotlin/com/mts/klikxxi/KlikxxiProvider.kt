@@ -741,6 +741,7 @@ class KlikxxiProvider : BaseFixProvider() {
                         val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
                         val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
                         val isAbyss = listOf("abyssplayer.com", "abyss.to", "abysscdn.com", "iamcdn.net", "sssrr").any { cleanUrlEscaped.contains(it, true) }
+                        val isPlayerX = listOf("ezplayer.stream", "player4me.online", "rpmplay.online", "seekplays.online", "p2pstream.online", "upns.live").any { cleanUrlEscaped.contains(it, true) }
                         val isSeekPlayer = cleanUrlEscaped.contains("seekplayer", true)
                         val isTamilEmbed = cleanUrlEscaped.contains("tamilembed", true)
 
@@ -764,6 +765,13 @@ class KlikxxiProvider : BaseFixProvider() {
                                     AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "AbyssExtractor failed: ${e.message}")
+                                }
+                            }
+                            isPlayerX -> {
+                                try {
+                                    PlayerXExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "PlayerXExtractor failed: ${e.message}")
                                 }
                             }
                             isStreamWish -> {

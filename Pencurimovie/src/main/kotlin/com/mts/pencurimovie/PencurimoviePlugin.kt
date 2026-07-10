@@ -34,5 +34,6 @@ class PencurimoviePlugin : Plugin() {
         registerExtractorAPI(AbyssplayerCom())
         registerExtractorAPI(AbysscdnCom())
         registerExtractorAPI(DsvplayCom())
+        registerExtractorAPI(PlayerXExtractor())
     }
 }

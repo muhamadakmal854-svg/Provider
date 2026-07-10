@@ -13,5 +13,6 @@ class PMSMPlugin : Plugin() {
         registerExtractorAPI(DsvplayCom())
         registerExtractorAPI(HgcloudTo())
         registerExtractorAPI(HglinkTo())
+        registerExtractorAPI(PlayerXExtractor())
     }
 }
