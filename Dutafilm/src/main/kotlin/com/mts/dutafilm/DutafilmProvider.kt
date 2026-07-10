@@ -402,12 +402,6 @@ class DutafilmProvider : BaseFixProvider() {
             } catch (_: Exception) {}
         }
         
-        when (ptype) {
-            "hydrax" -> if (hydraxId.isNotBlank()) resolveHydrax(hydraxId)
-            "sb" -> if (sbId.isNotBlank()) resolveStreamSB(sbId)
-            "p2p" -> if (p2pId.isNotBlank()) resolveP2P(p2pId)
-        }
-        
         if (ptype != "hydrax" && hydraxId.isNotBlank()) resolveHydrax(hydraxId)
         if (ptype != "sb" && sbId.isNotBlank()) resolveStreamSB(sbId)
         if (ptype != "p2p" && p2pId.isNotBlank()) resolveP2P(p2pId)
