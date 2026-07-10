@@ -159,7 +159,7 @@ class DrakoridProvider : BaseFixProvider() {
         "genres/youth" to "Youth"
     )
 
-    fun fixUrl(url: String, referer: String = mainUrl): String {
+    fun fixDrakoridUrl(url: String, referer: String = mainUrl): String {
         if (url.isBlank()) return ""
         if (url.startsWith("http")) return url
         if (url.startsWith("//")) return "https:" + url
@@ -210,7 +210,7 @@ class DrakoridProvider : BaseFixProvider() {
         return ""
     }
 
-    private fun Element.toSearchResponse(mainUrl: String): SearchResponse? {
+    private fun Element.toDrakoridSearchResponse(mainUrl: String): SearchResponse? {
         val a = (if (this.tagName() == "a") this else this.selectFirst("a")) ?: return null
         val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
         if (href.isBlank() || href == mainUrl || href.contains("javascript")) return null
@@ -255,7 +255,7 @@ class DrakoridProvider : BaseFixProvider() {
             "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
         return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, .post, .entry, .film-poster-ahref").mapNotNull {
-            it.toSearchResponse(mainUrl)
+            it.toDrakoridSearchResponse(mainUrl)
         }.distinctBy { it.url }
     }
 
@@ -268,7 +268,7 @@ class DrakoridProvider : BaseFixProvider() {
                 hdr != null && hdr.text().contains("Hot Series", ignoreCase = true)
             }
             val items = if (hotBox != null) {
-                hotBox.select("article, .bsx, .bs").mapNotNull { it.toSearchResponse(mainUrl) }.distinctBy { it.url }
+                hotBox.select("article, .bsx, .bs").mapNotNull { it.toDrakoridSearchResponse(mainUrl) }.distinctBy { it.url }
             } else {
                 emptyList()
             }
@@ -365,7 +365,7 @@ class DrakoridProvider : BaseFixProvider() {
                 "[class*=episode-list] li a, [class*=episode] a[href], " +
                 "#daftarepisode li a, #daftarepisode a, .epcheck li a, [id*=episode] li a, [id*=episode] a"
             ).mapIndexed { i, a ->
-                newEpisode(fixUrl(a.attr("href"))) {
+                newEpisode(fixDrakoridUrl(a.attr("href"))) {
                     this.name = a.selectFirst(".epl-title, .epl-num, span, .episode-title")
                         ?.text()?.trim() ?: a.text().trim()
                     this.episode = i + 1
@@ -395,7 +395,7 @@ class DrakoridProvider : BaseFixProvider() {
         doc.select("ul.muvipro-player-tabs li a, ul.gmr-player-tabs li a, .gmr-player-nav a, .gmr-player-tabs a, ul.nav-tabs li a, .gmr-server-wrap a").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
-                val resolved = fixUrl(href, data)
+                val resolved = fixDrakoridUrl(href, data)
                 if (resolved.contains("?player=") || resolved.contains("?server=") || resolved.contains("&player=") || resolved.contains("&server=")) {
                     playerTabs.add(resolved)
                 }
@@ -410,7 +410,7 @@ class DrakoridProvider : BaseFixProvider() {
                         .ifEmpty { iframe.attr("data-litespeed-src") }
                         .ifEmpty { iframe.attr("data-lazy-src") }
                         .trim()
-                    val finalUrl = fixUrl(src, tabUrl)
+                    val finalUrl = fixDrakoridUrl(src, tabUrl)
                     if (finalUrl.isNotEmpty()) targets.add(finalUrl)
                 }
             } catch (_: Exception) {}
@@ -419,7 +419,7 @@ class DrakoridProvider : BaseFixProvider() {
         // 1. Direct video/source elements
         doc.select("source[src], video source[src], video[src]").forEach { el ->
             val src = el.attr("src").trim()
-            val finalUrl = fixUrl(src, data)
+            val finalUrl = fixDrakoridUrl(src, data)
             if (finalUrl.isNotEmpty()) targets.add(finalUrl)
         }
 
@@ -430,7 +430,7 @@ class DrakoridProvider : BaseFixProvider() {
                 .ifEmpty { iframe.attr("data-litespeed-src") }
                 .ifEmpty { iframe.attr("data-lazy-src") }
                 .trim()
-            val finalUrl = fixUrl(src, data)
+            val finalUrl = fixDrakoridUrl(src, data)
             if (finalUrl.isNotEmpty()) targets.add(finalUrl)
         }
 
@@ -450,11 +450,11 @@ class DrakoridProvider : BaseFixProvider() {
                     val parsedIfr = Jsoup.parse(htmlContent).selectFirst("iframe, IFRAME, [src]")
                     val iframeSrc = parsedIfr?.attr("src")?.ifEmpty { parsedIfr.attr("data-src") } ?: ""
                     if (iframeSrc.isNotBlank()) {
-                        val href = fixUrl(iframeSrc, data)
+                        val href = fixDrakoridUrl(iframeSrc, data)
                         if (href.isNotEmpty()) targets.add(href)
                     }
                 } catch (_: Exception) {
-                    val finalUrl = fixUrl(v, data)
+                    val finalUrl = fixDrakoridUrl(v, data)
                     if (finalUrl.isNotEmpty()) targets.add(finalUrl)
                 }
             }
@@ -464,12 +464,12 @@ class DrakoridProvider : BaseFixProvider() {
         doc.select("a, button, li, div, span, .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
-                val finalUrl = fixUrl(href, data)
+                val finalUrl = fixDrakoridUrl(href, data)
                 if (finalUrl.isNotEmpty()) targets.add(finalUrl)
             }
             listOf("data-src", "data-link", "data-embed", "data-video", "data-id", "data-url").forEach { attr ->
                 val v = el.attr(attr).trim()
-                val finalUrl = fixUrl(v, data)
+                val finalUrl = fixDrakoridUrl(v, data)
                 if (finalUrl.isNotEmpty() && !v.contains("data:image")) {
                     targets.add(finalUrl)
                 }
@@ -483,7 +483,7 @@ class DrakoridProvider : BaseFixProvider() {
                 val regex = Regex("(https?:)?//[^\\s\"'<>]+")
                 regex.findAll(code).forEach { match ->
                     val rawUrl = match.value
-                    val finalUrl = fixUrl(rawUrl, data)
+                    val finalUrl = fixDrakoridUrl(rawUrl, data)
                     if (finalUrl.isNotBlank() && (
                         finalUrl.contains(".mp4") || finalUrl.contains(".m3u8") ||
                         finalUrl.contains(".mkv") || finalUrl.contains("/embed/") ||
@@ -513,7 +513,7 @@ class DrakoridProvider : BaseFixProvider() {
                 } ?: if (html.startsWith("http")) html else ""
                 
                 if (src.isNotEmpty()) {
-                    decodedUrl = fixUrl(src, data)
+                    decodedUrl = fixDrakoridUrl(src, data)
                 }
             } catch (_: Exception) {}
 
@@ -543,7 +543,7 @@ class DrakoridProvider : BaseFixProvider() {
                             subDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src]").forEach { iframe ->
                                 val iframeSrc = iframe.attr("src").ifEmpty { iframe.attr("data-src") }.ifEmpty { iframe.attr("data-litespeed-src") }.trim()
                                 if (iframeSrc.isNotBlank()) {
-                                    val finalIframeUrl = fixUrl(iframeSrc, cleanUrlEscaped)
+                                    val finalIframeUrl = fixDrakoridUrl(iframeSrc, cleanUrlEscaped)
                                     val cleanIf = finalIframeUrl.replace(92.toChar().toString(), "")
                                     loadExtractor(cleanIf, cleanUrlEscaped, subtitleCallback, callback)
                                 }
