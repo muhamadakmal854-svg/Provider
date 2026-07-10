@@ -165,7 +165,9 @@ class DutafilmProvider : BaseFixProvider() {
             val href  = it.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
             if (href.isBlank() || href == mainUrl || href.contains("javascript")) return@mapNotNull null
             
-            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
+            val img = it.selectFirst("img.mv-poster, [class*=poster] img, img[class*=poster]")
+                ?: it.select("img").firstOrNull { im -> !im.attr("src").contains("flagsapi.com") }
+                ?: it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
             val title = it.selectFirst(".mv-desc")?.text()?.substringBefore("(")?.trim()
                 ?: it.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }.ifEmpty { img?.attr("title")?.trim() ?: "" }.ifEmpty { it.text().trim() }
             if (title.isBlank()) return@mapNotNull null
@@ -204,7 +206,8 @@ class DutafilmProvider : BaseFixProvider() {
         val title  = doc.selectFirst("meta[property='og:title']")?.attr("content")?.substringBefore("Sub Indo")?.substringBefore("(")?.trim()
             ?: doc.selectFirst("h2, h1, .mv-title")?.text()?.trim() ?: return null
         
-        val poster = doc.selectFirst("meta[property='og:image'], [itemprop=image]")?.attr("content")
+        val poster = doc.selectFirst("meta[property='og:image']")?.attr("content")?.ifBlank { null }
+            ?: doc.selectFirst("[itemprop=image]")?.attr("content")?.ifBlank { null }
             ?: doc.selectFirst(".poster img, img.mv-poster")?.let { img ->
                 listOf("data-src","data-lazy-src","data-lazy","data-cfsrc","src")
                     .map { img.attr(it) }
@@ -222,19 +225,21 @@ class DutafilmProvider : BaseFixProvider() {
             match?.groupValues?.get(1)?.toIntOrNull()
         }
         
-        var encVar = ""
+        var decrypted = ""
         doc.select("script").forEach { script ->
             val code = script.html()
             if (code.contains("atob") && code.contains("split") && code.contains("fromCharCode")) {
                 val match = Regex("\\b[a-zA-Z0-9_]{4,12}='([a-zA-Z0-9.\\-_=]{100,})'").find(code)
                 if (match != null) {
-                    encVar = match.groupValues[1]
+                    val cand = decryptDutafilm(match.groupValues[1])
+                    if (cand.contains("initEpisodeList") || cand.contains("get_link")) {
+                        decrypted = cand
+                        return@forEach
+                    }
                 }
             }
         }
-        if (encVar.isBlank()) return null
-        
-        val decrypted = decryptDutafilm(encVar)
+        if (decrypted.isBlank()) return null
         
         val c = Regex("var c = '([^']*)'").find(decrypted)?.groupValues?.get(1) ?: return null
         val t = Regex("var t = '([^']*)'").find(decrypted)?.groupValues?.get(1) ?: return null
