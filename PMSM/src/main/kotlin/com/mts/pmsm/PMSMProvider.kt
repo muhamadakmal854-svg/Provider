@@ -1,4 +1,4 @@
-package com.mts.pencurimovie
+package com.mts.pmsm
 
 import com.lagradost.api.Log
 import org.jsoup.Jsoup
@@ -120,21 +120,22 @@ abstract class BaseFixProvider : MainAPI() {
     }
 }
 
-class PencurimovieProvider : BaseFixProvider() {
+class PMSMProvider : BaseFixProvider() {
     companion object {
         var context: android.content.Context? = null
     }
-    override var mainUrl = "https://ww11.pencurimovie.sbs"
-    override var name = "Pencurimovie"
+    override var mainUrl = "https://ww105.pencurimoviesubmalay.guru"
+    override var name = "PMSM"
     override val hasMainPage = true
     override var lang = "ms"
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
     override val mainPage = mainPageOf(
-        "movies" to "Latest Movies",
-        "series" to "Latest TV Series",
-        "episode" to "Latest Episodes"
+        "" to "Featured",
+        "movies" to "Movies",
+        "tvshows" to "TV Shows",
+        "episodes" to "Episodes"
     )
 
     private fun Element.getImageUrl(): String {
