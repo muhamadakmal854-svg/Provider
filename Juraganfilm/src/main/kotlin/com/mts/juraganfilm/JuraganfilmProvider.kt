@@ -159,14 +159,35 @@ class JuraganfilmProvider : BaseFixProvider() {
 
     private fun parseSection(doc: Document, title: String): List<SearchResponse> {
         val h3 = doc.select("h3").find { it.text().trim().equals(title, ignoreCase = true) } ?: return emptyList()
-        val container = h3.parent()?.nextElementSibling() ?: h3.nextElementSibling() ?: return emptyList()
+        var container: org.jsoup.nodes.Element? = null
+        var current: org.jsoup.nodes.Element? = h3
+        while (current != null && container == null) {
+            val parent = current.parent() ?: break
+            val siblings = parent.children().filter { it != current }
+            for (sib in siblings) {
+                val cards = sib.select("article, .gmr-item-modulepost, div[itemtype*='schema.org/']")
+                if (cards.isNotEmpty()) {
+                    container = sib
+                    break
+                }
+            }
+            current = parent
+        }
         val items = container?.select("article, .gmr-item-modulepost, div[itemtype*='schema.org/']") ?: return emptyList()
         return items.mapNotNull { card ->
             val a = card.selectFirst("a[itemprop='url']") ?: card.selectFirst("a") ?: return@mapNotNull null
             val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
-            val titleText = card.selectFirst("a[itemprop='url'] h2, h2, .entry-title, a")?.text()
-                ?.replace("Sub Ind", "")?.replace("EPS", "")?.trim() ?: ""
-            if (titleText.isBlank() || href.isBlank() || href.contains("youtube.com")) return@mapNotNull null
+            
+            val titleText = card.selectFirst(".entry-title div.strokeme, .strokeme")?.text()
+                ?: card.selectFirst(".entry-title a, h2 a, h2, .entry-title")?.text()
+                ?: card.selectFirst("a[itemprop='url']")?.attr("title")
+                ?: ""
+            val cleanTitle = titleText.replace(Regex("(?i)nonton\\s+(?:film|movie)?"), "")
+                .replace(Regex("(?i)sub\\s*indo?"), "")
+                .replace(Regex("(?i)episode\\s*\\d*"), "")
+                .trim()
+                
+            if (cleanTitle.isBlank() || href.isBlank() || href.contains("youtube.com")) return@mapNotNull null
             
             // Select real poster image instead of flag icons
             val img = card.selectFirst("img.mv-poster, [class*=poster] img, img[class*=poster]")
@@ -176,9 +197,9 @@ class JuraganfilmProvider : BaseFixProvider() {
             
             val isTv = href.contains("/film-seri/") || titleText.contains("EPS", ignoreCase = true)
             if (isTv) {
-                newTvSeriesSearchResponse(titleText, href, TvType.TvSeries) { this.posterUrl = src }
+                newTvSeriesSearchResponse(cleanTitle, href, TvType.TvSeries) { this.posterUrl = src }
             } else {
-                newMovieSearchResponse(titleText, href, TvType.Movie) { this.posterUrl = src }
+                newMovieSearchResponse(cleanTitle, href, TvType.Movie) { this.posterUrl = src }
             }
         }.distinctBy { it.url }
     }
@@ -192,8 +213,17 @@ class JuraganfilmProvider : BaseFixProvider() {
         return doc.select("article, .gmr-item-modulepost").mapNotNull { card ->
             val a = card.selectFirst("a[itemprop='url']") ?: card.selectFirst("a") ?: return@mapNotNull null
             val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
-            val titleText = card.selectFirst("h2, .entry-title")?.text()?.replace("Sub Ind", "")?.replace("EPS", "")?.trim() ?: ""
-            if (titleText.isBlank() || href.isBlank() || href.contains("youtube.com")) return@mapNotNull null
+            
+            val titleText = card.selectFirst(".entry-title div.strokeme, .strokeme")?.text()
+                ?: card.selectFirst(".entry-title a, h2 a, h2, .entry-title")?.text()
+                ?: card.selectFirst("a[itemprop='url']")?.attr("title")
+                ?: ""
+            val cleanTitle = titleText.replace(Regex("(?i)nonton\\s+(?:film|movie)?"), "")
+                .replace(Regex("(?i)sub\\s*indo?"), "")
+                .replace(Regex("(?i)episode\\s*\\d*"), "")
+                .trim()
+                
+            if (cleanTitle.isBlank() || href.isBlank() || href.contains("youtube.com")) return@mapNotNull null
             
             val img = card.selectFirst("img.mv-poster, [class*=poster] img, img[class*=poster]")
                 ?: card.select("img").firstOrNull { im -> !im.attr("src").contains("flagsapi.com") }
@@ -202,9 +232,9 @@ class JuraganfilmProvider : BaseFixProvider() {
             
             val isTv = href.contains("/film-seri/") || titleText.contains("EPS", ignoreCase = true)
             if (isTv) {
-                newTvSeriesSearchResponse(titleText, href, TvType.TvSeries) { this.posterUrl = src }
+                newTvSeriesSearchResponse(cleanTitle, href, TvType.TvSeries) { this.posterUrl = src }
             } else {
-                newMovieSearchResponse(titleText, href, TvType.Movie) { this.posterUrl = src }
+                newMovieSearchResponse(cleanTitle, href, TvType.Movie) { this.posterUrl = src }
             }
         }.distinctBy { it.url }
     }
