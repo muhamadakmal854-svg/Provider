@@ -6,7 +6,7 @@ cloudstream {
     authors     = listOf("MTS")
     status      = 1
     tvTypes     = listOf("Movie", "TvSeries")
-    iconUrl     = "https://dutafilm30.mantab.men/favicon.ico"
+    iconUrl     = "https://dutafilm77.mantab.men/favicon.ico"
 }
 
 android {
