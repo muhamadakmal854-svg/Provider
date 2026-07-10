@@ -798,7 +798,7 @@ class KuramanimeProvider : BaseFixProvider() {
                         val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
                         val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
                         val isAbyss = listOf("abyssplayer.com", "abyss.to", "abysscdn.com", "iamcdn.net", "sssrr").any { cleanUrlEscaped.contains(it, true) }
-                        val isPlayerX = listOf("ezplayer.stream", "player4me.online", "rpmplay.online", "seekplays.online", "p2pstream.online", "upns.live").any { cleanUrlEscaped.contains(it, true) }
+                        val isPlayerX = listOf("ezplayer.stream", "player4me.online", "rpmplay.online", "rpmstream.online", "seekplays.online", "p2pstream.online", "upns.live").any { cleanUrlEscaped.contains(it, true) }
                         val isSeekPlayer = cleanUrlEscaped.contains("seekplayer", true)
                         val isTamilEmbed = cleanUrlEscaped.contains("tamilembed", true)
 
