@@ -121,7 +121,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass NgefilmProvider : BaseFixProvider() {
+
+class NgefilmProvider : BaseFixProvider() {
     override var mainUrl = "https://new31.ngefilm.site"
     override var name = "NgeFilm21"
     override val hasMainPage = true

@@ -130,7 +130,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass OtakudesuProvider : BaseFixProvider() {
+
+class OtakudesuProvider : BaseFixProvider() {
     override var mainUrl = "https://otakudesu.blog"
     override var name = "OtakuDesu"
     override val hasMainPage = true

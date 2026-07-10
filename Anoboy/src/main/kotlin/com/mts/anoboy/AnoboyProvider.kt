@@ -122,7 +122,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass Anoboy : BaseFixProvider() {
+
+class Anoboy : BaseFixProvider() {
     override var mainUrl = "https://ww1.anoboy.boo"
     override var name = "AnoBoy"
     override val hasMainPage = true

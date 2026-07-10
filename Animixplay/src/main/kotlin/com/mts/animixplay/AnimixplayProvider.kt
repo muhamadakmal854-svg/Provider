@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass AnimixplayProvider : BaseFixProvider() {
+
+class AnimixplayProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://animixplay.com.ro"
     override var name           = "Animixplay"

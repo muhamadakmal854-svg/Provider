@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass DonghuastreamProvider : BaseFixProvider() {
+
+class DonghuastreamProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://donghuastream.org"
     override var name           = "Donghuastream"

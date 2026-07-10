@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass KuronimeProvider : BaseFixProvider() {
+
+class KuronimeProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://kuronime.sbs"
     override var name           = "Kuronime"

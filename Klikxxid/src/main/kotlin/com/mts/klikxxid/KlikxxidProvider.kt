@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass KlikxxidProvider : BaseFixProvider() {
+
+class KlikxxidProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://klikxxi.me"
     override var name           = "Klikxxid"

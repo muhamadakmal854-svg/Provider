@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass KisskhProvider : BaseFixProvider() {
+
+class KisskhProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://kisskh.buzz"
     override var name           = "Kisskh"

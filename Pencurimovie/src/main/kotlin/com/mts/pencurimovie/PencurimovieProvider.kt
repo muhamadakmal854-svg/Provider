@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass PencurimoviesubmalayProvider : BaseFixProvider() {
+
+class PencurimoviesubmalayProvider : BaseFixProvider() {
     companion object {
         var context: android.content.Context? = null
     }

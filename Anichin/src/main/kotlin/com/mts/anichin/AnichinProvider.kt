@@ -116,7 +116,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass AnichinProvider : BaseFixProvider() {
+
+class AnichinProvider : BaseFixProvider() {
     companion object {
         var context: android.content.Context? = null
     }

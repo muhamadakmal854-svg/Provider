@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass DonghubProvider : BaseFixProvider() {
+
+class DonghubProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://donghub.vip"
     override var name           = "Donghub"

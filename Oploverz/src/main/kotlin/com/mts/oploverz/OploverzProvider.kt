@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass OploverzProvider : BaseFixProvider() {
+
+class OploverzProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://oploverz.ch"
     override var name           = "Oploverz"

@@ -119,7 +119,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass Lk21Provider : BaseFixProvider() {
+
+class Lk21Provider : BaseFixProvider() {
 
     override var mainUrl = "https://tv9.lk21official.cc"
     private var seriesUrl = "https://tv3.nontondrama.my"

@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass JuraganfilmProvider : BaseFixProvider() {
+
+class JuraganfilmProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://tv46.juragan.film"
     override var name           = "Juraganfilm"

@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass DrakoridProvider : BaseFixProvider() {
+
+class DrakoridProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://drakorid.cam"
     override var name           = "Drakorid"

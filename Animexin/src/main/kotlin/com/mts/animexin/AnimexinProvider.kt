@@ -116,7 +116,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass AnimexinProvider : BaseFixProvider() {
+
+class AnimexinProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://animexin.dev"
     override var name           = "AnimeXin"

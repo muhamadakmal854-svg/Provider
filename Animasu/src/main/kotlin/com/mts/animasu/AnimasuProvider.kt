@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass AnimasuProvider : BaseFixProvider() {
+
+class AnimasuProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://v1.animasu.work"
     override var name           = "Animasu"

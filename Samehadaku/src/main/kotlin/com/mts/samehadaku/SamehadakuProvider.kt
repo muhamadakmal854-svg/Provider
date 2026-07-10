@@ -124,7 +124,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass SamehadakuProvider : BaseFixProvider() {
+
+class SamehadakuProvider : BaseFixProvider() {
     override var mainUrl = "https://v1.samehadaku.how"
     override var name = "Samehadaku"
     override val hasMainPage = true

@@ -120,7 +120,8 @@ abstract class BaseFixProvider : MainAPI() {
         return HomePageResponse(lists)
     }
 }
-\nclass DutafilmProvider : BaseFixProvider() {
+
+class DutafilmProvider : BaseFixProvider() {
 
     override var mainUrl        = "https://dutafilm30.mantab.men"
     override var name           = "Dutafilm"
