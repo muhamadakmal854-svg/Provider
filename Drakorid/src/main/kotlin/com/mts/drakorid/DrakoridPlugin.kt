@@ -18,5 +18,6 @@ class DrakoridPlugin : Plugin() {
         registerExtractorAPI(PzEerfumerelCom())
         registerExtractorAPI(Prx1546AntVmwesaOnline())
         registerExtractorAPI(Prx1317AntVmwesaOnline())
+        registerExtractorAPI(PlayerXExtractor())
     }
 }

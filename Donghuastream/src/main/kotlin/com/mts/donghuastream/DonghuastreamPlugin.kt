@@ -10,5 +10,6 @@ class DonghuastreamPlugin : Plugin() {
         registerMainAPI(DonghuastreamProvider())
         registerExtractorAPI(Porto())
         registerExtractorAPI(VikingfileCom())
+        registerExtractorAPI(PlayerXExtractor())
     }
 }

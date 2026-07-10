@@ -21,5 +21,6 @@ class KisskhPlugin : Plugin() {
         registerExtractorAPI(AtlassianCom())
         registerExtractorAPI(TagiviCom())
         registerExtractorAPI(TickcounterCom())
+        registerExtractorAPI(PlayerXExtractor())
     }
 }

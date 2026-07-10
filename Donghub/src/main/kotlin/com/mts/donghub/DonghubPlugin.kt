@@ -12,5 +12,6 @@ class DonghubPlugin : Plugin() {
         registerExtractorAPI(GeoDailymotionCom())
         registerExtractorAPI(DailymotionCom())
         registerExtractorAPI(TickcounterCom())
+        registerExtractorAPI(PlayerXExtractor())
     }
 }

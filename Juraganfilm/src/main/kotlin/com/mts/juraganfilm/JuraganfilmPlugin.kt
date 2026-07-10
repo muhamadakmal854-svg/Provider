@@ -38,5 +38,6 @@ class JuraganfilmPlugin : Plugin() {
         registerExtractorAPI(Gratu89Com())
         registerExtractorAPI(BioSite())
         registerExtractorAPI(Gaza88Com())
+        registerExtractorAPI(PlayerXExtractor())
     }
 }

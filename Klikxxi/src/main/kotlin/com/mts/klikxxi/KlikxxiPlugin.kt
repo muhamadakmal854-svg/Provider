@@ -25,5 +25,6 @@ class KlikxxiPlugin : Plugin() {
         registerExtractorAPI(GambleawareOrg())
         registerExtractorAPI(IYtimgCom())
         registerExtractorAPI(YoutuBe())
+        registerExtractorAPI(PlayerXExtractor())
     }
 }

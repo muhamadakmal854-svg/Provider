@@ -58,5 +58,6 @@ class KlikxxidPlugin : Plugin() {
         registerExtractorAPI(LuluvidCom())
         registerExtractorAPI(LulustreamCom())
         registerExtractorAPI(Cdn1015CdntnmrOrg())
+        registerExtractorAPI(PlayerXExtractor())
     }
 }

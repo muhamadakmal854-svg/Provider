@@ -11,5 +11,6 @@ class KuronimePlugin : Plugin() {
         registerExtractorAPI(KuronimeMoe())
         registerExtractorAPI(AssetsProductionLinktrEe())
         registerExtractorAPI(AccessLineMe())
+        registerExtractorAPI(PlayerXExtractor())
     }
 }
