@@ -159,8 +159,8 @@ class JuraganfilmProvider : BaseFixProvider() {
 
     private fun parseSection(doc: Document, title: String): List<SearchResponse> {
         val h3 = doc.select("h3").find { it.text().trim().equals(title, ignoreCase = true) } ?: return emptyList()
-        val container = h3.parent?.findNextSibling() ?: h3.findNextSibling() ?: return emptyList()
-        val items = container.select("article, .gmr-item-modulepost, div[itemtype*='schema.org/']")
+        val container = h3.parent()?.nextElementSibling() ?: h3.nextElementSibling() ?: return emptyList()
+        val items = container?.select("article, .gmr-item-modulepost, div[itemtype*='schema.org/']") ?: return emptyList()
         return items.mapNotNull { card ->
             val a = card.selectFirst("a[itemprop='url']") ?: card.selectFirst("a") ?: return@mapNotNull null
             val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
