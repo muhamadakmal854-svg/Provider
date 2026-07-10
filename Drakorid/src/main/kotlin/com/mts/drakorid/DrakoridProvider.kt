@@ -1,4 +1,3 @@
-@file:Suppress("DEPRECATION")
 package __PACKAGE__
 
 import com.lagradost.cloudstream3.*
@@ -99,7 +98,6 @@ abstract class BaseFixProvider : MainAPI() {
         }
     }
 
-    @Suppress("DEPRECATION")
     suspend fun parseMultiRowHome(
         entries: List<Pair<String, String>>,
         itemSelector: String
@@ -114,7 +112,7 @@ abstract class BaseFixProvider : MainAPI() {
             }
             HomePageList(label, items)
         }.filter { it.list.isNotEmpty() }
-        return HomePageResponse(lists)
+        return newHomePageResponse(lists, hasNext = false)
     }
 }
 
@@ -274,7 +272,7 @@ class DrakoridProvider : BaseFixProvider() {
             } else {
                 emptyList()
             }
-            return HomePageResponse(listOf(HomePageList(request.name, items)))
+            return newHomePageResponse(listOf(HomePageList(request.name, items)), hasNext = false)
         } else if (path.contains("section=latest-release")) {
             val pageUrl = if (page > 1) {
                 "$mainUrl/series/page/$page/?status=&type=&order=update"
@@ -282,7 +280,7 @@ class DrakoridProvider : BaseFixProvider() {
                 "$mainUrl/series/?status=&type=&order=update"
             }
             val items = scrapeList(pageUrl)
-            return HomePageResponse(listOf(HomePageList(request.name, items)))
+            return newHomePageResponse(listOf(HomePageList(request.name, items)), hasNext = true)
         } else {
             val cleanPath = path.removePrefix("/").removeSuffix("/")
             val pageUrl = if (page > 1) {
@@ -291,7 +289,7 @@ class DrakoridProvider : BaseFixProvider() {
                 "$mainUrl/$cleanPath/"
             }
             val items = scrapeList(pageUrl)
-            return HomePageResponse(listOf(HomePageList(request.name, items)))
+            return newHomePageResponse(listOf(HomePageList(request.name, items)), hasNext = true)
         }
     }
 

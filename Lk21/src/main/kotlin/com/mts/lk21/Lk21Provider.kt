@@ -1,4 +1,3 @@
-@file:Suppress("DEPRECATION")
 package com.mts.lk21
 
 import com.lagradost.api.Log
@@ -102,7 +101,6 @@ abstract class BaseFixProvider : MainAPI() {
         }
     }
 
-    @Suppress("DEPRECATION")
     suspend fun parseMultiRowHome(
         entries: List<Pair<String, String>>,
         itemSelector: String
@@ -117,7 +115,7 @@ abstract class BaseFixProvider : MainAPI() {
             }
             HomePageList(label, items)
         }.filter { it.list.isNotEmpty() }
-        return HomePageResponse(lists)
+        return newHomePageResponse(lists, hasNext = false)
     }
 }
 

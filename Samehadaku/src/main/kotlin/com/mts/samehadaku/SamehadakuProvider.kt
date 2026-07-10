@@ -1,4 +1,3 @@
-@file:Suppress("DEPRECATION")
 package com.mts.samehadaku
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
@@ -107,7 +106,6 @@ abstract class BaseFixProvider : MainAPI() {
         }
     }
 
-    @Suppress("DEPRECATION")
     suspend fun parseMultiRowHome(
         entries: List<Pair<String, String>>,
         itemSelector: String
@@ -122,7 +120,7 @@ abstract class BaseFixProvider : MainAPI() {
             }
             HomePageList(label, items)
         }.filter { it.list.isNotEmpty() }
-        return HomePageResponse(lists)
+        return newHomePageResponse(lists, hasNext = false)
     }
 }
 
