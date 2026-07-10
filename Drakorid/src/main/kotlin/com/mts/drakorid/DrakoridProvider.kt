@@ -1,4 +1,4 @@
-package __PACKAGE__
+package com.mts.drakorid
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
