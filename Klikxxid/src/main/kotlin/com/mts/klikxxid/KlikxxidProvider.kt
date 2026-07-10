@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.mts.klikxxid
 
 import com.lagradost.cloudstream3.*

@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.mts.oploverz
 
 import com.lagradost.cloudstream3.*

@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package __PACKAGE__
 
 import com.lagradost.cloudstream3.*
@@ -260,7 +261,6 @@ class DrakoridProvider : BaseFixProvider() {
         }.distinctBy { it.url }
     }
 
-    @Suppress("DEPRECATION")
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val path = request.data
         if (path.contains("section=hot-series")) {

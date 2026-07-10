@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.mts.dutafilm
 
 import com.lagradost.cloudstream3.*

@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.mts.kuramanime
 
 import com.lagradost.cloudstream3.*
