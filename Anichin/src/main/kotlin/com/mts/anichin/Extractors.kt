@@ -28,11 +28,33 @@ import org.mozilla.javascript.NativeObject
 import org.mozilla.javascript.Scriptable
 
 
-
-
+// =============================================================================
+// DAILYMOTION
+// =============================================================================
 class Geodailymotion : Dailymotion() {
     override val name = "GeoDailymotion"
     override val mainUrl = "https://geo.dailymotion.com"
+}
+
+// Anichin uses a wrapper: anichin-player.web.id/index.php?url=<videoId>
+// This wrapper embeds geo.dailymotion.com, we resolve the video ID from the URL param
+class AnichinPlayerWrapper : Dailymotion() {
+    override val name    = "AnichinPlayer"
+    override val mainUrl = "https://anichin-player.web.id"
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // Extract video ID from ?url= param
+        val videoId = url.substringAfter("?url=", "").substringBefore("&")
+        if (videoId.isBlank()) return
+        // Delegate to parent Dailymotion with proper embed URL
+        val embedUrl = "https://www.dailymotion.com/embed/video/$videoId"
+        super.getUrl(embedUrl, referer ?: mainUrl, subtitleCallback, callback)
+    }
 }
 
 open class Dailymotion : ExtractorApi() {
@@ -70,7 +92,6 @@ open class Dailymotion : ExtractorApi() {
             subRegex.findAll(subtitleJson).forEach { match ->
                 val label = match.groupValues[1]
                 val subUrl = match.groupValues[2]
-                
                 subtitleCallback(newSubtitleFile(label, subUrl))
             }
         }
@@ -79,7 +100,7 @@ open class Dailymotion : ExtractorApi() {
     private fun getEmbedUrl(url: String): String? {
         if (url.contains("/embed/") || url.contains("/video/")) return url
         if (url.contains("geo.dailymotion.com")) {
-            val videoId = url.substringAfter("video=")
+            val videoId = url.substringAfter("video=").substringBefore("&")
             return "$baseUrl/embed/video/$videoId"
         }
         return null
@@ -101,10 +122,9 @@ open class Dailymotion : ExtractorApi() {
 }
 
 
-
-
-
-
+// =============================================================================
+// OK.RU / ODNOKLASSNIKI
+// =============================================================================
 class OkRuSSL : Odnoklassniki() {
     override var name    = "OkRuSSL"
     override var mainUrl = "https://ok.ru"
@@ -140,9 +160,7 @@ open class Odnoklassniki : ExtractorApi() {
         val videos    = AppUtils.tryParseJson<List<OkRuVideo>>(videosStr) ?: throw ErrorLoadingException("Video not found")
 
         for (video in videos) {
-
             val videoUrl  = if (video.url.startsWith("//")) "https:${video.url}" else video.url
-
             val quality   = video.name.uppercase()
                 .replace("MOBILE", "144p")
                 .replace("LOWEST", "240p")
@@ -152,7 +170,6 @@ open class Odnoklassniki : ExtractorApi() {
                 .replace("FULL",   "1080p")
                 .replace("QUAD",   "1440p")
                 .replace("ULTRA",  "4k")
-
             callback.invoke(
                 newExtractorLink(
                     source  = this.name,
@@ -175,8 +192,9 @@ open class Odnoklassniki : ExtractorApi() {
 }
 
 
-
-
+// =============================================================================
+// RUMBLE
+// =============================================================================
 class Rumble : ExtractorApi() {
     override var name = "Rumble"
     override var mainUrl = "https://rumble.com"
@@ -190,18 +208,16 @@ class Rumble : ExtractorApi() {
     ) {
         val response = app.get(url, referer = referer ?: "$mainUrl/")
         val scriptData = response.document.selectFirst("script:containsData(mp4)")?.data()
-            ?.substringAfter("{\"mp4")?.substringBefore("\"evt\":{")
+            ?.substringAfter("{"mp4")?. substringBefore(""evt":{")
         if (scriptData == null) return
 
         val regex = """"url":"(.*?)"|h":(.*?)\}""".toRegex()
         val matches = regex.findAll(scriptData)
-
         val processedUrls = mutableSetOf<String>()
 
         for (match in matches) {
             val rawUrl = match.groupValues[1]
             if (rawUrl.isBlank()) continue
-
             val cleanedUrl = rawUrl.replace("\\/", "/")
             if (!cleanedUrl.contains("rumble.com")) continue
             if (!cleanedUrl.endsWith(".m3u8")) continue
@@ -209,15 +225,13 @@ class Rumble : ExtractorApi() {
 
             val m3u8Response = app.get(cleanedUrl)
             val variantCount = "#EXT-X-STREAM-INF".toRegex().findAll(m3u8Response.text).count()
-
             if (variantCount > 1) {
                 callback.invoke(
                     newExtractorLink(
-                        this@Rumble.name,   // source
-                        "Rumble",       // name
-                        cleanedUrl,         // url
-                        ExtractorLinkType.M3U8 // type
-                        // initializer tidak perlu diisi
+                        this@Rumble.name,
+                        "Rumble",
+                        cleanedUrl,
+                        ExtractorLinkType.M3U8
                     )
                 )
                 break
@@ -227,8 +241,9 @@ class Rumble : ExtractorApi() {
 }
 
 
-
-
+// =============================================================================
+// STREAMRUBY
+// =============================================================================
 open class StreamRuby : ExtractorApi() {
     override val name = "StreamRuby"
     override val mainUrl = "https://rubyvidhub.com"
@@ -240,9 +255,7 @@ open class StreamRuby : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-//        Log.d("streamrubby", "url = $url")
         val id = "embed-([a-zA-Z0-9]+)\\.html".toRegex().find(url)?.groupValues?.get(1) ?: return
-//        Log.d("streamrubby", "id = $id")
         val response = app.post(
             "$mainUrl/dl", data = mapOf(
                 "op" to "embed",
@@ -257,7 +270,6 @@ open class StreamRuby : ExtractorApi() {
             response.document.selectFirst("script:containsData(sources:)")?.data()
         }
         val m3u8 = Regex("file:\\s*\"(.*?m3u8.*?)\"").find(script ?: return)?.groupValues?.getOrNull(1)
-//        Log.d("streamrubby", "m3u8 = $m3u8")
         callback.invoke(newExtractorLink(
             source = this.name,
             name = this.name,
@@ -282,9 +294,254 @@ class svilla : StreamRuby() {
 }
 
 
+// =============================================================================
+// RPMSHARE  (endstar.rpmplay.me / rpmplay.me / rpmshare.com)
+// =============================================================================
+open class RPMShare : ExtractorApi() {
+    override val name = "RPMShare"
+    override val mainUrl = "https://rpmshare.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        // RPMShare uses a hash anchor to encode the file ID
+        // e.g. https://endstar.rpmplay.me/#mhpnub
+        val ref = referer ?: mainUrl
+        val response = app.get(url, referer = ref, headers = mapOf(
+            "User-Agent" to USER_AGENT,
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        ))
+        val doc = response.document
+
+        // Try to extract video URL from scripts
+        val m3u8Regex = Regex("""["'](https?://[^"']+\.m3u8[^"']*)["']""", RegexOption.IGNORE_CASE)
+        val mp4Regex  = Regex("""["'](https?://[^"']+\.mp4[^"']*)["']""", RegexOption.IGNORE_CASE)
+        val sourceRegex = Regex("""file["']?\s*:\s*["'](https?://[^"']+)["']""", RegexOption.IGNORE_CASE)
+
+        val scripts = doc.select("script").joinToString(" ") { it.data() }
+
+        val videoUrl = m3u8Regex.find(scripts)?.groupValues?.get(1)
+            ?: sourceRegex.find(scripts)?.groupValues?.get(1)
+            ?: mp4Regex.find(scripts)?.groupValues?.get(1)
+
+        if (videoUrl != null) {
+            val isM3u8 = videoUrl.contains(".m3u8")
+            callback.invoke(
+                newExtractorLink(
+                    source = this.name,
+                    name   = this.name,
+                    url    = videoUrl,
+                    type   = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                ) {
+                    quality = Qualities.Unknown.value
+                    this.referer = ref
+                }
+            )
+        } else {
+            // Fallback: check for iframe inside
+            val iframeSrc = doc.selectFirst("iframe[src]")?.attr("src") ?: return
+            val cleanUrl = if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc
+            loadExtractor(cleanUrl, url, subtitleCallback, callback)
+        }
+    }
+}
+
+class RPMShareEndstar : RPMShare() {
+    override val name = "RPMShare"
+    override val mainUrl = "https://endstar.rpmplay.me"
+}
 
 
+// =============================================================================
+// EARNVIDS  (morencius.com/embed / earnvids.com)
+// =============================================================================
+open class EarnVids : ExtractorApi() {
+    override val name = "EarnVids"
+    override val mainUrl = "https://earnvids.com"
+    override val requiresReferer = true
 
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val ref = referer ?: mainUrl
+        val response = app.get(url, referer = ref, headers = mapOf(
+            "User-Agent" to USER_AGENT,
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        ))
+        val doc = response.document
+        val scripts = doc.select("script").joinToString(" ") { it.data() }
+
+        // EarnVids / morencius.com typically uses jwplayer or hls.js
+        val m3u8Regex   = Regex("""["'](https?://[^"']+\.m3u8[^"']*)["']""", RegexOption.IGNORE_CASE)
+        val mp4Regex    = Regex("""["'](https?://[^"']+\.mp4[^"']*)["']""", RegexOption.IGNORE_CASE)
+        val fileRegex   = Regex("""file["']?\s*:\s*["'](https?://[^"']+)["']""", RegexOption.IGNORE_CASE)
+        val sourceRegex = Regex("""src["']?\s*:\s*["'](https?://[^"']+)["']""", RegexOption.IGNORE_CASE)
+
+        val videoUrl = m3u8Regex.find(scripts)?.groupValues?.get(1)
+            ?: fileRegex.find(scripts)?.groupValues?.get(1)
+            ?: mp4Regex.find(scripts)?.groupValues?.get(1)
+            ?: sourceRegex.find(scripts)?.groupValues?.get(1)
+
+        if (videoUrl != null) {
+            val isM3u8 = videoUrl.contains(".m3u8")
+            if (isM3u8) {
+                generateM3u8(this.name, videoUrl, ref).forEach(callback)
+            } else {
+                callback.invoke(
+                    newExtractorLink(
+                        source = this.name,
+                        name   = this.name,
+                        url    = videoUrl,
+                        type   = ExtractorLinkType.VIDEO
+                    ) {
+                        quality = Qualities.Unknown.value
+                        this.referer = ref
+                    }
+                )
+            }
+        }
+    }
+}
+
+class EarnVidsMorencius : EarnVids() {
+    override val name = "EarnVids"
+    override val mainUrl = "https://morencius.com"
+}
+
+
+// =============================================================================
+// ABYSSPLAYER / NEW PLAYER  (abyssplayer.com)
+// =============================================================================
+class AbyssPlayer : ExtractorApi() {
+    override val name = "AbyssPlayer"
+    override val mainUrl = "https://abyssplayer.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val ref = referer ?: mainUrl
+        val response = app.get(url, referer = ref, headers = mapOf(
+            "User-Agent" to USER_AGENT,
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language" to "en-US,en;q=0.9"
+        ))
+        val doc = response.document
+        val scripts = doc.select("script").joinToString(" ") { it.data() }
+
+        // AbyssPlayer usually has jwplayer or hls stream URLs
+        val m3u8Regex = Regex("""["'](https?://[^"']+\.m3u8[^"']*)["']""", RegexOption.IGNORE_CASE)
+        val mp4Regex  = Regex("""["'](https?://[^"']+\.mp4[^"']*)["']""", RegexOption.IGNORE_CASE)
+        val fileRegex = Regex("""(?:file|src)["']?\s*:\s*["'](https?://[^"']+)["']""", RegexOption.IGNORE_CASE)
+        val hlsRegex  = Regex("""hls\.loadSource\(["'](https?://[^"']+)["']\)""", RegexOption.IGNORE_CASE)
+
+        val videoUrl = m3u8Regex.find(scripts)?.groupValues?.get(1)
+            ?: hlsRegex.find(scripts)?.groupValues?.get(1)
+            ?: fileRegex.find(scripts)?.groupValues?.get(1)
+            ?: mp4Regex.find(scripts)?.groupValues?.get(1)
+            // Also check source elements
+            ?: doc.selectFirst("source[src]")?.attr("src")
+            ?: doc.selectFirst("video[src]")?.attr("src")
+
+        if (videoUrl != null) {
+            val isM3u8 = videoUrl.contains(".m3u8")
+            if (isM3u8) {
+                generateM3u8(this.name, videoUrl, ref).forEach(callback)
+            } else {
+                callback.invoke(
+                    newExtractorLink(
+                        source = this.name,
+                        name   = this.name,
+                        url    = videoUrl,
+                        type   = ExtractorLinkType.VIDEO
+                    ) {
+                        quality = Qualities.Unknown.value
+                        this.referer = ref
+                    }
+                )
+            }
+        }
+    }
+}
+
+
+// =============================================================================
+// PLAY4ME  (endstar.embed4me.com / embed4me.com)
+// =============================================================================
+open class Play4Me : ExtractorApi() {
+    override val name = "Play4Me"
+    override val mainUrl = "https://embed4me.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val ref = referer ?: mainUrl
+        val response = app.get(url, referer = ref, headers = mapOf(
+            "User-Agent" to USER_AGENT,
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        ))
+        val doc = response.document
+        val scripts = doc.select("script").joinToString(" ") { it.data() }
+
+        val m3u8Regex = Regex("""["'](https?://[^"']+\.m3u8[^"']*)["']""", RegexOption.IGNORE_CASE)
+        val mp4Regex  = Regex("""["'](https?://[^"']+\.mp4[^"']*)["']""", RegexOption.IGNORE_CASE)
+        val fileRegex = Regex("""(?:file|source|src)["']?\s*:\s*["'](https?://[^"']+)["']""", RegexOption.IGNORE_CASE)
+
+        val videoUrl = m3u8Regex.find(scripts)?.groupValues?.get(1)
+            ?: fileRegex.find(scripts)?.groupValues?.get(1)
+            ?: mp4Regex.find(scripts)?.groupValues?.get(1)
+            ?: doc.selectFirst("source[src]")?.attr("src")
+            ?: doc.selectFirst("video[src]")?.attr("src")
+
+        if (videoUrl != null) {
+            val isM3u8 = videoUrl.contains(".m3u8")
+            if (isM3u8) {
+                generateM3u8(this.name, videoUrl, ref).forEach(callback)
+            } else {
+                callback.invoke(
+                    newExtractorLink(
+                        source = this.name,
+                        name   = this.name,
+                        url    = videoUrl,
+                        type   = ExtractorLinkType.VIDEO
+                    ) {
+                        quality = Qualities.Unknown.value
+                        this.referer = ref
+                    }
+                )
+            }
+        } else {
+            // Fallback: try iframe inside
+            val iframeSrc = doc.selectFirst("iframe[src]")?.attr("src") ?: return
+            val cleanUrl = if (iframeSrc.startsWith("//")) "https:$iframeSrc" else iframeSrc
+            loadExtractor(cleanUrl, url, subtitleCallback, callback)
+        }
+    }
+}
+
+class Play4MeEndstar : Play4Me() {
+    override val name = "Play4Me"
+    override val mainUrl = "https://endstar.embed4me.com"
+}
+
+
+// =============================================================================
+// VIDGUARD
+// =============================================================================
 class Vidguardto1 : Vidguardto() {
     override val mainUrl = "https://bembed.net"
 }
