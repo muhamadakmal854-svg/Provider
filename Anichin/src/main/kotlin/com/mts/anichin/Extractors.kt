@@ -208,7 +208,7 @@ class Rumble : ExtractorApi() {
     ) {
         val response = app.get(url, referer = referer ?: "$mainUrl/")
         val scriptData = response.document.selectFirst("script:containsData(mp4)")?.data()
-            ?.substringAfter("{"mp4")?. substringBefore(""evt":{")
+            ?.substringAfter("{\"mp4")?.substringBefore("\"evt\":{")
         if (scriptData == null) return
 
         val regex = """"url":"(.*?)"|h":(.*?)\}""".toRegex()
