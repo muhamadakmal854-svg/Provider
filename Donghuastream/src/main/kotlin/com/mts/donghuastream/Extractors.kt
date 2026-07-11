@@ -1,7 +1,7 @@
 package com.mts.donghuastream
 
 import com.lagradost.cloudstream3.extractors.Dailymotion
-import com.lagradost.cloudstream3.extractors.OkRu
+import com.lagradost.cloudstream3.extractors.Odnoklassniki
 import com.lagradost.cloudstream3.extractors.Rumble
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -30,7 +30,7 @@ class RumbleCom : Rumble() {
     override var mainUrl = "https://rumble.com"
 }
 
-class OkRu : OkRu() {
+class OkRu : Odnoklassniki() {
     override var name = "OkRu"
     override var mainUrl = "https://ok.ru"
 }
