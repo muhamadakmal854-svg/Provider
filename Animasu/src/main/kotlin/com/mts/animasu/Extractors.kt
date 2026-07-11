@@ -2,7 +2,7 @@ package com.mts.animasu
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.extractors.OkRu
+import com.lagradost.cloudstream3.extractors.Odnoklassniki
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -93,7 +93,7 @@ class BloggerCom : ExtractorApi() {
     }
 }
 
-class OkRu : OkRu() {
+class OkRu : Odnoklassniki() {
     override var name = "OkRu"
     override var mainUrl = "https://ok.ru"
 }
