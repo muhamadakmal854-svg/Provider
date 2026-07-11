@@ -63,6 +63,20 @@ class BloggerCom : ExtractorApi() {
                     }
                 )
             }
+
+            val rxGoogle = Regex("""https?://[^\s"\']+/videoplayback[^\s"\']*""")
+            rxGoogle.findAll(content).forEach { m ->
+                val videoUrl = m.value
+                callback(
+                    newExtractorLink(
+                        source = name, name = name, url = videoUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = url
+                        this.quality = Qualities.Unknown.value
+                    }
+                )
+            }
         }
     }
 }
@@ -77,12 +91,56 @@ class GogoanimetvEs : StreamWishExtractor() {
     override var mainUrl = "https://gogoanimetv.es"
 }
 
-class TamilembedLol : StreamWishExtractor() {
+class TamilembedLol : ExtractorApi() {
     override var name = "TamilembedLol"
     override var mainUrl = "https://tamilembed.lol"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val doc = app.get(url, headers = mapOf("Referer" to (referer ?: "")), timeout = 15).document
+            val bloggerIfr = doc.selectFirst("iframe[src*=blogger.com]")
+            val bloggerUrl = bloggerIfr?.attr("src")?.trim()
+            if (!bloggerUrl.isNullOrBlank()) {
+                val cleanUrl = if (bloggerUrl.startsWith("//")) "https:$bloggerUrl" else bloggerUrl
+                loadExtractor(cleanUrl, url, subtitleCallback, callback)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }
 
 class KwikCx : StreamWishExtractor() {
     override var name = "KwikCx"
     override var mainUrl = "https://kwik.cx"
+}
+
+class GoogleVideo : ExtractorApi() {
+    override var name = "GoogleVideo"
+    override var mainUrl = "https://googlevideo.com"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        callback(
+            newExtractorLink(
+                source = name,
+                name = name,
+                url = url,
+                type = ExtractorLinkType.VIDEO
+            ) {
+                this.quality = Qualities.Unknown.value
+            }
+        )
+    }
 }

@@ -14,5 +14,6 @@ class AnimixplayPlugin : Plugin() {
         registerExtractorAPI(GogoanimetvEs())
         registerExtractorAPI(TamilembedLol())
         registerExtractorAPI(KwikCx())
+        registerExtractorAPI(GoogleVideo())
     }
 }
