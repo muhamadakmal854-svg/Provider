@@ -12,6 +12,5 @@ class KuramanimePlugin : Plugin() {
         registerExtractorAPI(KuramashopNet())
         registerExtractorAPI(TrakteerId())
         registerExtractorAPI(SaweriaCo())
-        registerExtractorAPI(PlayerXExtractor())
     }
 }

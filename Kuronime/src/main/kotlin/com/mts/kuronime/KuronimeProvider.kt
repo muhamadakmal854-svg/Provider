@@ -9,123 +9,12 @@ import javax.crypto.spec.SecretKeySpec
 import javax.crypto.spec.IvParameterSpec
 import java.security.MessageDigest
 
-
-abstract class BaseFixProvider : MainAPI() {
-
-    fun fixUrl(url: String, referer: String): String {
-        if (url.isBlank()) return ""
-        if (url.startsWith("http")) return url
-        if (url.startsWith("//")) return "https:" + url
-        return try {
-            val u = java.net.URL(referer)
-            if (url.startsWith("/")) {
-                "${u.protocol}://${u.host}$url"
-            } else {
-                val path = u.path.substringBeforeLast("/")
-                "${u.protocol}://${u.host}$path/$url"
-            }
-        } catch (_: Exception) {
-            if (url.startsWith("/")) "$mainUrl$url" else "$mainUrl/$url"
-        }
-    }
-
-    fun Element.extractPosterUrl(): String {
-        for (attr in listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc",
-                             "data-original", "data-image", "data-bg", "src")) {
-            val v = this.attr(attr)
-            if (v.isNotBlank() && !v.contains("data:image") &&
-                (v.startsWith("http") || v.startsWith("//"))) {
-                return if (v.startsWith("//")) "https:$v" else v
-            }
-        }
-        val srcset = this.attr("srcset")
-        if (srcset.isNotBlank()) {
-            return srcset.trim().split(",").firstOrNull()
-                ?.trim()?.split(" ")?.firstOrNull { it.startsWith("http") || it.startsWith("//") }?.let {
-                    if (it.startsWith("//")) "https:$it" else it
-                } ?: ""
-        }
-        val style = this.attr("style")
-        if (style.contains("background") && style.contains("url(")) {
-            val urlStart = style.indexOf("url(") + 4
-            val raw = style.substring(urlStart)
-            val dq = 34.toChar().toString()
-            val sq = 39.toChar().toString()
-            val cleaned = raw.replace(dq, "").replace(sq, "")
-            val urlEnd = cleaned.indexOf(")")
-            if (urlEnd > 0) {
-                val candidate = cleaned.substring(0, urlEnd).trim()
-                if (candidate.startsWith("http") || candidate.startsWith("//")) {
-                    return if (candidate.startsWith("//")) "https:$candidate" else candidate
-                }
-            }
-        }
-        return ""
-    }
-
-    fun Element.toSearchResponse(mainUrl: String): SearchResponse? {
-        val a = (if (this.tagName() == "a") this else this.selectFirst("a")) ?: return null
-        val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
-        if (href.isBlank() || href == mainUrl || href.contains("javascript")) return null
-        
-        val img = this.selectFirst("img") ?: this.selectFirst("[data-src], [data-lazy-src], [data-original]")
-        val title = this.selectFirst(
-            ".entry-title, h2.entry-title, h2, h3, .title, .film-name, .movie-title, .item-title, .tt, .ttl, .bigor .tt, .name"
-        )?.text()?.trim()
-            ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }
-                .ifEmpty { img?.attr("title")?.trim() ?: "" }
-                .ifEmpty { a.text().trim() }
-        
-        if (title.isBlank()) return null
-        
-        var src = img?.extractPosterUrl() ?: ""
-        if (src.isEmpty()) src = this.extractPosterUrl()
-        if (src.isEmpty()) {
-            this.select("[style*=background], [style*=url]").forEach { el ->
-                val u = el.extractPosterUrl()
-                if (u.isNotEmpty()) { src = u; return@forEach }
-            }
-        }
-        
-        val hrefLower = href.lowercase()
-        val typeLabel = this.selectFirst(".type, .label, .badge, [class*=type], [class*=label], .quality")?.text()?.lowercase() ?: ""
-        
-        val isTv = hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
-                   hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
-                   typeLabel.contains("series") || typeLabel.contains("drama") ||
-                   typeLabel.contains("episode") || typeLabel.contains("ongoing")
-                   
-        return if (isTv) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = src }
-        } else {
-            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = src }
-        }
-    }
-
-    suspend fun parseMultiRowHome(
-        entries: List<Pair<String, String>>,
-        itemSelector: String
-    ): HomePageResponse {
-        val lists = entries.map { (path, label) ->
-            val pageUrl = if (path.startsWith("http")) path else "$mainUrl/$path"
-            val items = try {
-                val doc = app.get(pageUrl, headers = mapOf("Referer" to mainUrl)).document
-                doc.select(itemSelector).mapNotNull { it.toSearchResponse(mainUrl) }.distinctBy { it.url }
-            } catch (_: Exception) {
-                emptyList<SearchResponse>()
-            }
-            HomePageList(label, items)
-        }.filter { it.list.isNotEmpty() }
-        return newHomePageResponse(lists, hasNext = false)
-    }
-}
-
-class KuronimeProvider : BaseFixProvider() {
+class KuronimeProvider : MainAPI() {
 
     override var mainUrl        = "https://kuronime.sbs"
     override var name           = "Kuronime"
     override var lang           = "id"
-    override var hasMainPage    = true
+    override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
@@ -152,14 +41,7 @@ class KuronimeProvider : BaseFixProvider() {
                 "$mainUrl/$pagedPath$query"
             }
         }
-        val items = scrapeList(pageUrl)
-        if (items.isEmpty() && page == 1) {
-            return parseMultiRowHome(
-                mainPage.map { Pair(it.data, it.name) },
-                ".bsx, .bs, article.bs, article, .animpost, .animepost, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, .post, .entry, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .hentry, .gmr-box-content"
-            )
-        }
-        return newHomePageResponse(request.name, items)
+        return newHomePageResponse(request.name, scrapeList(pageUrl))
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -400,8 +282,8 @@ class KuronimeProvider : BaseFixProvider() {
         }
 
 
-        // 4. Clickable elements, links, buttons, lists (Optimized to avoid selecting all divs/spans)
-        doc.select("a, button, [data-src], [data-link], [data-embed], [data-video], [data-url], [data-id], .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
+        // 4. Clickable elements, links, buttons, lists
+        doc.select("a, button, li, div, span, .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
                 val finalUrl = fixUrl(href)
@@ -525,34 +407,20 @@ class KuronimeProvider : BaseFixProvider() {
                         )
                     )
                     if (!response.isSuccessful) continue
-                    val json = response.text.trim()
+                    val json = response.text
                     if (json.isBlank() || json == "0" || json == "false" || json == "null") continue
 
-                    var targetHtml = json
-                    try {
-                        if (json.startsWith("{")) {
-                            val jsonObj = org.json.JSONObject(json)
-                            targetHtml = jsonObj.optString("embed_url").ifEmpty {
-                                jsonObj.optString("embed").ifEmpty {
-                                    jsonObj.optString("url").ifEmpty {
-                                        jsonObj.optString("html").ifEmpty { json }
-                                    }
-                                }
-                            }
-                        }
-                    } catch (_: Exception) {}
-
-                    val cleanHtml = targetHtml.replace("\\/", "/").replace("\\" + 34.toChar().toString(), 34.toChar().toString())
-                    val parsedDoc = Jsoup.parse(cleanHtml)
+                    // Extract iframe or URL from response HTML/JSON
+                    val parsedDoc = Jsoup.parse(json)
                     val iframeSrc = parsedDoc.selectFirst("iframe[src], iframe[data-src]")?.let { 
                         it.attr("src").ifEmpty { it.attr("data-src") } 
                     }
 
                     val embedUrl = iframeSrc
-                        ?: Regex("""src=["']([^"']+)["']""").find(cleanHtml)?.groupValues?.get(1)
-                        ?: Regex("""href=["']([^"']+)["']""").find(cleanHtml)?.groupValues?.get(1)
-                        ?: Regex("""["'](https?:[^"']+)["']""").find(cleanHtml)?.groupValues?.get(1)
-                        ?: if (cleanHtml.trim().startsWith("http")) cleanHtml.trim() else null
+                        ?: Regex("""src=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
+                        ?: Regex("""href=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
+                        ?: Regex("""["'](https?:[^"']+)["']""").find(json)?.groupValues?.get(1)
+                        ?: if (json.trim().startsWith("http")) json.trim() else null
 
                     if (embedUrl != null) {
                         val cleanUrl = fixUrl(embedUrl)
@@ -565,7 +433,7 @@ class KuronimeProvider : BaseFixProvider() {
             }
         }
 
-        // 6. Harvest URLs directly from <script> tags (Optimized to keep only potential video/embed URLs)
+        // 6. Harvest URLs directly from <script> tags
         doc.select("script").forEach { script ->
             val content = script.data()
             if (content.isNotBlank()) {
@@ -573,17 +441,7 @@ class KuronimeProvider : BaseFixProvider() {
                     val url = match.value
                     if (!url.contains("google") && !url.contains("facebook") && !url.contains("analytics")) {
                         val finalUrl = fixUrl(url)
-                        if (finalUrl.isNotEmpty() && (
-                            finalUrl.contains(".mp4") || finalUrl.contains(".m3u8") ||
-                            finalUrl.contains(".mkv") || finalUrl.contains("/embed/") ||
-                            finalUrl.contains("/player/") || finalUrl.contains("/e/") ||
-                            finalUrl.contains("/v/") || finalUrl.contains("playerx") ||
-                            finalUrl.contains("ezplayer") || finalUrl.contains("abyss") ||
-                            finalUrl.contains("seekplayer") || finalUrl.contains("streamwish") ||
-                            finalUrl.contains("voe") || finalUrl.contains("dood")
-                        )) {
-                            targets.add(finalUrl)
-                        }
+                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
                     }
                 }
             }
@@ -766,7 +624,6 @@ class KuronimeProvider : BaseFixProvider() {
                         val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
                         val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
                         val isAbyss = listOf("abyssplayer.com", "abyss.to", "abysscdn.com", "iamcdn.net", "sssrr").any { cleanUrlEscaped.contains(it, true) }
-                        val isPlayerX = listOf("ezplayer.stream", "player4me.online", "rpmplay.online", "rpmstream.online", "seekplays.online", "p2pstream.online", "upns.live").any { cleanUrlEscaped.contains(it, true) }
                         val isSeekPlayer = cleanUrlEscaped.contains("seekplayer", true)
                         val isTamilEmbed = cleanUrlEscaped.contains("tamilembed", true)
 
@@ -790,13 +647,6 @@ class KuronimeProvider : BaseFixProvider() {
                                     AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("FallbackExtractor", "AbyssExtractor failed: ${e.message}")
-                                }
-                            }
-                            isPlayerX -> {
-                                try {
-                                    PlayerXExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (e: Exception) {
-                                    android.util.Log.e("FallbackExtractor", "PlayerXExtractor failed: ${e.message}")
                                 }
                             }
                             isStreamWish -> {
@@ -843,116 +693,7 @@ class KuronimeProvider : BaseFixProvider() {
                             }
                             else -> {
                                 try {
-                                    val loaded = loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
-                                    if (!loaded) {
-                                        if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
-                                            !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
-                                            !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
-                                            !cleanUrlEscaped.contains("adskeeper")) {
-                                            
-                                            val embedDoc = app.get(cleanUrlEscaped, referer = data).document
-                                            
-                                            embedDoc.select("source[src], video source[src], video[src]").forEach { el ->
-                                                val src = el.attr("src").trim()
-                                                val finalUrl = fixUrl(src)
-                                                if (finalUrl.isNotEmpty()) {
-                                                    val cleanIf = finalUrl.replace(92.toChar().toString(), "")
-                                                    val isM3u = cleanIf.contains(".m3u8") || cleanIf.contains("/hls/")
-                                                    callback(
-                                                        newExtractorLink(
-                                                            source = "Direct Stream",
-                                                            name = "Direct Stream",
-                                                            url = cleanIf,
-                                                            type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                                                        ) {
-                                                            this.referer = cleanUrlEscaped
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                            
-                                            embedDoc.select("script").forEach { script ->
-                                                val code = script.data()
-                                                if (code.isNotBlank()) {
-                                                    Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+\.(?:m3u8|mp4|mkv)(?:\?[^"']*)?""").findAll(code).forEach { match ->
-                                                        val urlStr = match.value
-                                                        val finalUrl = fixUrl(urlStr)
-                                                        if (finalUrl.isNotEmpty()) {
-                                                            val isM3u = finalUrl.contains(".m3u8") || finalUrl.contains("/hls/")
-                                                            callback(
-                                                                newExtractorLink(
-                                                                    source = "Direct Stream",
-                                                                    name = "Direct Stream",
-                                                                    url = finalUrl,
-                                                                    type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                                                                ) {
-                                                                    this.referer = cleanUrlEscaped
-                                                                }
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            embedDoc.select("iframe[src], iframe[data-src], iframe[data-lazy-src]").forEach { iframe ->
-                                                val iframeSrc = iframe.attr("src").ifEmpty { iframe.attr("data-src") }.ifEmpty { iframe.attr("data-lazy-src") }.trim()
-                                                if (iframeSrc.isNotBlank()) {
-                                                    val finalIframeUrl = fixUrl(iframeSrc)
-                                                    if (finalIframeUrl.isNotEmpty() && finalIframeUrl != cleanUrlEscaped) {
-                                                        val cleanIf = finalIframeUrl.replace(92.toChar().toString(), "")
-                                                        val loadedSub = loadExtractor(cleanIf, cleanUrlEscaped, subtitleCallback, callback)
-                                                        if (!loadedSub) {
-                                                            try {
-                                                                val subDoc = app.get(cleanIf, referer = cleanUrlEscaped).document
-                                                                
-                                                                subDoc.select("source[src], video source[src], video[src]").forEach { el ->
-                                                                    val src = el.attr("src").trim()
-                                                                    val finalUrl = fixUrl(src)
-                                                                    if (finalUrl.isNotEmpty()) {
-                                                                        val cleanUrl2 = finalUrl.replace(92.toChar().toString(), "")
-                                                                        val isM3u = cleanUrl2.contains(".m3u8") || cleanUrl2.contains("/hls/")
-                                                                        callback(
-                                                                            newExtractorLink(
-                                                                                source = "Direct Stream",
-                                                                                name = "Direct Stream",
-                                                                                url = cleanUrl2,
-                                                                                type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                                                                            ) {
-                                                                                this.referer = cleanIf
-                                                                            }
-                                                                        )
-                                                                    }
-                                                                }
-                                                                
-                                                                subDoc.select("script").forEach { script ->
-                                                                    val code = script.data()
-                                                                    if (code.isNotBlank()) {
-                                                                        Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+\.(?:m3u8|mp4|mkv)(?:\?[^"']*)?""").findAll(code).forEach { match ->
-                                                                            val urlStr = match.value
-                                                                            val finalUrl = fixUrl(urlStr)
-                                                                            if (finalUrl.isNotEmpty()) {
-                                                                                val isM3u = finalUrl.contains(".m3u8") || finalUrl.contains("/hls/")
-                                                                                callback(
-                                                                                    newExtractorLink(
-                                                                                        source = "Direct Stream",
-                                                                                        name = "Direct Stream",
-                                                                                        url = finalUrl,
-                                                                                        type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                                                                                    ) {
-                                                                                        this.referer = cleanIf
-                                                                                    }
-                                                                                )
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                }
-                                                            } catch (_: Exception) {}
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                                    loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
                                 } catch (e: Exception) {
                                     android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
                                 }

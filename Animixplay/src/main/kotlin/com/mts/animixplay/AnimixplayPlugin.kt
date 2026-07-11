@@ -9,9 +9,10 @@ class AnimixplayPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(AnimixplayProvider())
         registerExtractorAPI(EoBilstedquotasCom())
+        registerExtractorAPI(BloggerCom())
+        registerExtractorAPI(AnimesamaSe())
+        registerExtractorAPI(GogoanimetvEs())
         registerExtractorAPI(TamilembedLol())
         registerExtractorAPI(KwikCx())
-        registerExtractorAPI(GogoanimetvEs())
-        registerExtractorAPI(AnimesamaSe())
     }
 }

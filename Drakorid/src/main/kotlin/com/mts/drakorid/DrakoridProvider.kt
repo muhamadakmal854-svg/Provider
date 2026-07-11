@@ -4,178 +4,54 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
+import javax.crypto.spec.IvParameterSpec
+import java.security.MessageDigest
 
+class DrakoridProvider : MainAPI() {
 
-abstract class BaseFixProvider : MainAPI() {
-
-    fun fixUrl(url: String, referer: String): String {
-        if (url.isBlank()) return ""
-        if (url.startsWith("http")) return url
-        if (url.startsWith("//")) return "https:" + url
-        return try {
-            val u = java.net.URL(referer)
-            if (url.startsWith("/")) {
-                "${u.protocol}://${u.host}$url"
-            } else {
-                val path = u.path.substringBeforeLast("/")
-                "${u.protocol}://${u.host}$path/$url"
-            }
-        } catch (_: Exception) {
-            if (url.startsWith("/")) "$mainUrl$url" else "$mainUrl/$url"
-        }
-    }
-
-    fun Element.extractPosterUrl(): String {
-        for (attr in listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc",
-                             "data-original", "data-image", "data-bg", "src")) {
-            val v = this.attr(attr)
-            if (v.isNotBlank() && !v.contains("data:image") &&
-                (v.startsWith("http") || v.startsWith("//"))) {
-                return if (v.startsWith("//")) "https:$v" else v
-            }
-        }
-        val srcset = this.attr("srcset")
-        if (srcset.isNotBlank()) {
-            return srcset.trim().split(",").firstOrNull()
-                ?.trim()?.split(" ")?.firstOrNull { it.startsWith("http") || it.startsWith("//") }?.let {
-                    if (it.startsWith("//")) "https:$it" else it
-                } ?: ""
-        }
-        val style = this.attr("style")
-        if (style.contains("background") && style.contains("url(")) {
-            val urlStart = style.indexOf("url(") + 4
-            val raw = style.substring(urlStart)
-            val dq = 34.toChar().toString()
-            val sq = 39.toChar().toString()
-            val cleaned = raw.replace(dq, "").replace(sq, "")
-            val urlEnd = cleaned.indexOf(")")
-            if (urlEnd > 0) {
-                val candidate = cleaned.substring(0, urlEnd).trim()
-                if (candidate.startsWith("http") || candidate.startsWith("//")) {
-                    return if (candidate.startsWith("//")) "https:$candidate" else candidate
-                }
-            }
-        }
-        return ""
-    }
-
-    fun Element.toSearchResponse(mainUrl: String): SearchResponse? {
-        val a = (if (this.tagName() == "a") this else this.selectFirst("a")) ?: return null
-        val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
-        if (href.isBlank() || href == mainUrl || href.contains("javascript")) return null
-        
-        val img = this.selectFirst("img") ?: this.selectFirst("[data-src], [data-lazy-src], [data-original]")
-        val title = this.selectFirst(
-            ".entry-title, h2.entry-title, h2, h3, .title, .film-name, .movie-title, .item-title, .tt, .ttl, .bigor .tt, .name"
-        )?.text()?.trim()
-            ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }
-                .ifEmpty { img?.attr("title")?.trim() ?: "" }
-                .ifEmpty { a.text().trim() }
-        
-        if (title.isBlank()) return null
-        
-        var src = img?.extractPosterUrl() ?: ""
-        if (src.isEmpty()) src = this.extractPosterUrl()
-        if (src.isEmpty()) {
-            this.select("[style*=background], [style*=url]").forEach { el ->
-                val u = el.extractPosterUrl()
-                if (u.isNotEmpty()) { src = u; return@forEach }
-            }
-        }
-        
-        val hrefLower = href.lowercase()
-        val typeLabel = this.selectFirst(".type, .label, .badge, [class*=type], [class*=label], .quality")?.text()?.lowercase() ?: ""
-        
-        val isTv = hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
-                   hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
-                   typeLabel.contains("series") || typeLabel.contains("drama") ||
-                   typeLabel.contains("episode") || typeLabel.contains("ongoing")
-                   
-        return if (isTv) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = src }
-        } else {
-            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = src }
-        }
-    }
-
-    suspend fun parseMultiRowHome(
-        entries: List<Pair<String, String>>,
-        itemSelector: String
-    ): HomePageResponse {
-        val lists = entries.map { (path, label) ->
-            val pageUrl = if (path.startsWith("http")) path else "$mainUrl/$path"
-            val items = try {
-                val doc = app.get(pageUrl, headers = mapOf("Referer" to mainUrl)).document
-                doc.select(itemSelector).mapNotNull { it.toSearchResponse(mainUrl) }.distinctBy { it.url }
-            } catch (_: Exception) {
-                emptyList<SearchResponse>()
-            }
-            HomePageList(label, items)
-        }.filter { it.list.isNotEmpty() }
-        return newHomePageResponse(lists, hasNext = false)
-    }
-}
-
-class DrakoridProvider : BaseFixProvider() {
     override var mainUrl        = "https://drakorid.cam"
     override var name           = "Drakorid"
     override var lang           = "id"
-    override var hasMainPage    = true
+    override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "?section=hot-series" to "Hot Series Update",
-        "?section=latest-release" to "Latest Release",
+        "movie" to "Filem Terbaru",
+        "series" to "TV Series Terbaru",
         "genres/action" to "Action",
         "genres/adventure" to "Adventure",
         "genres/business" to "Business",
         "genres/comedy" to "Comedy",
         "genres/crime" to "Crime",
         "genres/documentary" to "Documentary",
-        "genres/drama" to "Drama",
-        "genres/family" to "Family",
-        "genres/fantasy" to "Fantasy",
-        "genres/food" to "Food",
-        "genres/historical" to "Historical",
-        "genres/horror" to "Horror",
-        "genres/law" to "Law",
-        "genres/life" to "Life",
-        "genres/medical" to "Medical",
-        "genres/melodrama" to "Melodrama",
-        "genres/military" to "Military",
-        "genres/music" to "Music",
-        "genres/mystery" to "Mystery",
-        "genres/political" to "Political",
-        "genres/psychological" to "Psychological",
-        "genres/romance" to "Romance",
-        "genres/sci-fi" to "Sci-Fi",
-        "genres/shounen" to "Shounen",
-        "genres/sitcom" to "Sitcom",
-        "genres/sports" to "Sports",
-        "genres/supernatural" to "Supernatural",
-        "genres/thriller" to "Thriller",
-        "genres/war" to "War",
-        "genres/wuxia" to "Wuxia",
-        "genres/youth" to "Youth"
+        "genres/drama" to "Drama"
     )
 
-    fun fixDrakoridUrl(url: String, referer: String = mainUrl): String {
-        if (url.isBlank()) return ""
-        if (url.startsWith("http")) return url
-        if (url.startsWith("//")) return "https:" + url
-        return try {
-            val u = java.net.URL(referer)
-            if (url.startsWith("/")) {
-                "${u.protocol}://${u.host}$url"
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val path = request.data
+        val cleanPath = path.removePrefix("/").removeSuffix("/")
+        val pageUrl = if (path.startsWith("http")) {
+            path + if (page > 1) "page/$page/" else ""
+        } else {
+            if (cleanPath.isEmpty()) {
+                mainUrl + if (page > 1) "/page/$page/" else "/"
             } else {
-                val path = u.path.substringBeforeLast("/")
-                "${u.protocol}://${u.host}$path/$url"
+                val parts = cleanPath.split("?")
+                val basePath = parts[0].removeSuffix("/")
+                val query = if (parts.size > 1) "?" + parts[1] else ""
+                val pagedPath = if (page > 1) "$basePath/page/$page/" else "$basePath/"
+                "$mainUrl/$pagedPath$query"
             }
-        } catch (_: Exception) {
-            if (url.startsWith("/")) "$mainUrl$url" else "$mainUrl/$url"
         }
+        return newHomePageResponse(request.name, scrapeList(pageUrl))
     }
 
+    override suspend fun search(query: String): List<SearchResponse> {
+        return scrapeList("$mainUrl/?s=${query.replace(" ", "+")}")
+    }
+    
     private fun Element.posterUrl(): String {
         for (attr in listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc",
                              "data-original", "data-image", "data-bg", "src")) {
@@ -210,93 +86,51 @@ class DrakoridProvider : BaseFixProvider() {
         return ""
     }
 
-    private fun Element.toDrakoridSearchResponse(mainUrl: String): SearchResponse? {
-        val a = (if (this.tagName() == "a") this else this.selectFirst("a")) ?: return null
-        val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
-        if (href.isBlank() || href == mainUrl || href.contains("javascript")) return null
-        
-        val img = this.selectFirst("img") ?: this.selectFirst("[data-src], [data-lazy-src], [data-original]")
-        val title = this.selectFirst(
-            ".entry-title, h2.entry-title, h2, h3, .title, .film-name, .movie-title, .item-title, .tt, .ttl, .bigor .tt, .name"
-        )?.text()?.trim()
-            ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }
-                .ifEmpty { img?.attr("title")?.trim() ?: "" }
-                .ifEmpty { a.text().trim() }
-        
-        if (title.isBlank()) return null
-        
-        var src = img?.posterUrl() ?: ""
-        if (src.isEmpty()) src = this.posterUrl()
-        if (src.isEmpty()) {
-            this.select("[style*=background], [style*=url]").forEach { el ->
-                val u = el.posterUrl()
-                if (u.isNotEmpty()) { src = u; return@forEach }
-            }
-        }
-        
-        val hrefLower = href.lowercase()
-        val typeLabel = this.selectFirst(".type, .label, .badge, [class*=type], [class*=label], .quality")?.text()?.lowercase() ?: ""
-        
-        val isTv = hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
-                   hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
-                   typeLabel.contains("series") || typeLabel.contains("drama") ||
-                   typeLabel.contains("episode") || typeLabel.contains("ongoing")
-                   
-        return if (isTv) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = src }
-        } else {
-            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = src }
-        }
-    }
-
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
         val doc = app.get(pageUrl, headers = mapOf(
             "Referer" to mainUrl,
             "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         )).document
         return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, .post, .entry, .film-poster-ahref").mapNotNull {
-            it.toDrakoridSearchResponse(mainUrl)
+            val a = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
+            val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
+            if (href.isBlank() || href == mainUrl || href.contains("javascript")) return@mapNotNull null
+            val img = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
+            val title = it.selectFirst(
+                ".entry-title, h2.entry-title, h2, h3, .title, .film-name, .movie-title, .item-title"
+            )?.text()?.trim()
+                ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }
+                    .ifEmpty { img?.attr("title")?.trim() ?: "" }
+                    .ifEmpty { a.text().trim() }
+            if (title.isBlank()) return@mapNotNull null
+            var src = img?.posterUrl() ?: ""
+            if (src.isEmpty()) src = it.posterUrl()
+            if (src.isEmpty()) {
+                it.select("[style*=background], [style*=url]").forEach { el ->
+                    val u = el.posterUrl()
+                    if (u.isNotEmpty()) { src = u; return@forEach }
+                }
+            }
+            // Smart type detection based on URL pattern and page metadata
+            val hrefLower = href.lowercase()
+            val typeLabel = it.selectFirst(
+                ".type, .label, .badge, [class*=type], [class*=label], .quality"
+            )?.text()?.lowercase() ?: ""
+            when {
+                hrefLower.contains("/movie") || hrefLower.contains("/film") ||
+                hrefLower.contains("/movies/") ->
+                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+                hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
+                hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
+                typeLabel.contains("series") || typeLabel.contains("drama") ||
+                typeLabel.contains("episode") ->
+                    newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+                else ->
+                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+            }
         }.distinctBy { it.url }
     }
-
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val path = request.data
-        if (path.contains("section=hot-series")) {
-            val doc = app.get(mainUrl, headers = mapOf("Referer" to mainUrl)).document
-            val hotBox = doc.select("div.bixbox").firstOrNull { box ->
-                val hdr = box.selectFirst("h1, h2, h3, h4, .title")
-                hdr != null && hdr.text().contains("Hot Series", ignoreCase = true)
-            }
-            val items = if (hotBox != null) {
-                hotBox.select("article, .bsx, .bs").mapNotNull { it.toDrakoridSearchResponse(mainUrl) }.distinctBy { it.url }
-            } else {
-                emptyList()
-            }
-            return newHomePageResponse(listOf(HomePageList(request.name, items)), hasNext = false)
-        } else if (path.contains("section=latest-release")) {
-            val pageUrl = if (page > 1) {
-                "$mainUrl/series/page/$page/?status=&type=&order=update"
-            } else {
-                "$mainUrl/series/?status=&type=&order=update"
-            }
-            val items = scrapeList(pageUrl)
-            return newHomePageResponse(listOf(HomePageList(request.name, items)), hasNext = true)
-        } else {
-            val cleanPath = path.removePrefix("/").removeSuffix("/")
-            val pageUrl = if (page > 1) {
-                "$mainUrl/$cleanPath/page/$page/"
-            } else {
-                "$mainUrl/$cleanPath/"
-            }
-            val items = scrapeList(pageUrl)
-            return newHomePageResponse(listOf(HomePageList(request.name, items)), hasNext = true)
-        }
-    }
-
-    override suspend fun search(query: String): List<SearchResponse> {
-        return scrapeList("$mainUrl/?s=${query.replace(" ", "+")}")
-    }
-
+    
     override suspend fun load(url: String): LoadResponse? {
         val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
         var currentDoc = doc
@@ -365,7 +199,7 @@ class DrakoridProvider : BaseFixProvider() {
                 "[class*=episode-list] li a, [class*=episode] a[href], " +
                 "#daftarepisode li a, #daftarepisode a, .epcheck li a, [id*=episode] li a, [id*=episode] a"
             ).mapIndexed { i, a ->
-                newEpisode(fixDrakoridUrl(a.attr("href"))) {
+                newEpisode(fixUrl(a.attr("href"))) {
                     this.name = a.selectFirst(".epl-title, .epl-num, span, .episode-title")
                         ?.text()?.trim() ?: a.text().trim()
                     this.episode = i + 1
@@ -380,6 +214,12 @@ class DrakoridProvider : BaseFixProvider() {
             }
         }
     }
+    
+    private fun sha256(input: String): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val bytes = md.digest(input.toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
 
     override suspend fun loadLinks(
         data: String,
@@ -390,12 +230,29 @@ class DrakoridProvider : BaseFixProvider() {
         val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
         val targets = mutableListOf<String>()
 
-        // 0. Process player page tabs
+        fun fixUrl(url: String): String {
+            if (url.isBlank()) return ""
+            if (url.startsWith("http")) return url
+            if (url.startsWith("//")) return "https:$url"
+            return try {
+                val u = java.net.URL(data)
+                if (url.startsWith("/")) {
+                    "${u.protocol}://${u.host}$url"
+                } else {
+                    val path = u.path.substringBeforeLast("/")
+                    "${u.protocol}://${u.host}$path/$url"
+                }
+            } catch (_: Exception) {
+                if (url.startsWith("/")) "$mainUrl$url" else "$mainUrl/$url"
+            }
+        }
+
+        // 0. Process player page tabs (e.g. ?player= or ?server= or sub-pages)
         val playerTabs = mutableListOf<String>()
         doc.select("ul.muvipro-player-tabs li a, ul.gmr-player-tabs li a, .gmr-player-nav a, .gmr-player-tabs a, ul.nav-tabs li a, .gmr-server-wrap a").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
-                val resolved = fixDrakoridUrl(href, data)
+                val resolved = fixUrl(href)
                 if (resolved.contains("?player=") || resolved.contains("?server=") || resolved.contains("&player=") || resolved.contains("&server=")) {
                     playerTabs.add(resolved)
                 }
@@ -410,7 +267,7 @@ class DrakoridProvider : BaseFixProvider() {
                         .ifEmpty { iframe.attr("data-litespeed-src") }
                         .ifEmpty { iframe.attr("data-lazy-src") }
                         .trim()
-                    val finalUrl = fixDrakoridUrl(src, tabUrl)
+                    val finalUrl = fixUrl(src)
                     if (finalUrl.isNotEmpty()) targets.add(finalUrl)
                 }
             } catch (_: Exception) {}
@@ -419,18 +276,18 @@ class DrakoridProvider : BaseFixProvider() {
         // 1. Direct video/source elements
         doc.select("source[src], video source[src], video[src]").forEach { el ->
             val src = el.attr("src").trim()
-            val finalUrl = fixDrakoridUrl(src, data)
+            val finalUrl = fixUrl(src)
             if (finalUrl.isNotEmpty()) targets.add(finalUrl)
         }
 
-        // 2. Direct iframes
+        // 2. Direct iframes (check common attributes and classes)
         doc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src], iframe.metaframe").forEach { iframe ->
             val src = iframe.attr("src")
                 .ifEmpty { iframe.attr("data-src") }
                 .ifEmpty { iframe.attr("data-litespeed-src") }
                 .ifEmpty { iframe.attr("data-lazy-src") }
                 .trim()
-            val finalUrl = fixDrakoridUrl(src, data)
+            val finalUrl = fixUrl(src)
             if (finalUrl.isNotEmpty()) targets.add(finalUrl)
         }
 
@@ -439,56 +296,59 @@ class DrakoridProvider : BaseFixProvider() {
             listOf("value", "data-src", "data-link", "data-embed", "data-video", "data-url", "data-id").forEach { attr ->
                 val v = el.attr(attr).trim()
                 if (v.isBlank()) return@forEach
+                // If the value is a real URL, add directly
                 if (v.startsWith("http") || v.startsWith("//")) {
                     targets.add(if (v.startsWith("//")) "https:$v" else v)
                     return@forEach
                 }
-                // Try base64 decode
+                // Try base64 decode (for mobius/mirror selectors with encoded iframes)
                 try {
                     val decoded = android.util.Base64.decode(v, android.util.Base64.DEFAULT)
                     val htmlContent = String(decoded, Charsets.UTF_8)
                     val parsedIfr = Jsoup.parse(htmlContent).selectFirst("iframe, IFRAME, [src]")
                     val iframeSrc = parsedIfr?.attr("src")?.ifEmpty { parsedIfr.attr("data-src") } ?: ""
                     if (iframeSrc.isNotBlank()) {
-                        val href = fixDrakoridUrl(iframeSrc, data)
+                        val href = fixUrl(iframeSrc)
                         if (href.isNotEmpty()) targets.add(href)
                     }
                 } catch (_: Exception) {
-                    val finalUrl = fixDrakoridUrl(v, data)
+                    // Not base64, try as-is via fixUrl
+                    val finalUrl = fixUrl(v)
                     if (finalUrl.isNotEmpty()) targets.add(finalUrl)
                 }
             }
         }
 
-        // 4. Clickable elements
+
+        // 4. Clickable elements, links, buttons, lists
         doc.select("a, button, li, div, span, .opt-sp, .opt-single, .mirror-item, div#downloadb li, div.download li").forEach { el ->
             val href = el.attr("href").trim()
             if (href.isNotBlank() && !href.startsWith("#") && !href.contains("javascript", true)) {
-                val finalUrl = fixDrakoridUrl(href, data)
+                val finalUrl = fixUrl(href)
                 if (finalUrl.isNotEmpty()) targets.add(finalUrl)
             }
-            listOf("data-src", "data-link", "data-embed", "data-video", "data-id", "data-url").forEach { attr ->
+            listOf("data-src", "data-link", "data-embed", "data-video", "data-id", "data-url", "data-content").forEach { attr ->
                 val v = el.attr(attr).trim()
-                val finalUrl = fixDrakoridUrl(v, data)
+                val finalUrl = fixUrl(v)
                 if (finalUrl.isNotEmpty() && !v.contains("data:image")) {
                     targets.add(finalUrl)
                 }
             }
         }
 
-        // 5. Script regex URL extraction
+        // 4.5. Search for URLs inside script blocks (Regex extraction for Custom PHP/JS players)
         doc.select("script").forEach { script ->
             val code = script.html()
             if (code.isNotBlank()) {
-                val regex = Regex("(https?:)?//[^\\s\"'<>]+")
+                val regex = Regex("\"(https?:)?//[^\"\\s]+\"|'(https?:)?//[^'\\s]+'")
                 regex.findAll(code).forEach { match ->
-                    val rawUrl = match.value
-                    val finalUrl = fixDrakoridUrl(rawUrl, data)
+                    val rawUrl = match.value.replace("\"", "").replace("'", "")
+                    val finalUrl = fixUrl(rawUrl)
                     if (finalUrl.isNotBlank() && (
                         finalUrl.contains(".mp4") || finalUrl.contains(".m3u8") ||
                         finalUrl.contains(".mkv") || finalUrl.contains("/embed/") ||
                         finalUrl.contains("/player/") || finalUrl.contains("/e/") ||
-                        finalUrl.contains("/v/")
+                        finalUrl.contains("/v/") || finalUrl.contains("cloudfront.net")
                     )) {
                         targets.add(finalUrl)
                     }
@@ -496,11 +356,141 @@ class DrakoridProvider : BaseFixProvider() {
             }
         }
 
-        // 6. Process all collected targets
+        // 4.6. Search for playlist/sources JSON arrays in script blocks (for custom players like hotfile/cdn/etc)
+        doc.select("script").forEach { script ->
+            val code = script.data()
+            if (code.isNotBlank()) {
+                val match = Regex("""(?:SOURCES|sources|playlist)\s*=\s*(\[[\s\S]*?\])""").find(code)
+                val jsonStr = match?.groupValues?.get(1)
+                if (jsonStr != null) {
+                    try {
+                        val arr = org.json.JSONArray(jsonStr)
+                        for (i in 0 until arr.length()) {
+                            val obj = arr.getJSONObject(i)
+                            val link = obj.optString("link", "").ifEmpty { obj.optString("file", "").ifEmpty { obj.optString("url", "") } }
+                            if (link.startsWith("http") || link.startsWith("//")) {
+                                val cleanLink = if (link.startsWith("//")) "https:$link" else link
+                                val type = obj.optString("type", "").lowercase()
+                                val label = obj.optString("label", "Server")
+                                val isM3u = type.contains("hls") || type.contains("m3u8") || cleanLink.contains(".m3u8") || cleanLink.contains("/auto")
+                                callback(
+                                    newExtractorLink(
+                                        source = name,
+                                        name = "$name - $label",
+                                        url = cleanLink,
+                                        type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                    ) {
+                                        this.referer = data
+                                    }
+                                )
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+
+        // 4.7. Search for player-payload JSON script blocks (for kisskh/etc)
+        doc.select("script#player-payload, #player-payload").forEach { el ->
+            try {
+                val jsonStr = el.text().trim()
+                val json = org.json.JSONObject(jsonStr)
+                if (json.has("source")) {
+                    val src = json.getString("source")
+                    if (src.isNotBlank()) {
+                        val finalUrl = fixUrl(src)
+                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 5. AJAX Options (ZetaFlix, DooPlay, Flavor themes)
+        val ajaxBtns = doc.select("[data-post][data-nume], ul#playeroptionsul > li, li.zetaflix_player_option, .mirror-item")
+        val ajaxOptions = ajaxBtns.mapNotNull {
+            val post = it.attr("data-post")
+            val nume = it.attr("data-nume")
+            val type = it.attr("data-type").ifEmpty { "movie" }
+            if (post.isNotEmpty() && nume.isNotEmpty()) {
+                Triple(post, nume, type)
+            } else {
+                null
+            }
+        }.distinct()
+
+        ajaxOptions.forEach { (post, nume, type) ->
+            val actions = listOf(
+                "zt_main_ajax", "doo_player_ajax", "wp_ajax_doo_player", 
+                "action_player", "playvideo", "zeta_player_ajax",
+                "get_player_source", "ajax_player", "player_ajax", "bootstrap_ajax"
+            )
+            for (action in actions) {
+                try {
+                    val pageBase = try {
+                        val u = java.net.URL(data)
+                        "${u.protocol}://${u.host}"
+                    } catch (_: Exception) { mainUrl }
+                    val response = app.post(
+                        url = "$pageBase/wp-admin/admin-ajax.php",
+                        data = mapOf(
+                            "action" to action,
+                            "post" to post,
+                            "nume" to nume,
+                            "type" to type
+                        ),
+                        referer = data,
+                        headers = mapOf(
+                            "X-Requested-With" to "XMLHttpRequest",
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        )
+                    )
+                    if (!response.isSuccessful) continue
+                    val json = response.text
+                    if (json.isBlank() || json == "0" || json == "false" || json == "null") continue
+
+                    // Extract iframe or URL from response HTML/JSON
+                    val parsedDoc = Jsoup.parse(json)
+                    val iframeSrc = parsedDoc.selectFirst("iframe[src], iframe[data-src]")?.let { 
+                        it.attr("src").ifEmpty { it.attr("data-src") } 
+                    }
+
+                    val embedUrl = iframeSrc
+                        ?: Regex("""src=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
+                        ?: Regex("""href=["']([^"']+)["']""").find(json)?.groupValues?.get(1)
+                        ?: Regex("""["'](https?:[^"']+)["']""").find(json)?.groupValues?.get(1)
+                        ?: if (json.trim().startsWith("http")) json.trim() else null
+
+                    if (embedUrl != null) {
+                        val cleanUrl = fixUrl(embedUrl)
+                        if (cleanUrl.isNotEmpty()) {
+                            targets.add(cleanUrl)
+                            break // Found link for this button, skip other actions
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+
+        // 6. Harvest URLs directly from <script> tags
+        doc.select("script").forEach { script ->
+            val content = script.data()
+            if (content.isNotBlank()) {
+                Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+""").findAll(content).forEach { match ->
+                    val url = match.value
+                    if (!url.contains("google") && !url.contains("facebook") && !url.contains("analytics")) {
+                        val finalUrl = fixUrl(url)
+                        if (finalUrl.isNotEmpty()) targets.add(finalUrl)
+                    }
+                }
+            }
+        }
+
+        // 7. Process all collected targets (including base64 decoding & fallback routing)
         targets.distinct().forEach { raw ->
             val cleanedRaw = raw.trim()
             if (cleanedRaw.isBlank()) return@forEach
 
+            // Attempt base64 decoding
             var decodedUrl = ""
             try {
                 val base64Str = cleanedRaw.filter { !it.isWhitespace() }
@@ -513,7 +503,7 @@ class DrakoridProvider : BaseFixProvider() {
                 } ?: if (html.startsWith("http")) html else ""
                 
                 if (src.isNotEmpty()) {
-                    decodedUrl = fixDrakoridUrl(src, data)
+                    decodedUrl = fixUrl(src)
                 }
             } catch (_: Exception) {}
 
@@ -522,34 +512,149 @@ class DrakoridProvider : BaseFixProvider() {
                 val cleanUrl = if (finalUrl.startsWith("//")) "https:$finalUrl" else finalUrl
                 val cleanUrlEscaped = cleanUrl.replace(92.toChar().toString(), "")
                 
-                if (cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains(".mp4") || cleanUrlEscaped.contains("/hls/")) {
-                    val isM3u = cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains("/hls/")
-                    callback(
-                        newExtractorLink(
-                            source = "Direct Stream",
-                            name = "Direct Stream",
-                            url = cleanUrlEscaped,
-                            type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                        ) {
-                            this.referer = data
-                            this.quality = Qualities.Unknown.value
+                if (cleanUrlEscaped.contains("gofile.io/d/")) {
+                    try {
+                        val contentId = cleanUrlEscaped.substringAfter("/d/").substringBefore("/").substringBefore("?")
+                        if (contentId.isNotEmpty()) {
+                            val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                            val accResponse = app.post(
+                                url = "https://api.gofile.io/accounts",
+                                headers = mapOf(
+                                    "User-Agent" to userAgent,
+                                    "Accept" to "*/*",
+                                    "Referer" to "https://gofile.io/",
+                                    "Origin" to "https://gofile.io"
+                                )
+                            )
+                            if (accResponse.isSuccessful) {
+                                val responseText = accResponse.text
+                                val apiToken = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(responseText)?.groupValues?.get(1)
+                                if (apiToken != null) {
+                                    val timeSlot = System.currentTimeMillis() / 1000 / 14400
+                                    val salt = "5d4f7g8sd45fsd"
+                                    val tokenData = "$userAgent::en-US::$apiToken::$timeSlot::$salt"
+                                    val websiteToken = sha256(tokenData)
+                                    
+                                    val contentUrl = "https://api.gofile.io/contents/$contentId?contentFilter=&page=1&pageSize=1000&sortField=name&sortDirection=1"
+                                    val contentResponse = app.get(
+                                        url = contentUrl,
+                                        headers = mapOf(
+                                            "User-Agent" to userAgent,
+                                            "Accept" to "*/*",
+                                            "Referer" to "https://gofile.io/",
+                                            "Origin" to "https://gofile.io",
+                                            "Authorization" to "Bearer $apiToken",
+                                            "X-Website-Token" to websiteToken,
+                                            "X-BL" to "en-US"
+                                        )
+                                    )
+                                    if (contentResponse.isSuccessful) {
+                                        val contentText = contentResponse.text
+                                        Regex("\"link\"\\s*:\\s*\"([^\"]+)\"").findAll(contentText).forEach { match ->
+                                            val link = match.groupValues[1]
+                                            if (link.startsWith("http")) {
+                                                callback(
+                                                    newExtractorLink(
+                                                        source = "Gofile",
+                                                        name = "Gofile",
+                                                        url = link,
+                                                        type = if (link.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                    ) {
+                                                        this.referer = "https://gofile.io/"
+                                                        this.quality = Qualities.Unknown.value
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
-                    )
+                    } catch (_: Exception) {}
+                } else if (cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains(".mp4") || cleanUrlEscaped.contains("/hls/")) {
+                    try {
+                        val isM3u = cleanUrlEscaped.contains(".m3u8") || cleanUrlEscaped.contains("/hls/")
+                        callback(
+                            newExtractorLink(
+                                source = "Direct Stream",
+                                name = "Direct Stream",
+                                url = cleanUrlEscaped,
+                                type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = data
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                    } catch (_: Exception) {}
                 } else {
-                    val isWrapper = cleanUrlEscaped.contains("kisskh", true) || cleanUrlEscaped.contains("megaplay", true)
-                    if (isWrapper) {
+                    // Try to unwrap redirect parameters
+                    listOf("link", "url", "r", "to", "go").forEach { param ->
                         try {
-                            val subDoc = app.get(cleanUrlEscaped, referer = data).document
-                            subDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src]").forEach { iframe ->
-                                val iframeSrc = iframe.attr("src").ifEmpty { iframe.attr("data-src") }.ifEmpty { iframe.attr("data-litespeed-src") }.trim()
-                                if (iframeSrc.isNotBlank()) {
-                                    val finalIframeUrl = fixDrakoridUrl(iframeSrc, cleanUrlEscaped)
-                                    val cleanIf = finalIframeUrl.replace(92.toChar().toString(), "")
-                                    loadExtractor(cleanIf, cleanUrlEscaped, subtitleCallback, callback)
+                            val regex = Regex("[?&]" + param + "=([^&]+)")
+                            val match = regex.find(cleanUrlEscaped)
+                            val queryValue = match?.groupValues?.get(1)
+                            if (queryValue != null && queryValue.isNotEmpty()) {
+                                val decodedParam = try {
+                                    val decodedBytes = android.util.Base64.decode(queryValue, android.util.Base64.DEFAULT)
+                                    String(decodedBytes, Charsets.UTF_8)
+                                } catch (_: Exception) {
+                                    java.net.URLDecoder.decode(queryValue, "UTF-8")
+                                }
+                                val finalDecoded = fixUrl(decodedParam)
+                                if (finalDecoded.startsWith("http") && !finalDecoded.contains("google") && !finalDecoded.contains("facebook")) {
+                                    try {
+                                        loadExtractor(finalDecoded, data, subtitleCallback, callback)
+                                    } catch (_: Exception) {}
                                 }
                             }
                         } catch (_: Exception) {}
-                    } else {
+                    }
+                    
+                    if (!cleanUrlEscaped.contains("googletagmanager") && !cleanUrlEscaped.contains("facebook") && 
+                        !cleanUrlEscaped.contains("googleads") && !cleanUrlEscaped.contains("analytics") && 
+                        !cleanUrlEscaped.contains("histats") && !cleanUrlEscaped.contains("doubleclick") &&
+                        !cleanUrlEscaped.contains("adskeeper")) {
+                        
+                        // Same-domain deep scan (Auto Iframe Scanning for wrapper player pages on same domain)
+                        val isSameDomain = try {
+                            val host1 = java.net.URL(cleanUrlEscaped).host.replace("www.", "")
+                            val host2 = java.net.URL(mainUrl).host.replace("www.", "")
+                            host1 == host2
+                        } catch (_: Exception) { false }
+
+                        if (isSameDomain && cleanUrlEscaped != data) {
+                            try {
+                                val subDoc = app.get(cleanUrlEscaped, referer = data).document
+                                subDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src]").forEach { iframe ->
+                                    val iframeSrc = iframe.attr("src").ifEmpty { iframe.attr("data-src") }.ifEmpty { iframe.attr("data-litespeed-src") }.trim()
+                                    if (iframeSrc.isNotBlank()) {
+                                        val finalIframeUrl = fixUrl(iframeSrc)
+                                        if (finalIframeUrl.isNotEmpty() && finalIframeUrl != cleanUrlEscaped) {
+                                            val cleanIf = finalIframeUrl.replace(92.toChar().toString(), "")
+                                            if (cleanIf.contains("gofile.io/d/")) {
+                                                // Handle Gofile inside sub iframe
+                                            } else if (cleanIf.contains(".m3u8") || cleanIf.contains(".mp4") || cleanIf.contains("/hls/")) {
+                                                val isM3u = cleanIf.contains(".m3u8") || cleanIf.contains("/hls/")
+                                                callback(
+                                                    newExtractorLink(
+                                                        source = "Direct Stream",
+                                                        name = "Direct Stream",
+                                                        url = cleanIf,
+                                                        type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                    ) {
+                                                        this.referer = cleanUrlEscaped
+                                                    }
+                                                )
+                                            } else {
+                                                loadExtractor(cleanIf, cleanUrlEscaped, subtitleCallback, callback)
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                        }
+
+                        // Smart Extractor Fallback Dispatcher
                         val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
                         val isDood = listOf("dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
                         val isVoe = cleanUrlEscaped.contains("voe.sx", true) || cleanUrlEscaped.contains("voe", true)
@@ -564,52 +669,72 @@ class DrakoridProvider : BaseFixProvider() {
                             isTamilEmbed -> {
                                 try {
                                     TamilEmbed().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "TamilEmbed failed: ${e.message}")
+                                }
                             }
                             isSeekPlayer -> {
                                 try {
                                     SeekplayerVip().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "SeekplayerVip failed: ${e.message}")
+                                }
                             }
                             isAbyss -> {
                                 try {
                                     AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "AbyssExtractor failed: ${e.message}")
+                                }
                             }
                             isStreamWish -> {
                                 try {
                                     com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "StreamWish extraction failed for $cleanUrlEscaped: ${e.message}")
+                                }
                             }
                             isDood -> {
                                 try {
                                     com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "DoodLaExtractor extraction failed for $cleanUrlEscaped: ${e.message}")
+                                }
                             }
                             isVoe -> {
                                 try {
                                     com.lagradost.cloudstream3.extractors.Voe().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "Voe extraction failed: ${e.message}")
+                                }
                             }
                             isStreamtape -> {
                                 try {
                                     com.lagradost.cloudstream3.extractors.StreamTape().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "StreamTape extraction failed: ${e.message}")
+                                }
                             }
                             isFilemoon -> {
                                 try {
                                     com.lagradost.cloudstream3.extractors.FileMoon().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "FileMoon extraction failed: ${e.message}")
+                                }
                             }
                             isMp4Upload -> {
                                 try {
                                     com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.e("FallbackExtractor", "Mp4Upload extraction failed: ${e.message}")
+                                }
                             }
                             else -> {
                                 try {
                                     loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
-                                } catch (_: Exception) {}
+                                } catch (e: Exception) {
+                                    android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
+                                }
                             }
                         }
                     }
@@ -653,34 +778,25 @@ class AbyssExtractor : ExtractorApi() {
             val decodedBytes = android.util.Base64.decode(base64Str, android.util.Base64.DEFAULT)
             val latin1Str = String(decodedBytes, Charsets.ISO_8859_1)
 
-            val slugStart = latin1Str.indexOf("\"slug\":\"") + 8
-            val slugEnd = latin1Str.indexOf("\"", slugStart)
-            val slug = latin1Str.substring(slugStart, slugEnd)
-
-            val userIdStart = latin1Str.indexOf("\"user_id\":") + 10
-            val userIdEnd = latin1Str.indexOf(",", userIdStart)
-            val userId = latin1Str.substring(userIdStart, userIdEnd)
-
-            val md5IdStart = latin1Str.indexOf("\"md5_id\":") + 9
-            val md5IdEnd = latin1Str.indexOf(",", md5IdStart)
-            val md5Id = latin1Str.substring(md5IdStart, md5IdEnd)
-
-            val mediaStart = latin1Str.indexOf("\"media\":\"") + 9
-            val mediaEnd = latin1Str.indexOf("\",\"config\"")
-            val media = latin1Str.substring(mediaStart, mediaEnd)
+            val json = org.json.JSONObject(latin1Str)
+            val slug = json.getString("slug")
+            val userId = json.getString("user_id")
+            val md5Id = json.getString("md5_id")
+            val media = json.getString("media")
 
             val keyStr = "$userId:$slug:$md5Id"
             val keyBytesStr = md5(keyStr.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
             val key = keyBytesStr.toByteArray(Charsets.UTF_8)
             val iv = key.sliceArray(0 until 16)
 
-            val mediaCiphertext = media.toByteArray(Charsets.ISO_8859_1)
+            val mediaCiphertext = android.util.Base64.decode(media, android.util.Base64.DEFAULT)
             val decryptedMediaBytes = decryptAesCtr(mediaCiphertext, key, iv)
             val decryptedMediaStr = String(decryptedMediaBytes, Charsets.UTF_8)
 
             val mediaJson = org.json.JSONObject(decryptedMediaStr)
             val mp4 = mediaJson.getJSONObject("mp4")
             val sources = mp4.getJSONArray("sources")
+            val domainsObj = if (mp4.has("domains")) mp4.getJSONObject("domains") else if (mediaJson.has("domains")) mediaJson.getJSONObject("domains") else org.json.JSONObject()
 
             for (i in 0 until sources.length()) {
                 val src = sources.getJSONObject(i)
@@ -689,24 +805,7 @@ class AbyssExtractor : ExtractorApi() {
                 val label = src.getString("label")
                 val sub = src.getString("sub")
 
-                var domain = ""
-                try {
-                    val domainsObj = if (mp4.has("domains")) mp4.get("domains") else if (mediaJson.has("domains")) mediaJson.get("domains") else null
-                    if (domainsObj is org.json.JSONArray) {
-                        for (d in 0 until domainsObj.length()) {
-                            val dStr = domainsObj.getString(d)
-                            if (dStr.contains(sub)) {
-                                domain = dStr
-                                break
-                            }
-                        }
-                    } else if (domainsObj is org.json.JSONObject) {
-                        domain = domainsObj.getString(sub)
-                    }
-                } catch (_: Exception) {}
-                if (domain.isEmpty()) {
-                    domain = "$sub.sssrr.org"
-                }
+                val domain = domainsObj.getString(sub)
 
                 val pathStr = "/mp4/$md5Id/$resId/$size?v=$slug"
                 

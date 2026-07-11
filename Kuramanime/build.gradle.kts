@@ -1,7 +1,7 @@
 version = 1
 
 cloudstream {
-    language    = "ms"
+    language    = "id"
     description = "Provider untuk Kuramanime"
     authors     = listOf("MTS")
     status      = 1

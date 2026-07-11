@@ -8,10 +8,9 @@ import android.content.Context
 class DonghubPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(DonghubProvider())
-        registerExtractorAPI(DqEndebedouseShop())
-        registerExtractorAPI(GeoDailymotionCom())
+        registerExtractorAPI(KiRooserlyxoseShop())
         registerExtractorAPI(DailymotionCom())
-        registerExtractorAPI(TickcounterCom())
-        registerExtractorAPI(PlayerXExtractor())
+        registerExtractorAPI(GeoDailymotionCom())
+        registerExtractorAPI(MorenciusCom())
     }
 }

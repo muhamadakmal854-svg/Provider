@@ -1,365 +1,129 @@
 package com.mts.klikxxi
 
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
-import com.lagradost.cloudstream3.utils.ExtractorApi
+import com.lagradost.cloudstream3.extractors.VoeExtractor
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import java.security.MessageDigest
-import javax.crypto.Cipher
-import javax.crypto.spec.IvParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
-class ZombiemealCom : StreamWishExtractor() {
-    override var name = "ZombiemealCom"
-    override var mainUrl = "https://zombiemeal.com"
+class OracleCom : StreamWishExtractor() {
+    override var name = "OracleCom"
+    override var mainUrl = "https://oracle.com"
 }
 
-class VipIdlix21Pro : StreamWishExtractor() {
-    override var name = "VipIdlix21Pro"
-    override var mainUrl = "https://vip.idlix21.pro"
+class ConsentTrustarcCom : StreamWishExtractor() {
+    override var name = "ConsentTrustarcCom"
+    override var mainUrl = "https://consent.trustarc.com"
 }
 
-class EmbedpyroxXyz : ExtractorApi() {
-    override var name = "EmbedpyroxXyz"
-    override var mainUrl = "https://embedpyrox.xyz"
-    override val requiresReferer = true
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val cleanUrl = url.replace(92.toChar().toString(), "")
-        val id = cleanUrl.substringAfter("/video/").substringBefore("/").substringBefore("?")
-        if (id.isEmpty()) return
-
-        val ajaxUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
-        val response = app.post(
-            url = ajaxUrl,
-            data = mapOf("hash" to id, "r" to (referer ?: "")),
-            headers = mapOf(
-                "X-Requested-With" to "XMLHttpRequest",
-                "Referer" to cleanUrl,
-                "Origin" to mainUrl,
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
-            )
-        )
-        if (!response.isSuccessful) return
-        val text = response.text
-        val securedLink = Regex("\"securedLink\"\\s*:\\s*\"([^\"]+)\"").find(text)?.groupValues?.get(1)
-        if (securedLink != null) {
-            val finalUrl = securedLink.replace("\\/", "/")
-            callback(
-                newExtractorLink(
-                    source = name,
-                    name = name,
-                    url = finalUrl,
-                    type = ExtractorLinkType.M3U8
-                ) {
-                    this.referer = cleanUrl
-                }
-            )
-        }
-    }
+class LoginApiaryIo : StreamWishExtractor() {
+    override var name = "LoginApiaryIo"
+    override var mainUrl = "https://login.apiary.io"
 }
 
-class AbyssplayerCom : ExtractorApi() {
-    override var name = "AbyssplayerCom"
-    override var mainUrl = "https://abyssplayer.com"
-    override val requiresReferer = true
-
-    private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
-        val spec = javax.crypto.spec.SecretKeySpec(key, "AES")
-        val parameterSpec = javax.crypto.spec.IvParameterSpec(iv)
-        val cipher = javax.crypto.Cipher.getInstance("AES/CTR/NoPadding")
-        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, spec, parameterSpec)
-        return cipher.doFinal(ciphertext)
-    }
-
-    private fun md5(input: ByteArray): ByteArray {
-        val md = java.security.MessageDigest.getInstance("MD5")
-        return md.digest(input)
-    }
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        try {
-            val cleanUrl = url.replace(92.toChar().toString(), "")
-            val pageHtml = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: mainUrl))).text
-
-            val rx = Regex("const datas\\s*=\\s*\"([^\"]+)\"")
-            val base64Str = rx.find(pageHtml)?.groupValues?.get(1) ?: return
-            val decodedBytes = android.util.Base64.decode(base64Str, android.util.Base64.DEFAULT)
-            val latin1Str = String(decodedBytes, Charsets.ISO_8859_1)
-
-            val slugStart = latin1Str.indexOf("\"slug\":\"") + 8
-            val slugEnd = latin1Str.indexOf("\"", slugStart)
-            val slug = latin1Str.substring(slugStart, slugEnd)
-
-            val userIdStart = latin1Str.indexOf("\"user_id\":") + 10
-            val userIdEnd = latin1Str.indexOf(",", userIdStart)
-            val userId = latin1Str.substring(userIdStart, userIdEnd)
-
-            val md5IdStart = latin1Str.indexOf("\"md5_id\":") + 9
-            val md5IdEnd = latin1Str.indexOf(",", md5IdStart)
-            val md5Id = latin1Str.substring(md5IdStart, md5IdEnd)
-
-            val mediaStart = latin1Str.indexOf("\"media\":\"") + 9
-            val mediaEnd = latin1Str.indexOf("\",\"config\"")
-            val media = latin1Str.substring(mediaStart, mediaEnd)
-
-            val keyStr = "$userId:$slug:$md5Id"
-            val keyBytesStr = md5(keyStr.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-            val key = keyBytesStr.toByteArray(Charsets.UTF_8)
-            val iv = key.sliceArray(0 until 16)
-
-            val mediaCiphertext = media.toByteArray(Charsets.ISO_8859_1)
-            val decryptedMediaBytes = decryptAesCtr(mediaCiphertext, key, iv)
-            val decryptedMediaStr = String(decryptedMediaBytes, Charsets.UTF_8)
-
-            val mediaJson = org.json.JSONObject(decryptedMediaStr)
-            val mp4 = mediaJson.getJSONObject("mp4")
-            val sources = mp4.getJSONArray("sources")
-
-            for (i in 0 until sources.length()) {
-                val src = sources.getJSONObject(i)
-                val size = src.getLong("size")
-                val resId = src.getInt("res_id")
-                val label = src.getString("label")
-                val sub = src.getString("sub")
-
-                var domain = ""
-                try {
-                    val domainsObj = if (mp4.has("domains")) mp4.get("domains") else if (mediaJson.has("domains")) mediaJson.get("domains") else null
-                    if (domainsObj is org.json.JSONArray) {
-                        for (d in 0 until domainsObj.length()) {
-                            val dStr = domainsObj.getString(d)
-                            if (dStr.contains(sub)) {
-                                domain = dStr
-                                break
-                            }
-                        }
-                    } else if (domainsObj is org.json.JSONObject) {
-                        domain = domainsObj.getString(sub)
-                    }
-                } catch (_: Exception) {}
-                if (domain.isEmpty()) {
-                    domain = "$sub.sssrr.org"
-                }
-
-                val pathStr = "/mp4/$md5Id/$resId/$size?v=$slug"
-                val sizeStr = size.toString()
-                val digitBytes = sizeStr.map { it.toString().toInt().toByte() }.toByteArray()
-                val sizeHashHex = md5(digitBytes).joinToString("") { "%02x".format(it) }
-
-                val pathKey = sizeHashHex.toByteArray(Charsets.UTF_8)
-                val pathIv = pathKey.sliceArray(0 until 16)
-
-                val pathBytes = pathStr.toByteArray(Charsets.UTF_8)
-                val encryptedPathBytes = decryptAesCtr(pathBytes, pathKey, pathIv)
-
-                val b64Once = android.util.Base64.encodeToString(encryptedPathBytes, android.util.Base64.NO_WRAP)
-                val b64Twice = android.util.Base64.encodeToString(b64Once.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-                val cleanPath = b64Twice.replace("=", "").replace("\n", "").replace("\r", "")
-
-                val finalStreamUrl = "https://$domain/sora/$size/$cleanPath"
-
-                callback(
-                    newExtractorLink(
-                        source = name,
-                        name = "$name - $label",
-                        url = finalStreamUrl,
-                        type = ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = cleanUrl
-                        this.quality = when (label.lowercase()) {
-                            "360p" -> Qualities.P360.value
-                            "480p" -> Qualities.P480.value
-                            "720p" -> Qualities.P720.value
-                            "1080p" -> Qualities.P1080.value
-                            else -> Qualities.Unknown.value
-                        }
-                    }
-                )
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
+class MicrosoftCom : StreamWishExtractor() {
+    override var name = "MicrosoftCom"
+    override var mainUrl = "https://microsoft.com"
 }
 
-class CvGenipspillionCom : StreamWishExtractor() {
-    override var name = "CvGenipspillionCom"
-    override var mainUrl = "https://cv.genipspillion.com"
+class VapehusetSe : StreamWishExtractor() {
+    override var name = "VapehusetSe"
+    override var mainUrl = "https://vapehuset.se"
 }
 
-class MorenciusCom : StreamWishExtractor() {
-    override var name = "MorenciusCom"
-    override var mainUrl = "https://morencius.com"
+class BuycheapestfollowersCom : StreamWishExtractor() {
+    override var name = "BuycheapestfollowersCom"
+    override var mainUrl = "https://buycheapestfollowers.com"
 }
 
-class PortalMgaOrgMt : StreamWishExtractor() {
-    override var name = "PortalMgaOrgMt"
-    override var mainUrl = "https://portal.mga.org.mt"
+class AitexthumanizerCom : StreamWishExtractor() {
+    override var name = "AitexthumanizerCom"
+    override var mainUrl = "https://ai-text-humanizer.com"
 }
 
-class RedorangeComMt : StreamWishExtractor() {
-    override var name = "RedorangeComMt"
-    override var mainUrl = "https://redorange.com.mt"
+class IbanCom : StreamWishExtractor() {
+    override var name = "IbanCom"
+    override var mainUrl = "https://iban.com"
 }
 
-class Server9HdigitalCom : StreamWishExtractor() {
-    override var name = "Server9HdigitalCom"
-    override var mainUrl = "https://9hdigital.com"
+class Views4YouCom : StreamWishExtractor() {
+    override var name = "Views4YouCom"
+    override var mainUrl = "https://views4you.com"
 }
 
-class UseTypekitNet : StreamWishExtractor() {
-    override var name = "UseTypekitNet"
-    override var mainUrl = "https://use.typekit.net"
+class ImgLulucdnCom : StreamWishExtractor() {
+    override var name = "ImgLulucdnCom"
+    override var mainUrl = "https://img.lulucdn.com"
 }
 
-class VincentdesignCa : StreamWishExtractor() {
-    override var name = "VincentdesignCa"
-    override var mainUrl = "https://vincentdesign.ca"
+class Iujj82L8X5NtTnmrOrg : StreamWishExtractor() {
+    override var name = "Iujj82L8X5NtTnmrOrg"
+    override var mainUrl = "https://iujj82l8x5nt.tnmr.org"
 }
 
-class ResponsiblegamblingOrg : StreamWishExtractor() {
-    override var name = "ResponsiblegamblingOrg"
-    override var mainUrl = "https://responsiblegambling.org"
+class Dh8Azcl753E1ECloudfrontNet : StreamWishExtractor() {
+    override var name = "Dh8Azcl753E1ECloudfrontNet"
+    override var mainUrl = "https://dh8azcl753e1e.cloudfront.net"
 }
 
-class AjaxAspnetcdnCom : StreamWishExtractor() {
-    override var name = "AjaxAspnetcdnCom"
-    override var mainUrl = "https://ajax.aspnetcdn.com"
+class YfDiasyrmunionicCom : StreamWishExtractor() {
+    override var name = "YfDiasyrmunionicCom"
+    override var mainUrl = "https://yf.diasyrmunionic.com"
 }
 
-class AppFive9Eu : StreamWishExtractor() {
-    override var name = "AppFive9Eu"
-    override var mainUrl = "https://app.five9.eu"
+class Server36784GomatinequisheoiCom : StreamWishExtractor() {
+    override var name = "Server36784GomatinequisheoiCom"
+    override var mainUrl = "https://36784.gomatinequisheoi.com"
 }
 
-class GambleawareOrg : StreamWishExtractor() {
-    override var name = "GambleawareOrg"
-    override var mainUrl = "https://gambleaware.org"
+class LuluvdoCom : StreamWishExtractor() {
+    override var name = "LuluvdoCom"
+    override var mainUrl = "https://luluvdo.com"
 }
 
-class IYtimgCom : StreamWishExtractor() {
-    override var name = "IYtimgCom"
-    override var mainUrl = "https://i.ytimg.com"
+class LulustreamCom : StreamWishExtractor() {
+    override var name = "LulustreamCom"
+    override var mainUrl = "https://lulustream.com"
 }
 
-class YoutuBe : StreamWishExtractor() {
-    override var name = "YoutuBe"
-    override var mainUrl = "https://youtu.be"
+class VoeSx : Voe() {
+    override var name = "VoeSx"
+    override var mainUrl = "https://voe.sx"
 }
 
-class PlayerXExtractor : ExtractorApi() {
-    override var name = "PlayerXExtractor"
-    override var mainUrl = "https://ezplayer.stream"
-    override val requiresReferer = true
+class VeevTo : StreamWishExtractor() {
+    override var name = "VeevTo"
+    override var mainUrl = "https://veev.to"
+}
 
-    private fun decryptAesCbc(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
-        val spec = javax.crypto.spec.SecretKeySpec(key, "AES")
-        val parameterSpec = javax.crypto.spec.IvParameterSpec(iv)
-        val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS7Padding")
-        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, spec, parameterSpec)
-        return cipher.doFinal(ciphertext)
-    }
+class MediaFastcheckerUs : StreamWishExtractor() {
+    override var name = "MediaFastcheckerUs"
+    override var mainUrl = "https://media.fastchecker.us"
+}
 
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        try {
-            val cleanUrl = url.replace(92.toChar().toString(), "")
-            val uri = java.net.URI(cleanUrl)
-            val host = uri.host ?: "playerx.ezplayer.stream"
-            val hash = uri.fragment ?: ""
-            if (hash.isEmpty()) return
-            val id = hash.replace("#", "")
-            if (id.isEmpty()) return
+class RisdanlyCom : StreamWishExtractor() {
+    override var name = "RisdanlyCom"
+    override var mainUrl = "https://risdanly.com"
+}
 
-            val parentReferer = referer ?: "https://ww105.pencurimoviesubmalay.guru/"
-            val videoUrl = "https://$host/api/v1/video?id=$id"
+class ItunesAppleCom : StreamWishExtractor() {
+    override var name = "ItunesAppleCom"
+    override var mainUrl = "https://itunes.apple.com"
+}
 
-            val responseHex = app.get(videoUrl, headers = mapOf("Referer" to parentReferer)).text.trim()
-            if (responseHex.isEmpty()) return
+class DnsperfCom : StreamWishExtractor() {
+    override var name = "DnsperfCom"
+    override var mainUrl = "https://dnsperf.com"
+}
 
-            val ciphertext = responseHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-            val key = "kiemtienmua911ca".toByteArray(Charsets.UTF_8)
-            val iv = "1234567890oiuytr".toByteArray(Charsets.UTF_8)
+class Emas188May14Ink : StreamWishExtractor() {
+    override var name = "Emas188May14Ink"
+    override var mainUrl = "https://emas188may14.ink"
+}
 
-            val decryptedBytes = decryptAesCbc(ciphertext, key, iv)
-            val decryptedStr = String(decryptedBytes, Charsets.UTF_8)
-
-            val metadata = org.json.JSONObject(decryptedStr)
-            val pk = metadata.optJSONObject("pk")
-            val k = pk?.optString("k") ?: ""
-            val kx = pk?.optString("kx") ?: ""
-            val title = metadata.optString("title", "PlayerX Stream")
-
-            val qualityVal = when {
-                title.contains("2160p", true) || title.contains("4k", true) -> Qualities.P2160.value
-                title.contains("1080p", true) -> Qualities.P1080.value
-                title.contains("720p", true) -> Qualities.P720.value
-                title.contains("480p", true) -> Qualities.P480.value
-                title.contains("360p", true) -> Qualities.P360.value
-                else -> Qualities.Unknown.value
-            }
-
-            val cfNative = metadata.optString("cfNative")
-            val source = metadata.optString("source")
-
-            if (cfNative.isNotEmpty()) {
-                var finalUrl = cfNative
-                if (k.isNotEmpty() && !finalUrl.contains("k=")) {
-                    finalUrl += if (finalUrl.contains("?")) "&k=$k&kx=$kx" else "?k=$k&kx=$kx"
-                }
-                callback(
-                    newExtractorLink(
-                        source = "PlayerX",
-                        name = "PlayerX (CF)",
-                        url = finalUrl,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "https://$host/"
-                        this.quality = qualityVal
-                    }
-                )
-            }
-
-            if (source.isNotEmpty()) {
-                var finalUrl = source
-                if (k.isNotEmpty() && !finalUrl.contains("k=")) {
-                    finalUrl += if (finalUrl.contains("?")) "&k=$k&kx=$kx" else "?k=$k&kx=$kx"
-                }
-                callback(
-                    newExtractorLink(
-                        source = "PlayerX",
-                        name = "PlayerX Direct",
-                        url = finalUrl,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "https://$host/"
-                        this.quality = qualityVal
-                    }
-                )
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
+class XfilesharingproDocsApiaryIo : StreamWishExtractor() {
+    override var name = "XfilesharingproDocsApiaryIo"
+    override var mainUrl = "https://xfilesharingpro.docs.apiary.io"
 }

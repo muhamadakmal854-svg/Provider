@@ -14,6 +14,5 @@ class DutafilmPlugin : Plugin() {
         registerExtractorAPI(ThreadsCom())
         registerExtractorAPI(OrOnenessparmackCom())
         registerExtractorAPI(Dutafilm77MantabMen())
-        registerExtractorAPI(PlayerXExtractor())
     }
 }

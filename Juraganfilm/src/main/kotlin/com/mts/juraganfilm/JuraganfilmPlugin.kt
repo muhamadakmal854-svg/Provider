@@ -8,7 +8,6 @@ import android.content.Context
 class JuraganfilmPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(JuraganfilmProvider())
-        registerExtractorAPI(Indo666Com())
         registerExtractorAPI(ApiLivechatincCom())
         registerExtractorAPI(FkuponCom())
         registerExtractorAPI(ItunesAppleCom())
@@ -38,6 +37,11 @@ class JuraganfilmPlugin : Plugin() {
         registerExtractorAPI(Gratu89Com())
         registerExtractorAPI(BioSite())
         registerExtractorAPI(Gaza88Com())
-        registerExtractorAPI(PlayerXExtractor())
+        registerExtractorAPI(Indo666Com())
+        registerExtractorAPI(PentaslotNet())
+        registerExtractorAPI(OnescreenerCom())
+        registerExtractorAPI(JuraganFilm())
+        registerExtractorAPI(SbobetHost())
+        registerExtractorAPI(IYtimgCom())
     }
 }

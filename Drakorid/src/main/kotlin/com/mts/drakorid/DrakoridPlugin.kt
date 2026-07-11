@@ -9,15 +9,13 @@ class DrakoridPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(DrakoridProvider())
         registerExtractorAPI(AbyssplayerCom())
-        registerExtractorAPI(KisskhMegaplaySu())
         registerExtractorAPI(BloggerCom())
         registerExtractorAPI(GembengCom())
         registerExtractorAPI(PsLarinpaymentCom())
-        registerExtractorAPI(Prx1328AntVmwesaOnline())
+        registerExtractorAPI(Prx1559AntVmwesaOnline())
         registerExtractorAPI(StreamtapeCom())
         registerExtractorAPI(PzEerfumerelCom())
-        registerExtractorAPI(Prx1546AntVmwesaOnline())
-        registerExtractorAPI(Prx1317AntVmwesaOnline())
-        registerExtractorAPI(PlayerXExtractor())
+        registerExtractorAPI(KisskhMegaplaySu())
+        registerExtractorAPI(Prx1328AntVmwesaOnline())
     }
 }

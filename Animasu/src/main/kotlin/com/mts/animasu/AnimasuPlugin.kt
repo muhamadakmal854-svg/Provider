@@ -15,7 +15,6 @@ class AnimasuPlugin : Plugin() {
         registerExtractorAPI(AnimasuWork())
         registerExtractorAPI(AnimasuDev())
         registerExtractorAPI(BloggerCom())
-        registerExtractorAPI(DraftBloggerCom())
-        registerExtractorAPI(PlayerXExtractor())
+        registerExtractorAPI(OkRu())
     }
 }
