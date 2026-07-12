@@ -10,5 +10,7 @@ class DutafilmPlugin : Plugin() {
         registerMainAPI(DutafilmProvider())
         registerExtractorAPI(P2PExtractor())
         registerExtractorAPI(F16Extractor())
+        registerExtractorAPI(HydraxExtractor())
+        registerExtractorAPI(StreamSBExtractor())
     }
 }

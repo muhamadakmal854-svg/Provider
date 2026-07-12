@@ -161,3 +161,89 @@ open class F16Extractor : ExtractorApi() {
         }
     }
 }
+
+// ─── Hydrax Extractor ────────────────────────────────────────────────────────
+open class HydraxExtractor : ExtractorApi() {
+    override var name = "Hydrax"
+    override var mainUrl = "https://hydrax.net"
+    override val requiresReferer = false
+
+    data class HydraxSource(val file: String?, val type: String?, val label: String?)
+    data class HydraxResponse(val sources: List<HydraxSource>?, val source: String?, val file: String?)
+
+    override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
+        val sources = mutableListOf<ExtractorLink>()
+        try {
+            val videoId = url.substringAfterLast("/").substringBefore("?")
+            val embedUrl = if (url.contains("/e/") || url.contains("/embed/")) url
+                          else "$mainUrl/e/$videoId"
+            val headers = mapOf(
+                "Referer"    to (referer ?: "$mainUrl/"),
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/137.0.0.0 Mobile Safari/537.36"
+            )
+            val pageText = app.get(embedUrl, headers = headers).text
+            // Try JSON API endpoint
+            val apiUrl = "$mainUrl/api/source/$videoId"
+            val apiResp = app.post(apiUrl, headers = headers, data = mapOf("r" to (referer ?: ""), "d" to "hydrax.net")).text
+            val json = tryParseJson<HydraxResponse>(apiResp)
+            val fileUrl = json?.file ?: json?.source
+            if (!fileUrl.isNullOrBlank() && fileUrl.startsWith("http")) {
+                val type = if (fileUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                sources.add(newExtractorLink(source = name, name = name, url = fileUrl, type = type) {
+                    this.referer = embedUrl
+                    this.quality = Qualities.Unknown.value
+                })
+            }
+            // Also try src from page
+            if (sources.isEmpty()) {
+                Regex("""(?:file|src)\s*:\s*["']([^"']+\.(?:m3u8|mp4)[^"']*)["']""").find(pageText)?.groupValues?.getOrNull(1)?.let { src ->
+                    if (src.startsWith("http")) {
+                        val type = if (src.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        sources.add(newExtractorLink(source = name, name = name, url = src, type = type) {
+                            this.referer = embedUrl
+                            this.quality = Qualities.Unknown.value
+                        })
+                    }
+                }
+            }
+        } catch (e: Exception) { Log.e("HydraxExtractor", "Error: ${e.message}") }
+        return sources
+    }
+}
+
+// ─── StreamSB Extractor ───────────────────────────────────────────────────────
+open class StreamSBExtractor : ExtractorApi() {
+    override var name = "StreamSB"
+    override var mainUrl = "https://streamsb.net"
+    override val requiresReferer = false
+
+    data class StreamSBSource(val file: String?, val label: String?, val type: String?)
+    data class StreamSBStream(val sources: List<StreamSBSource>?, val cdn_img: String?, val hash: String?, val subs: List<Any>?)
+    data class StreamSBResponse(val stream_data: StreamSBStream?, val status_code: Int?)
+
+    override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink>? {
+        val sources = mutableListOf<ExtractorLink>()
+        try {
+            val slug = url.substringAfterLast("/e/").substringAfterLast("/embed-").substringBefore(".html").substringBefore("?")
+            val hexSlug = slug.map { it.code.toString(16) }.joinToString("")
+            val apiUrl = "$mainUrl/api/source/${hexSlug}"
+            val headers = mapOf(
+                "Referer"    to "$mainUrl/",
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/137.0.0.0 Mobile Safari/537.36",
+                "watchsb"    to "streamsb"
+            )
+            val apiResp = app.get(apiUrl, headers = headers).text
+            val json = tryParseJson<StreamSBResponse>(apiResp)
+            json?.stream_data?.sources?.forEach { src ->
+                val fileUrl = src.file ?: return@forEach
+                if (!fileUrl.startsWith("http")) return@forEach
+                val type = if (fileUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                sources.add(newExtractorLink(source = name, name = "$name ${src.label ?: ""}", url = fileUrl, type = type) {
+                    this.referer = "$mainUrl/"
+                    this.quality = getQualityFromName(src.label)
+                })
+            }
+        } catch (e: Exception) { Log.e("StreamSBExtractor", "Error: ${e.message}") }
+        return sources
+    }
+}
