@@ -8,11 +8,7 @@ import android.content.Context
 class DutafilmPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(DutafilmProvider())
-        registerExtractorAPI(MessengerCom())
-        registerExtractorAPI(MetaCom())
-        registerExtractorAPI(MetaAi())
-        registerExtractorAPI(ThreadsCom())
-        registerExtractorAPI(OrOnenessparmackCom())
-        registerExtractorAPI(Dutafilm77MantabMen())
+        registerExtractorAPI(P2PExtractor())
+        registerExtractorAPI(F16Extractor())
     }
 }
