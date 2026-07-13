@@ -17,12 +17,12 @@ class KisskhProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "category/ongoing/" to "Ongoing",
-        "category/latest-update/" to "Latest Update",
-        "category/movies/" to "Movies",
-        "category/china/" to "C-Drama",
-        "category/south-korean/" to "K-Drama",
-        "category/anime/" to "Anime"
+        "" to "Latest Update",
+        "category/south-korean/" to "Top K-Drama",
+        "category/china/" to "Top C-Drama",
+        "category/ongoing/" to "Airing Now",
+        "category/hollywood/" to "Hollywood",
+        "category/upcoming/" to "Upcoming"
     )
 
     private fun Element.toSearchResult(): SearchResponse? {
@@ -32,7 +32,7 @@ class KisskhProvider : MainAPI() {
         val posterUrl = img.let { i ->
             listOf("data-src", "data-lazy-src", "src").map { i.attr(it) }.firstOrNull { it.isNotBlank() }
         }?.let { fixUrlNull(it) }
-        val title = this.selectFirst("h2, h3, .entry-title, .title, a[target]")?.text()?.trim()
+        val title = this.selectFirst("h2, h3, .entry-title, .title")?.text()?.trim()
             ?: img.attr("alt").trim().ifEmpty { a.text().trim() }
         if (title.isBlank()) return null
         
@@ -50,11 +50,15 @@ class KisskhProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val path = request.data
-        val pageUrl = if (page > 1) "$mainUrl/$path/page/$page/" else "$mainUrl/$path"
+        val pageUrl = if (path.isEmpty()) {
+            if (page > 1) "$mainUrl/page/$page/" else "$mainUrl/"
+        } else {
+            if (page > 1) "$mainUrl/$path/page/$page/" else "$mainUrl/$path"
+        }
         val document = app.get(pageUrl).document
         val homeList = document.select(".wp-block-post, .embla__slide, .embla__slide-card, article").mapNotNull {
             it.toSearchResult()
-        }
+        }.distinctBy { it.url }
         return newHomePageResponse(request.name, homeList, hasNext = homeList.isNotEmpty())
     }
 
@@ -62,17 +66,14 @@ class KisskhProvider : MainAPI() {
         val document = app.get("$mainUrl/?s=$query").document
         return document.select(".wp-block-post, .embla__slide, .embla__slide-card, article").mapNotNull {
             it.toSearchResult()
-        }
+        }.distinctBy { it.url }
     }
 
     data class BloggerT(
         @JsonProperty("\$t") val t: String? = null
     )
-    data class BloggerContent(
-        @JsonProperty("content") val content: BloggerT? = null
-    )
     data class BloggerEntry(
-        @JsonProperty("entry") val entry: BloggerContent? = null
+        @JsonProperty("content") val content: BloggerT? = null
     )
 
     override suspend fun load(url: String): LoadResponse? {
