@@ -11,7 +11,6 @@ class NontonDramaPlugin : Plugin() {
         registerExtractorAPI(Gn1r5nOrg())
         registerExtractorAPI(P2PExtractor())
         registerExtractorAPI(EmturbovidExtractor())
-        registerExtractorAPI(AbyssExtractor())
-        registerExtractorAPI(Gn1r5nOrg())
+        registerExtractorAPI(AbyssPlayer())
     }
 }

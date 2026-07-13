@@ -2,6 +2,7 @@ package com.mts.nontondrama
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import android.util.Log
@@ -58,13 +59,18 @@ class NontonDramaProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         try {
-            val response = app.get("https://gudangvape.com/?s=${encodeUri(query)}", headers = mapOf(
-                "Referer" to "$mainUrl/",
-                "Origin" to mainUrl
-            )).text
+            val response = app.get(
+                "https://gudangvape.com/",
+                params = mapOf("s" to query),
+                headers = mapOf(
+                    "Referer" to "$mainUrl/",
+                    "Origin" to mainUrl
+                )
+            ).text
             val searchResults = tryParseJson<GudangVapeSearchResponse>(response)
+            val results = searchResults?.results ?: emptyList()
             
-            return searchResults?.results?.apMap { item ->
+            return results.apMap { item: SearchItem ->
                 val pageUrl = "$mainUrl/${item.slug}"
                 val poster = try {
                     val doc = app.get(pageUrl).document
@@ -75,7 +81,7 @@ class NontonDramaProvider : MainAPI() {
                 newMovieSearchResponse(item.title ?: "", pageUrl, TvType.TvSeries) {
                     this.posterUrl = poster
                 }
-            } ?: emptyList()
+            }
         } catch (e: Exception) {
             Log.e("NontonDrama", "Error in search: ${e.message}")
             return emptyList()
@@ -95,7 +101,7 @@ class NontonDramaProvider : MainAPI() {
         val mainPageDoc = if (!hasEpisodeNoScript) {
             val mainPageUrl = document.select("a").firstOrNull { 
                 val href = it.attr("href")
-                href.isNotBlank() && !href.startsWith("http") && href.matches(Regex("/[^/]+-\d{4}")) 
+                href.isNotBlank() && !href.startsWith("http") && href.matches(Regex("/[^/]+-[0-9]{4}")) 
             }?.attr("href")
             if (mainPageUrl != null) app.get(fixUrl(mainPageUrl)).document else document
         } else {
@@ -139,8 +145,7 @@ class NontonDramaProvider : MainAPI() {
 
     override suspend fun loadLinks(
         data: String,
-        isCdn: Boolean,
-        referrer: String?,
+        isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
