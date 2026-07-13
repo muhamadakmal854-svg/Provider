@@ -31,10 +31,20 @@ class JuraganfilmProvider : MainAPI() {
             ?: a.attr("title").trim().ifEmpty { a.text().trim() }
         if (title.isBlank()) return null
         val img = this.selectFirst("img")
-        val posterUrl = fixUrlNull(img?.attr("data-src") ?: img?.attr("src"))
+        val posterUrl = img?.let { i ->
+            listOf("data-src", "data-lazy-src", "src").map { i.attr(it) }.firstOrNull { it.isNotBlank() }
+        }?.let { fixUrlNull(it) }
 
         val hrefLower = href.lowercase()
-        return if (hrefLower.contains("/film-seri/")) {
+        val isTv = hrefLower.contains("/film-seri/") ||
+                   hrefLower.contains("/tvshows/") ||
+                   hrefLower.contains("/series/") ||
+                   hrefLower.contains("/tv/") ||
+                   hrefLower.contains("/drama-serial/") ||
+                   hrefLower.contains("/ongoing/") ||
+                   hrefLower.contains("/drakor/")
+
+        return if (isTv) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
             }
@@ -72,7 +82,14 @@ class JuraganfilmProvider : MainAPI() {
         val year = document.selectFirst(".date, .year, a[href*='/tahun/'], a[href*='/year/']")?.text()?.filter { it.isDigit() }?.toIntOrNull()
         val genres = document.select(".genres a, .genre a, a[href*='/kategori-film/']").map { it.text().trim() }.filter { it.isNotBlank() }
 
-        val isTv = url.contains("/film-seri/") || document.select(".post-page-numbers").isNotEmpty()
+        val isTv = url.contains("/film-seri/") ||
+                   url.contains("/tvshows/") ||
+                   url.contains("/series/") ||
+                   url.contains("/tv/") ||
+                   url.contains("/drama-serial/") ||
+                   url.contains("/ongoing/") ||
+                   url.contains("/drakor/") ||
+                   document.select(".post-page-numbers").isNotEmpty()
 
         return if (isTv) {
             val episodes = mutableListOf<Episode>()
