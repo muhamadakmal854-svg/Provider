@@ -8,6 +8,9 @@ import android.content.Context
 class KlikxxiPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(KlikxxiProvider())
+        registerExtractorAPI(Strp2pExtractor())
+        registerExtractorAPI(UpnsExtractor())
+        registerExtractorAPI(HgcloudExtractor())
         registerExtractorAPI(OracleCom())
         registerExtractorAPI(ConsentTrustarcCom())
         registerExtractorAPI(LoginApiaryIo())

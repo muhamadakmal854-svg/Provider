@@ -1,5 +1,124 @@
 package com.mts.klikxxid
 
+import com.lagradost.cloudstream3.utils.ExtractorApi
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.app
+import org.json.JSONObject
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
+import javax.crypto.spec.IvParameterSpec
+import org.jsoup.Jsoup
+import android.util.Log
+
+open class Strp2pBaseExtractor(override val name: String, override val mainUrl: String) : ExtractorApi() {
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val cleanUrl = url.replace("/e/", "/#")
+            val hashIndex = cleanUrl.indexOf('#')
+            if (hashIndex < 0) return
+            val id = cleanUrl.substring(hashIndex + 1)
+            
+            val baseUri = java.net.URI(cleanUrl)
+            val domainUrl = "${baseUri.scheme}://${baseUri.host}"
+            val videoApiUrl = "$domainUrl/api/v1/video?id=$id"
+            
+            val resText = app.get(videoApiUrl, headers = mapOf(
+                "Referer" to cleanUrl,
+                "Accept" to "application/json, text/plain, */*",
+                "X-Requested-With" to "XMLHttpRequest"
+            )).text.trim()
+            
+            if (resText.isBlank()) return
+            
+            val decrypted = decryptAes128Cbc(
+                resText,
+                "kiemtienmua911ca",
+                "1234567890oiuytr"
+            )
+            
+            val obj = JSONObject(decrypted)
+            
+            // 1. cfNative
+            val cfNative = obj.optString("cfNative", "")
+            if (cfNative.isNotBlank()) {
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = "Cloudflare Proxy",
+                        url = cfNative,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "$domainUrl/"
+                        this.headers = mapOf("Origin" to domainUrl)
+                    }
+                )
+            }
+            
+            // 2. Direct source M3U8
+            val source = obj.optString("source", "")
+            if (source.isNotBlank()) {
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = "Direct IP",
+                        url = source,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "$domainUrl/"
+                        this.headers = mapOf("Origin" to domainUrl)
+                    }
+                )
+            }
+            
+            // 3. Subtitles (if any)
+            val tracks = obj.optJSONArray("tracks")
+            if (tracks != null) {
+                for (i in 0 until tracks.length()) {
+                    val track = tracks.optJSONObject(i) ?: continue
+                    val file = track.optString("file", "")
+                    val label = track.optString("label", "")
+                    if (file.isNotBlank()) {
+                        subtitleCallback(
+                            com.lagradost.cloudstream3.SubtitleFile(
+                                label = label.ifBlank { "English" },
+                                url = file
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("Strp2pExtractor", "Error in ${name}: ${e.message}")
+        }
+    }
+
+    private fun decryptAes128Cbc(hexCipher: String, keyStr: String, ivStr: String): String {
+        val keySpec = SecretKeySpec(keyStr.toByteArray(Charsets.UTF_8), "AES")
+        val ivSpec = IvParameterSpec(ivStr.toByteArray(Charsets.UTF_8))
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+        
+        val cipherBytes = hexCipher.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val decryptedBytes = cipher.doFinal(cipherBytes)
+        return String(decryptedBytes, Charsets.UTF_8)
+    }
+}
+
+class Strp2pExtractor : Strp2pBaseExtractor("Strp2p", "https://strp2p.site")
+class UpnsExtractor : Strp2pBaseExtractor("Upns", "https://upns.one")
+class HgcloudExtractor : Strp2pBaseExtractor("Hgcloud", "https://hgcloud.to")
+
+
+
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.extractors.Voe
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -127,3 +246,4 @@ class XfilesharingproDocsApiaryIo : StreamWishExtractor() {
     override var name = "XfilesharingproDocsApiaryIo"
     override var mainUrl = "https://xfilesharingpro.docs.apiary.io"
 }
+

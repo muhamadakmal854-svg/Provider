@@ -1,3 +1,4 @@
 rootProject.name = "cloudstream-extensions"
 
-include(":Kisskh")
+include(":Klikxxi")
+include(":Klikxxid")
