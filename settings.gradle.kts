@@ -1,3 +1,3 @@
 rootProject.name = "cloudstream-extensions"
 
-include(":Juraganfilm")
+include(":Kisskh")

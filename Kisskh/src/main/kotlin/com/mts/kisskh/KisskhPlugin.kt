@@ -8,18 +8,5 @@ import android.content.Context
 class KisskhPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(KisskhProvider())
-        registerExtractorAPI(MozillaOrg())
-        registerExtractorAPI(AppleCom())
-        registerExtractorAPI(VivaldiCom())
-        registerExtractorAPI(MicrosoftCom())
-        registerExtractorAPI(BraveCom())
-        registerExtractorAPI(Server20577834Fs1Hubspotusercontentna1Net())
-        registerExtractorAPI(Makaagency4740449HssitesCom())
-        registerExtractorAPI(Server4740449HssitesCom())
-        registerExtractorAPI(MakaagencyCom())
-        registerExtractorAPI(DocsJwplayerCom())
-        registerExtractorAPI(AtlassianCom())
-        registerExtractorAPI(TagiviCom())
-        registerExtractorAPI(TickcounterCom())
     }
 }
