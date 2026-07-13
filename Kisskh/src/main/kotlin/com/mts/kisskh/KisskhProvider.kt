@@ -111,7 +111,12 @@ class KisskhProvider : MainAPI() {
         val episodesList = server1Data.split(";").map { it.trim() }.filter { it.isNotBlank() && !it.contains("<img") }
         val numEpisodes = episodesList.size
         
-        val isTv = numEpisodes > 1 || url.contains("/series/") || genres.any { it.contains("series", ignoreCase = true) || it.contains("drama", ignoreCase = true) }
+        val urlLower = url.lowercase()
+        val isTv = numEpisodes > 1
+            || urlLower.contains("/series/")
+            || urlLower.contains("episode=")
+            || urlLower.contains("-episode-")
+            || genres.any { g -> g.contains("drama", ignoreCase = true) || g.contains("series", ignoreCase = true) }
         
         return if (isTv) {
             val episodes = (1..numEpisodes).map { epNum ->
@@ -165,16 +170,22 @@ class KisskhProvider : MainAPI() {
             if (epIdx < 0 || epIdx >= lines.size) continue
             
             val line = lines[epIdx]
-            val lineParts = line.split("|")
-            val videoUrl = lineParts[0].trim()
+            // Split by pipe - but only first 3 segments (videoUrl|labels|srtUrls)
+            val firstPipe = line.indexOf('|')
+            val secondPipe = if (firstPipe >= 0) line.indexOf('|', firstPipe + 1) else -1
+            val videoUrl = (if (firstPipe >= 0) line.substring(0, firstPipe) else line).trim()
             if (videoUrl.isBlank()) continue
             
             val serverName = "Server ${serverIdx + 1}"
             
+            // Parse subtitles - filter only valid HTTPS URLs
             val subtitleFiles = mutableListOf<SubtitleFile>()
-            if (lineParts.size > 2) {
-                val labels = lineParts[1].split(",").map { it.trim() }
-                val urls = lineParts[2].split(",").map { it.trim() }
+            if (firstPipe >= 0 && secondPipe >= 0) {
+                val labelsRaw = line.substring(firstPipe + 1, secondPipe)
+                val urlsRaw = line.substring(secondPipe + 1)
+                val labels = labelsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                // Split srt URLs by comma, keep only valid http URLs
+                val urls = urlsRaw.split(",").map { it.trim() }.filter { it.startsWith("http") }
                 for (i in 0 until minOf(labels.size, urls.size)) {
                     val l = labels[i]
                     val u = urls[i]
@@ -194,6 +205,7 @@ class KisskhProvider : MainAPI() {
                         type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     ) {
                         this.referer = "$mainUrl/"
+                        this.headers = mapOf("Origin" to mainUrl)
                     }
                 )
                 subtitleFiles.forEach { subtitleCallback(it) }

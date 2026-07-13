@@ -8,5 +8,8 @@ import android.content.Context
 class KisskhPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(KisskhProvider())
+        registerExtractorAPI(KisskhDelivery())
+        registerExtractorAPI(AniwatchtvExtractor())
+        registerExtractorAPI(SoopliveExtractor())
     }
 }
