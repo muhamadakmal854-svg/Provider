@@ -80,7 +80,7 @@ class KisskhProvider : MainAPI() {
             val entryObj = obj.optJSONObject("entry") ?: return null
             val contentObj = entryObj.optJSONObject("content") ?: return null
             // Use the literal string "$t" - JSONObject handles $ in keys just fine
-            val content = contentObj.optString("$t", "")
+            val content = contentObj.optString("" + '$' + 't', "")
             content.ifEmpty { null }
         } catch (e: Exception) {
             Log.e("Kisskh", "fetchBloggerContent error: ${e.message}")
