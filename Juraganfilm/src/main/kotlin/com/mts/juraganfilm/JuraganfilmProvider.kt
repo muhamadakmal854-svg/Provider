@@ -149,9 +149,10 @@ class JuraganfilmProvider : MainAPI() {
                         source = name,
                         name = src.label ?: "Server",
                         url = link,
-                        referer = iframeUrl,
                         type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                    )
+                    ) {
+                        this.referer = iframeUrl
+                    }
                 )
                 found = true
             } else {
