@@ -72,8 +72,11 @@ class KisskhProvider : MainAPI() {
     data class BloggerT(
         @JsonProperty("\$t") val t: String? = null
     )
-    data class BloggerEntry(
+    data class BloggerContent(
         @JsonProperty("content") val content: BloggerT? = null
+    )
+    data class BloggerEntry(
+        @JsonProperty("entry") val entry: BloggerContent? = null
     )
 
     override suspend fun load(url: String): LoadResponse? {
