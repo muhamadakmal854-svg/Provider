@@ -70,7 +70,7 @@ class NontonDramaProvider : MainAPI() {
             val searchResults = tryParseJson<GudangVapeSearchResponse>(response)
             val results = searchResults?.results ?: emptyList()
             
-            return results.apMap { item: SearchItem ->
+            return results.amap { item: SearchItem ->
                 val pageUrl = "$mainUrl/${item.slug}"
                 val poster = try {
                     val doc = app.get(pageUrl).document
