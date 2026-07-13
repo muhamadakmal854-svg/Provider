@@ -1,11 +1,11 @@
 version = 1
 
 cloudstream {
-    language    = "ms"
-    description = "Provider untuk Nonton Drama & TV Series Sub Indo Terbaru"
+    language    = "id"
+    description = "Provider untuk NontonDrama"
     authors     = listOf("MTS")
     status      = 1
-    tvTypes     = listOf("Anime", "TvSeries", "OVA")
+    tvTypes     = listOf("Movie", "TvSeries")
     iconUrl     = "https://tv4.nontondrama.my/favicon.ico"
 }
 

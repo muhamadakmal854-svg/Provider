@@ -5,10 +5,12 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 
 @CloudstreamPlugin
-class NontondramaPlugin : Plugin() {
+class NontonDramaPlugin : Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(NontondramaProvider())
-        registerExtractorAPI(TeleLk21De())
-        registerExtractorAPI(D21Team())
+        registerMainAPI(NontonDramaProvider())
+        registerExtractorAPI(Gn1r5nOrg())
+        registerExtractorAPI(P2PExtractor())
+        registerExtractorAPI(EmturbovidExtractor())
+        registerExtractorAPI(AbyssPlayer())
     }
 }
