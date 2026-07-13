@@ -86,11 +86,10 @@ class KlikxxiProvider : MainAPI() {
                     val epUrl = element.attr("href")
                     val epNum = element.text().trim().toIntOrNull() ?: (index + 1)
                     episodes.add(
-                        Episode(
-                            data = epUrl,
-                            episode = epNum,
-                            name = "Episode $epNum"
-                        )
+                        newEpisode(epUrl) {
+                            this.episode = epNum
+                            this.name = "Episode $epNum"
+                        }
                     )
                 }
             } else {
@@ -99,11 +98,10 @@ class KlikxxiProvider : MainAPI() {
                     val epUrl = element.attr("href")
                     val epNum = element.text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: (index + 1)
                     episodes.add(
-                        Episode(
-                            data = epUrl,
-                            episode = epNum,
-                            name = element.text().trim()
-                        )
+                        newEpisode(epUrl) {
+                            this.episode = epNum
+                            this.name = element.text().trim()
+                        }
                     )
                 }
             }
