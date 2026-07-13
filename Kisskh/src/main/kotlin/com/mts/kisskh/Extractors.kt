@@ -80,6 +80,31 @@ class SoopliveExtractor : ExtractorApi() {
     }
 }
 
+// Extractor for tmp.cdnvideo.website CDN (direct M3U8)
+class CdnVideoExtractor : ExtractorApi() {
+    override val name = "CdnVideoExtractor"
+    override val mainUrl = "https://tmp.cdnvideo.website"
+    override val requiresReferer = false
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        callback(
+            newExtractorLink(
+                source = name,
+                name = name,
+                url = url,
+                type = ExtractorLinkType.M3U8
+            ) {
+                this.referer = "https://kisskh.buzz/"
+                this.headers = mapOf("Origin" to "https://kisskh.buzz")
+            }
+        )
+    }
+}
+
 // Extractor for api.bibox.space CDN (direct M3U8 with jpg segments)
 class BiboxExtractor : ExtractorApi() {
     override val name = "BiboxExtractor"

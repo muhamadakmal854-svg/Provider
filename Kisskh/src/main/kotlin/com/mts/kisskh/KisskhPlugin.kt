@@ -11,6 +11,7 @@ class KisskhPlugin : Plugin() {
         registerExtractorAPI(KisskhDelivery())
         registerExtractorAPI(AniwatchtvExtractor())
         registerExtractorAPI(SoopliveExtractor())
+        registerExtractorAPI(CdnVideoExtractor())
         registerExtractorAPI(BiboxExtractor())
     }
 }
