@@ -11,6 +11,10 @@ import javax.crypto.spec.SecretKeySpec
 import javax.crypto.spec.IvParameterSpec
 import org.jsoup.Jsoup
 import android.util.Log
+import com.lagradost.cloudstream3.extractors.StreamWishExtractor
+import com.lagradost.cloudstream3.extractors.Voe
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.loadExtractor
 
 open class Strp2pBaseExtractor(override val name: String, override val mainUrl: String) : ExtractorApi() {
     override val requiresReferer = true
@@ -89,7 +93,7 @@ open class Strp2pBaseExtractor(override val name: String, override val mainUrl: 
                     if (file.isNotBlank()) {
                         subtitleCallback(
                             com.lagradost.cloudstream3.SubtitleFile(
-                                label = label.ifBlank { "English" },
+                                lang = label.ifBlank { "English" },
                                 url = file
                             )
                         )
@@ -118,14 +122,6 @@ class UpnsExtractor : Strp2pBaseExtractor("Upns", "https://upns.one")
 class HgcloudExtractor : Strp2pBaseExtractor("Hgcloud", "https://hgcloud.to")
 
 
-
-import com.lagradost.cloudstream3.extractors.StreamWishExtractor
-import com.lagradost.cloudstream3.extractors.Voe
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.loadExtractor
-import com.lagradost.cloudstream3.utils.newExtractorLink
 
 class OracleCom : StreamWishExtractor() {
     override var name = "OracleCom"
