@@ -2,10 +2,8 @@ package com.mts.kisskh
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.fasterxml.jackson.annotation.JsonProperty
-import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import org.json.JSONObject
 import android.util.Log
 
 class KisskhProvider : MainAPI() {
@@ -69,15 +67,26 @@ class KisskhProvider : MainAPI() {
         }.distinctBy { it.url }
     }
 
-    data class BloggerT(
-        @JsonProperty("\$t") val t: String? = null
-    )
-    data class BloggerContent(
-        @JsonProperty("content") val content: BloggerT? = null
-    )
-    data class BloggerEntry(
-        @JsonProperty("entry") val entry: BloggerContent? = null
-    )
+    // Helper: fetch Blogger post content using org.json for reliable $t parsing
+    private suspend fun fetchBloggerContent(blogId: String, postId: String): String? {
+        return try {
+            val apiUrl = "https://www.blogger.com/feeds/$blogId/posts/default/$postId?alt=json"
+            val jsonText = app.get(apiUrl, headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36",
+                "Accept" to "application/json, text/plain, */*",
+                "Referer" to "$mainUrl/"
+            )).text
+            val obj = JSONObject(jsonText)
+            val entryObj = obj.optJSONObject("entry") ?: return null
+            val contentObj = entryObj.optJSONObject("content") ?: return null
+            // Use the literal string "$t" - JSONObject handles $ in keys just fine
+            val content = contentObj.optString("\$t", "")
+            content.ifEmpty { null }
+        } catch (e: Exception) {
+            Log.e("Kisskh", "fetchBloggerContent error: ${e.message}")
+            null
+        }
+    }
 
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
@@ -101,10 +110,7 @@ class KisskhProvider : MainAPI() {
             }
         }
         
-        val apiUrl = "https://www.blogger.com/feeds/$blogId/posts/default/$postId?alt=json"
-        val jsonText = app.get(apiUrl).text
-        val entry = tryParseJson<BloggerEntry>(jsonText)
-        val content = entry?.entry?.content?.t ?: ""
+        val content = fetchBloggerContent(blogId, postId) ?: ""
         
         val servers = content.split("{nextServer}")
         val server1Data = servers.firstOrNull() ?: ""
@@ -156,10 +162,7 @@ class KisskhProvider : MainAPI() {
         val postId = parts[1]
         val episode = parts[2].toIntOrNull() ?: 1
         
-        val apiUrl = "https://www.blogger.com/feeds/$blogId/posts/default/$postId?alt=json"
-        val jsonText = app.get(apiUrl).text
-        val entry = tryParseJson<BloggerEntry>(jsonText)
-        val content = entry?.entry?.content?.t ?: return false
+        val content = fetchBloggerContent(blogId, postId) ?: return false
         
         val servers = content.split("{nextServer}")
         var found = false

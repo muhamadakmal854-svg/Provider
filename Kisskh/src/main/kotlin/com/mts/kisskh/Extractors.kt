@@ -79,3 +79,28 @@ class SoopliveExtractor : ExtractorApi() {
         )
     }
 }
+
+// Extractor for api.bibox.space CDN (direct M3U8 with jpg segments)
+class BiboxExtractor : ExtractorApi() {
+    override val name = "BiboxExtractor"
+    override val mainUrl = "https://api.bibox.space"
+    override val requiresReferer = false
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (com.lagradost.cloudstream3.SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        callback(
+            newExtractorLink(
+                source = name,
+                name = name,
+                url = url,
+                type = ExtractorLinkType.M3U8
+            ) {
+                this.referer = "https://kisskh.buzz/"
+                this.headers = mapOf("Origin" to "https://kisskh.buzz")
+            }
+        )
+    }
+}
