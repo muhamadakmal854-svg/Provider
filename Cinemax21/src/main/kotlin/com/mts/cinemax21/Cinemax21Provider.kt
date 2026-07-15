@@ -179,7 +179,7 @@ class Cinemax21Provider : MainAPI() {
         }
 
         // 3. Process all targets
-        targets.distinctBy { it.first }.forEach { (rawUrl, serverName) ->
+        for ((rawUrl, serverName) in targets.distinctBy { it.first }) {
             val cleanUrl = rawUrl.trim().replace(92.toChar().toString(), "")
             if (cleanUrl.contains(".m3u8") || cleanUrl.contains(".mp4") || cleanUrl.contains("/hls/")) {
                 val isM3u = cleanUrl.contains(".m3u8") || cleanUrl.contains("/hls/")
