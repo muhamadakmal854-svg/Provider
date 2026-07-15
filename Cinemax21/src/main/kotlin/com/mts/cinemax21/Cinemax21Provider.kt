@@ -199,7 +199,11 @@ class Cinemax21Provider : MainAPI() {
                     }
                 )
             } else {
+                val resolvedLinks = mutableListOf<ExtractorLink>()
                 loadExtractor(cleanUrl, "https://cinemax21.live/", subtitleCallback) { link ->
+                    resolvedLinks.add(link)
+                }
+                for (link in resolvedLinks) {
                     callback(
                         newExtractorLink(
                             source = link.source,
