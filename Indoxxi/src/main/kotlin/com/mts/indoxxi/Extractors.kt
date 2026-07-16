@@ -152,8 +152,9 @@ class FastdlP2pstreamOnline : ExtractorApi() {
             }
             if (id.isEmpty()) return
 
+            val refEncoded = java.net.URLEncoder.encode(referer ?: "taroscafe.com", "UTF-8")
             val apiRes = app.get(
-                url = "$mainUrl/api/v1/video?id=$id&w=1920&h=1080&r=${java.net.URLEncoder.encode(referer ?: \"taroscafe.com\", \"UTF-8\")}",
+                url = "$mainUrl/api/v1/video?id=$id&w=1920&h=1080&r=$refEncoded",
                 headers = mapOf(
                     "Referer" to cleanUrl,
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
