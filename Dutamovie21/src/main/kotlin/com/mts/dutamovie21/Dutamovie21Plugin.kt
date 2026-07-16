@@ -16,5 +16,7 @@ class Dutamovie21Plugin : Plugin() {
         registerExtractorAPI(HgcloudTo())
         registerExtractorAPI(Dm21UpnsLive())
         registerExtractorAPI(VeevTo())
+        registerExtractorAPI(EmbedpyroxXyz())
+        registerExtractorAPI(HelvidNet())
     }
 }

@@ -276,28 +276,46 @@ class Dutamovie21Provider : MainAPI() {
             val baseDoc = app.get(data, headers = headers).document
             val firstIframe = baseDoc.selectFirst(
                 ".gmr-pagi-player iframe[src], .gmr-embed-responsive iframe[src], " +
-                ".gmr-pagi-player IFRAME, .gmr-embed-responsive IFRAME"
+                ".gmr-pagi-player IFRAME, .gmr-embed-responsive IFRAME, " +
+                "iframe#video-frame[src], iframe[id=video-frame][src]"
             )
             val firstSrc = firstIframe?.let {
                 (it.attr("src").ifEmpty { it.attr("SRC") }).trim()
             } ?: ""
             if (firstSrc.isNotBlank()) {
                 val fu = fixEmbedUrl(firstSrc, data)
-                if (fu.isNotEmpty()) targets.add(Pair(fu, "Server 1"))
+                if (fu.isNotEmpty() && targets.none { it.first == fu }) {
+                    targets.add(Pair(fu, "Server 1"))
+                }
             }
 
-            // 2. Discover how many servers exist from the tab list
+            // 2. Discover players from inline button switchVideo / window.open calls (blog posts player)
+            baseDoc.select("button[onclick]").forEach { btn ->
+                val onclick = btn.attr("onclick")
+                val urlRegex = Regex("['\"](https?://[^'\"]+)['\"]")
+                urlRegex.find(onclick)?.let { match ->
+                    val rawUrl = match.groupValues[1]
+                    val cleanUrl = rawUrl.trim().replace("\\", "")
+                    if (cleanUrl.isNotEmpty() && targets.none { it.first == cleanUrl }) {
+                        val serverLabel = btn.text().trim().ifEmpty { "Server ${targets.size + 1}" }
+                        targets.add(Pair(cleanUrl, serverLabel))
+                    }
+                }
+            }
+
+            // 3. Discover how many servers exist from the tab list
             val serverTabs = baseDoc.select("ul.muvipro-player-tabs a, ul.nav-tabs a[href*=player]")
             val serverCount = serverTabs.size.coerceIn(1, 12)
 
-            // 3. Fetch each additional server page (?player=2 through ?player=N)
+            // 4. Fetch each additional server page (?player=2 through ?player=N)
             for (i in 2..serverCount) {
                 val serverUrl = buildServerUrl(data, i)
                 try {
                     val serverDoc = app.get(serverUrl, headers = headers, referer = data).document
                     val iframe = serverDoc.selectFirst(
                         ".gmr-pagi-player iframe[src], .gmr-embed-responsive iframe[src], " +
-                        ".gmr-pagi-player IFRAME, .gmr-embed-responsive IFRAME"
+                        ".gmr-pagi-player IFRAME, .gmr-embed-responsive IFRAME, " +
+                        "iframe#video-frame[src], iframe[id=video-frame][src]"
                     )
                     val src = iframe?.let {
                         (it.attr("src").ifEmpty { it.attr("SRC") }).trim()
@@ -312,7 +330,7 @@ class Dutamovie21Provider : MainAPI() {
             }
         } catch (_: Exception) {}
 
-        // 4. Process all collected embed targets
+        // 5. Process all collected embed targets
         targets.forEach { (embedUrl, serverLabel) ->
             val cleanUrl = embedUrl.trim().replace("\\", "")
             if (cleanUrl.isBlank()) return@forEach
@@ -388,6 +406,17 @@ class Dutamovie21Provider : MainAPI() {
             }
             // Veev.to (StreamWish-compatible)
             "veev" in d -> {
+                try {
+                    com.lagradost.cloudstream3.extractors.StreamWishExtractor()
+                        .getUrl(url, referer, subtitleCallback, callback)
+                } catch (_: Exception) { loadExtractor(url, referer, subtitleCallback, callback) }
+            }
+            // Embedpyrox
+            "embedpyrox" in d -> {
+                try { loadExtractor(url, referer, subtitleCallback, callback) } catch (_: Exception) {}
+            }
+            // Helvid
+            "helvid" in d -> {
                 try {
                     com.lagradost.cloudstream3.extractors.StreamWishExtractor()
                         .getUrl(url, referer, subtitleCallback, callback)
