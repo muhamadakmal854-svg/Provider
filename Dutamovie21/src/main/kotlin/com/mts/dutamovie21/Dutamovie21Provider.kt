@@ -377,17 +377,14 @@ class Dutamovie21Provider : MainAPI() {
             }
             // AbyssPlayer / playerp2p.online / upns.live
             "abyssplayer" in d || "playerp2p" in d || "upns" in d -> {
-                try {
-                    com.lagradost.cloudstream3.extractors.StreamWishExtractor()
-                        .getUrl(url, referer, subtitleCallback, callback)
-                } catch (_: Exception) { loadExtractor(url, referer, subtitleCallback, callback) }
+                try { loadExtractor(url, referer, subtitleCallback, callback) } catch (_: Exception) {}
             }
             // Play4Me / embed4me (all subdomains)
             "embed4me" in d -> {
                 try { loadExtractor(url, referer, subtitleCallback, callback) } catch (_: Exception) {}
             }
-            // Voe
-            "voe" in d -> {
+            // Voe and Voe mirrors
+            "voe" in d || "ellenpoliticalfollow" in d || "voe-unblock" in d -> {
                 try {
                     com.lagradost.cloudstream3.extractors.Voe()
                         .getUrl(url, referer, subtitleCallback, callback)
@@ -399,17 +396,11 @@ class Dutamovie21Provider : MainAPI() {
             }
             // HGCloud / hgcloud.to (StreamWish-compatible)
             "hgcloud" in d -> {
-                try {
-                    com.lagradost.cloudstream3.extractors.StreamWishExtractor()
-                        .getUrl(url, referer, subtitleCallback, callback)
-                } catch (_: Exception) { loadExtractor(url, referer, subtitleCallback, callback) }
+                try { loadExtractor(url, referer, subtitleCallback, callback) } catch (_: Exception) {}
             }
             // Veev.to (StreamWish-compatible)
             "veev" in d -> {
-                try {
-                    com.lagradost.cloudstream3.extractors.StreamWishExtractor()
-                        .getUrl(url, referer, subtitleCallback, callback)
-                } catch (_: Exception) { loadExtractor(url, referer, subtitleCallback, callback) }
+                try { loadExtractor(url, referer, subtitleCallback, callback) } catch (_: Exception) {}
             }
             // Embedpyrox
             "embedpyrox" in d -> {
@@ -417,10 +408,7 @@ class Dutamovie21Provider : MainAPI() {
             }
             // Helvid
             "helvid" in d -> {
-                try {
-                    com.lagradost.cloudstream3.extractors.StreamWishExtractor()
-                        .getUrl(url, referer, subtitleCallback, callback)
-                } catch (_: Exception) { loadExtractor(url, referer, subtitleCallback, callback) }
+                try { loadExtractor(url, referer, subtitleCallback, callback) } catch (_: Exception) {}
             }
             // StreamWish family (pusat.host, lurvz.com, etc.)
             listOf("streamwish","wish","hglink","gendeng","desacinta","layarotaku",
