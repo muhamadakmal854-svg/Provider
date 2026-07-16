@@ -8,16 +8,13 @@ import android.content.Context
 class Dutamovie21Plugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(Dutamovie21Provider())
-        registerExtractorAPI(KetikLive())
-        registerExtractorAPI(BokinshopCom())
-        registerExtractorAPI(GacorVin())
-        registerExtractorAPI(Upload18Cc())
-        registerExtractorAPI(EmbedpyroxXyz())
-        registerExtractorAPI(IamcdnNet())
-        registerExtractorAPI(RedditCom())
-        registerExtractorAPI(TumblrCom())
-        registerExtractorAPI(McYandex())
-        registerExtractorAPI(IYtimgCom())
-        registerExtractorAPI(YoutuBe())
+        registerExtractorAPI(AbyssplayerCom())
+        registerExtractorAPI(Dm21Embed4meVip())
+        registerExtractorAPI(LivePlayerp2pOnline())
+        registerExtractorAPI(VoeSx())
+        registerExtractorAPI(MorenciusCom())
+        registerExtractorAPI(HgcloudTo())
+        registerExtractorAPI(Dm21UpnsLive())
+        registerExtractorAPI(VeevTo())
     }
 }
