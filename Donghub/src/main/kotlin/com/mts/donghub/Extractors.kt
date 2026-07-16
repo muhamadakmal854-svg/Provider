@@ -1,7 +1,6 @@
 package com.mts.donghub
 
 import com.lagradost.cloudstream3.extractors.Dailymotion
-import com.lagradost.cloudstream3.extractors.EarnVids
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
@@ -24,7 +23,7 @@ class GeoDailymotionCom : Dailymotion() {
     override var mainUrl = "https://geo.dailymotion.com"
 }
 
-class MorenciusCom : EarnVids() {
+class MorenciusCom : StreamWishExtractor() {
     override var name = "MorenciusCom"
     override var mainUrl = "https://morencius.com"
 }
