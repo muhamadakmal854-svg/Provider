@@ -99,27 +99,22 @@ class KuramanimeProvider : MainAPI() {
                     .ifEmpty { a.text().trim() }
             if (title.isBlank()) return@mapNotNull null
             var src = img?.posterUrl() ?: ""
-            if (src.isEmpty()) src = it.posterUrl()
-            if (src.isEmpty()) {
-                it.select("[style*=background], [style*=url]").forEach { el ->
-                    val u = el.posterUrl()
-                    if (u.isNotEmpty()) { src = u; return@forEach }
-                }
-            }
             // Smart type detection based on URL pattern and page metadata
             val hrefLower = href.lowercase()
             val typeLabel = it.selectFirst(
                 ".type, .label, .badge, [class*=type], [class*=label], .quality"
             )?.text()?.lowercase() ?: ""
             when {
-                hrefLower.contains("/movie") || hrefLower.contains("/film") ||
-                hrefLower.contains("/movies/") ->
-                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
                 hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
                 hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
+                hrefLower.contains("/film-seri/") || hrefLower.contains("/drama-serial/") ||
+                hrefLower.contains("/ongoing/") || hrefLower.contains("/drakor/") ||
                 typeLabel.contains("series") || typeLabel.contains("drama") ||
                 typeLabel.contains("episode") ->
                     newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+                hrefLower.contains("/movie") || hrefLower.contains("/film") ||
+                hrefLower.contains("/movies/") ->
+                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
                 else ->
                     newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
             }
@@ -791,7 +786,8 @@ class AbyssExtractor : ExtractorApi() {
             val mediaJson = org.json.JSONObject(decryptedMediaStr)
             val mp4 = mediaJson.getJSONObject("mp4")
             val sources = mp4.getJSONArray("sources")
-            val domainsObj = if (mp4.has("domains")) mp4.getJSONObject("domains") else if (mediaJson.has("domains")) mediaJson.getJSONObject("domains") else org.json.JSONObject()
+            val domainsObj = if (mp4.has("domains")) mp4.optJSONObject("domains") else if (mediaJson.has("domains")) mediaJson.optJSONObject("domains") else null
+            val domainsArr = if (mp4.has("domains")) mp4.optJSONArray("domains") else if (mediaJson.has("domains")) mediaJson.optJSONArray("domains") else null
 
             for (i in 0 until sources.length()) {
                 val src = sources.getJSONObject(i)
@@ -800,7 +796,21 @@ class AbyssExtractor : ExtractorApi() {
                 val label = src.getString("label")
                 val sub = src.getString("sub")
 
-                val domain = domainsObj.getString(sub)
+                var domain = ""
+                if (domainsObj != null) {
+                    domain = domainsObj.optString(sub, "")
+                } else if (domainsArr != null) {
+                    for (j in 0 until domainsArr.length()) {
+                        val dStr = domainsArr.getString(j)
+                        if (dStr.startsWith(sub)) {
+                            domain = dStr
+                            break
+                        }
+                    }
+                }
+                if (domain.isBlank()) {
+                    domain = "$sub.sssrr.org"
+                }
 
                 val pathStr = "/mp4/$md5Id/$resId/$size?v=$slug"
                 

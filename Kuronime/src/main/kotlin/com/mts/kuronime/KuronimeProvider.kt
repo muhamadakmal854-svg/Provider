@@ -758,7 +758,8 @@ class AbyssExtractor : ExtractorApi() {
             val mediaJson = org.json.JSONObject(decryptedMediaStr)
             val mp4 = mediaJson.getJSONObject("mp4")
             val sources = mp4.getJSONArray("sources")
-            val domainsObj = if (mp4.has("domains")) mp4.getJSONObject("domains") else if (mediaJson.has("domains")) mediaJson.getJSONObject("domains") else org.json.JSONObject()
+            val domainsObj = if (mp4.has("domains")) mp4.optJSONObject("domains") else if (mediaJson.has("domains")) mediaJson.optJSONObject("domains") else null
+            val domainsArr = if (mp4.has("domains")) mp4.optJSONArray("domains") else if (mediaJson.has("domains")) mediaJson.optJSONArray("domains") else null
 
             for (i in 0 until sources.length()) {
                 val src = sources.getJSONObject(i)
@@ -767,7 +768,21 @@ class AbyssExtractor : ExtractorApi() {
                 val label = src.getString("label")
                 val sub = src.getString("sub")
 
-                val domain = domainsObj.getString(sub)
+                var domain = ""
+                if (domainsObj != null) {
+                    domain = domainsObj.optString(sub, "")
+                } else if (domainsArr != null) {
+                    for (j in 0 until domainsArr.length()) {
+                        val dStr = domainsArr.getString(j)
+                        if (dStr.startsWith(sub)) {
+                            domain = dStr
+                            break
+                        }
+                    }
+                }
+                if (domain.isBlank()) {
+                    domain = "$sub.sssrr.org"
+                }
 
                 val pathStr = "/mp4/$md5Id/$resId/$size?v=$slug"
                 

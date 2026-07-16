@@ -165,6 +165,20 @@ class BloggerCom : ExtractorApi() {
                     }
                 )
             }
+
+            val rxGoogle = Regex("""https?://[^\s"\']+/videoplayback[^\s"\']*""")
+            rxGoogle.findAll(content).forEach { m ->
+                val videoUrl = m.value
+                callback(
+                    newExtractorLink(
+                        source = name, name = name, url = videoUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = url
+                        this.quality = Qualities.Unknown.value
+                    }
+                )
+            }
         }
     }
 }
@@ -202,4 +216,28 @@ class KisskhMegaplaySu : StreamWishExtractor() {
 class Prx1328AntVmwesaOnline : StreamWishExtractor() {
     override var name = "Prx1328AntVmwesaOnline"
     override var mainUrl = "https://prx-1328-ant.vmwesa.online"
+}
+
+class GoogleVideo : ExtractorApi() {
+    override var name = "GoogleVideo"
+    override var mainUrl = "https://googlevideo.com"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        callback(
+            newExtractorLink(
+                source = name,
+                name = name,
+                url = url,
+                type = ExtractorLinkType.VIDEO
+            ) {
+                this.quality = Qualities.Unknown.value
+            }
+        )
+    }
 }

@@ -89,6 +89,20 @@ class BloggerCom : ExtractorApi() {
                     }
                 )
             }
+
+            val rxGoogle = Regex("""https?://[^\s"\']+/videoplayback[^\s"\']*""")
+            rxGoogle.findAll(content).forEach { m ->
+                val videoUrl = m.value
+                callback(
+                    newExtractorLink(
+                        source = name, name = name, url = videoUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = url
+                        this.quality = Qualities.Unknown.value
+                    }
+                )
+            }
         }
     }
 }
@@ -96,4 +110,28 @@ class BloggerCom : ExtractorApi() {
 class OkRu : Odnoklassniki() {
     override var name = "OkRu"
     override var mainUrl = "https://ok.ru"
+}
+
+class GoogleVideo : ExtractorApi() {
+    override var name = "GoogleVideo"
+    override var mainUrl = "https://googlevideo.com"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        callback(
+            newExtractorLink(
+                source = name,
+                name = name,
+                url = url,
+                type = ExtractorLinkType.VIDEO
+            ) {
+                this.quality = Qualities.Unknown.value
+            }
+        )
+    }
 }

@@ -17,5 +17,6 @@ class DrakoridPlugin : Plugin() {
         registerExtractorAPI(PzEerfumerelCom())
         registerExtractorAPI(KisskhMegaplaySu())
         registerExtractorAPI(Prx1328AntVmwesaOnline())
+        registerExtractorAPI(GoogleVideo())
     }
 }
