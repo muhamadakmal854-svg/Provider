@@ -13,20 +13,22 @@ class Dutamovie21Provider : MainAPI() {
     override val hasMainPage    = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
-    // Known Dutamovie21 domains -- tried in order when domain changes
+    // Known domains -- tried in order when domain changes
     private val knownDomains = listOf(
         "https://austincomputerworks.org",
         "https://dutamovie21.live",
-        "https://dutamovie21.ink",
-        "https://dutamovie21.net",
         "https://dutamovie21.cc",
-        "https://austincomputerworks.org"
+        "https://austincomputerworks.org",
+        "https://taroscafe.com"
     )
     private var resolvedUrl: String = ""
 
     private suspend fun getActiveUrl(): String {
         if (resolvedUrl.isNotBlank()) return resolvedUrl
         for (domain in knownDomains) {
+            // Only try checking other domains if the active_url matches the checked domain style
+            if ("taroscafe" in mainUrl && "taroscafe" not in domain) continue
+            if ("taroscafe" not in mainUrl && "taroscafe" in domain) continue
             try {
                 val r = app.get(domain, timeout = 8, allowRedirects = true)
                 if (r.isSuccessful) {
@@ -118,7 +120,7 @@ class Dutamovie21Provider : MainAPI() {
 
         val sn = sectionName?.lowercase() ?: ""
         val isMovieSection  = sn.contains("movie") || sn.contains("filem") ||
-                              sn.contains("film")  || pageUrl.contains("/movie/")
+                              sn.contains("film")  || pageUrl.contains("/movie/") || pageUrl.contains("/trending/")
         val isSeriesSection = sn.contains("serial") || sn.contains("ongoing") ||
                               sn.contains("completed") || sn.contains("anime") ||
                               sn.contains("series") || pageUrl.contains("/tv/") ||
@@ -151,7 +153,7 @@ class Dutamovie21Provider : MainAPI() {
             if (src.isEmpty()) src = el.posterUrl()
 
             // Determine type
-            val hrefIsMovie  = href.contains("/movie/") || href.contains("/film/")
+            val hrefIsMovie  = href.contains("/movie/") || href.contains("/film/") || href.contains("/trending/") || href.contains("/film-semi/")
             val hrefIsSeries = href.contains("/tv/")    || href.contains("/eps/") ||
                                href.contains("/series/") || href.contains("/episode/")
 
@@ -271,62 +273,104 @@ class Dutamovie21Provider : MainAPI() {
 
         val targets = mutableListOf<Pair<String, String>>() // (embedUrl, serverLabel)
 
-        // 1. Fetch the base page (Server 1 = default, no ?player param)
         try {
             val baseDoc = app.get(data, headers = headers).document
-            val firstIframe = baseDoc.selectFirst(
-                ".gmr-pagi-player iframe[src], .gmr-embed-responsive iframe[src], " +
-                ".gmr-pagi-player IFRAME, .gmr-embed-responsive IFRAME, " +
-                "iframe#video-frame[src], iframe[id=video-frame][src]"
-            )
-            val firstSrc = firstIframe?.let {
-                (it.attr("src").ifEmpty { it.attr("SRC") }).trim()
-            } ?: ""
-            if (firstSrc.isNotBlank()) {
-                val fu = fixEmbedUrl(firstSrc, data)
-                if (fu.isNotEmpty() && targets.none { it.first == fu }) {
-                    targets.add(Pair(fu, "Server 1"))
+
+            // ── A. Check if the page uses AJAX player tabs (Muvipro AJAX) ────────────────
+            val ajaxContainer = baseDoc.selectFirst(".gmr-server-wrap[data-id], .muvipro_player_content[data-id]")
+            val ajaxPostId = ajaxContainer?.attr("data-id") ?: ""
+            val ajaxTabs = baseDoc.select("ul.muvipro-player-tabs a[href^=#p], ul.nav-tabs a[href^=#p]")
+            
+            if (ajaxPostId.isNotEmpty() && ajaxTabs.isNotEmpty()) {
+                val ajaxUrl = "${mainUrl.removeSuffix("/")}/wp-admin/admin-ajax.php"
+                ajaxTabs.forEach { tabLink ->
+                    val tabId = tabLink.attr("href").replace("#", "")
+                    val serverLabel = tabLink.text().trim().ifEmpty { "Server ${targets.size + 1}" }
+                    try {
+                        val response = app.post(
+                            ajaxUrl,
+                            data = mapOf(
+                                "action" to "muvipro_player_content",
+                                "tab" to tabId,
+                                "post_id" to ajaxPostId
+                            ),
+                            headers = mapOf(
+                                "X-Requested-With" to "XMLHttpRequest",
+                                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                                "Referer" to data
+                            )
+                        ).text
+                        if (response.isNotBlank()) {
+                            val ajaxDoc = Jsoup.parse(response)
+                            val iframe = ajaxDoc.selectFirst("iframe[src], IFRAME[src]")
+                            val src = iframe?.attr("src")?.trim() ?: ""
+                            if (src.isNotBlank()) {
+                                val fu = fixEmbedUrl(src, data)
+                                if (fu.isNotEmpty() && targets.none { it.first == fu }) {
+                                    targets.add(Pair(fu, serverLabel))
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
                 }
             }
 
-            // 2. Discover players from inline button switchVideo / window.open calls (blog posts player)
-            baseDoc.select("button[onclick]").forEach { btn ->
-                val onclick = btn.attr("onclick")
-                val urlRegex = Regex("['\"](https?://[^'\"]+)['\"]")
-                urlRegex.find(onclick)?.let { match ->
-                    val rawUrl = match.groupValues[1]
-                    val cleanUrl = rawUrl.trim().replace("\\", "")
-                    if (cleanUrl.isNotEmpty() && targets.none { it.first == cleanUrl }) {
-                        val serverLabel = btn.text().trim().ifEmpty { "Server ${targets.size + 1}" }
-                        targets.add(Pair(cleanUrl, serverLabel))
+            // ── B. Regular Muvipro Player (Query Parameters & Iframes) ──────────────────
+            if (targets.isEmpty()) {
+                val firstIframe = baseDoc.selectFirst(
+                    ".gmr-pagi-player iframe[src], .gmr-embed-responsive iframe[src], " +
+                    ".gmr-pagi-player IFRAME, .gmr-embed-responsive IFRAME, " +
+                    "iframe#video-frame[src], iframe[id=video-frame][src]"
+                )
+                val firstSrc = firstIframe?.let {
+                    (it.attr("src").ifEmpty { it.attr("SRC") }).trim()
+                } ?: ""
+                if (firstSrc.isNotBlank()) {
+                    val fu = fixEmbedUrl(firstSrc, data)
+                    if (fu.isNotEmpty() && targets.none { it.first == fu }) {
+                        targets.add(Pair(fu, "Server 1"))
                     }
                 }
-            }
 
-            // 3. Discover how many servers exist from the tab list
-            val serverTabs = baseDoc.select("ul.muvipro-player-tabs a, ul.nav-tabs a[href*=player]")
-            val serverCount = serverTabs.size.coerceIn(1, 12)
-
-            // 4. Fetch each additional server page (?player=2 through ?player=N)
-            for (i in 2..serverCount) {
-                val serverUrl = buildServerUrl(data, i)
-                try {
-                    val serverDoc = app.get(serverUrl, headers = headers, referer = data).document
-                    val iframe = serverDoc.selectFirst(
-                        ".gmr-pagi-player iframe[src], .gmr-embed-responsive iframe[src], " +
-                        ".gmr-pagi-player IFRAME, .gmr-embed-responsive IFRAME, " +
-                        "iframe#video-frame[src], iframe[id=video-frame][src]"
-                    )
-                    val src = iframe?.let {
-                        (it.attr("src").ifEmpty { it.attr("SRC") }).trim()
-                    } ?: ""
-                    if (src.isNotBlank()) {
-                        val fu = fixEmbedUrl(src, serverUrl)
-                        if (fu.isNotEmpty() && targets.none { it.first == fu }) {
-                            targets.add(Pair(fu, "Server $i"))
+                // Discover players from inline button switchVideo / window.open calls (blog posts player)
+                baseDoc.select("button[onclick]").forEach { btn ->
+                    val onclick = btn.attr("onclick")
+                    val urlRegex = Regex("['\"](https?://[^'\"]+)['\"]")
+                    urlRegex.find(onclick)?.let { match ->
+                        val rawUrl = match.groupValues[1]
+                        val cleanUrl = rawUrl.trim().replace("\\", "")
+                        if (cleanUrl.isNotEmpty() && targets.none { it.first == cleanUrl }) {
+                            val serverLabel = btn.text().trim().ifEmpty { "Server ${targets.size + 1}" }
+                            targets.add(Pair(cleanUrl, serverLabel))
                         }
                     }
-                } catch (_: Exception) {}
+                }
+
+                // Discover how many servers exist from the tab list
+                val serverTabs = baseDoc.select("ul.muvipro-player-tabs a, ul.nav-tabs a[href*=player]")
+                val serverCount = serverTabs.size.coerceIn(1, 12)
+
+                // Fetch each additional server page (?player=2 through ?player=N)
+                for (i in 2..serverCount) {
+                    val serverUrl = buildServerUrl(data, i)
+                    try {
+                        val serverDoc = app.get(serverUrl, headers = headers, referer = data).document
+                        val iframe = serverDoc.selectFirst(
+                            ".gmr-pagi-player iframe[src], .gmr-embed-responsive iframe[src], " +
+                            ".gmr-pagi-player IFRAME, .gmr-embed-responsive IFRAME, " +
+                            "iframe#video-frame[src], iframe[id=video-frame][src]"
+                        )
+                        val src = iframe?.let {
+                            (it.attr("src").ifEmpty { it.attr("SRC") }).trim()
+                        } ?: ""
+                        if (src.isNotBlank()) {
+                            val fu = fixEmbedUrl(src, serverUrl)
+                            if (fu.isNotEmpty() && targets.none { it.first == fu }) {
+                                targets.add(Pair(fu, "Server $i"))
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
             }
         } catch (_: Exception) {}
 
@@ -375,8 +419,8 @@ class Dutamovie21Provider : MainAPI() {
                     type   = ExtractorLinkType.VIDEO
                 ) { this.referer = referer; this.quality = Qualities.Unknown.value })
             }
-            // AbyssPlayer / playerp2p.online / upns.live
-            "abyssplayer" in d || "playerp2p" in d || "upns" in d -> {
+            // AbyssPlayer / playerp2p / upns / p2pstream
+            "abyssplayer" in d || "playerp2p" in d || "upns" in d || "p2pstream" in d -> {
                 try { loadExtractor(url, referer, subtitleCallback, callback) } catch (_: Exception) {}
             }
             // Play4Me / embed4me (all subdomains)

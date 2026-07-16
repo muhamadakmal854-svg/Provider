@@ -8,6 +8,13 @@ import android.content.Context
 class IndoxxiPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(IndoxxiProvider())
-        registerExtractorAPI(CvGenipspillionCom())
+        registerExtractorAPI(AbyssplayerCom())
+        registerExtractorAPI(FastdlP2pstreamOnline())
+        registerExtractorAPI(EmbedpyroxXyz())
+        registerExtractorAPI(MorenciusCom())
+        registerExtractorAPI(HgcloudTo())
+        registerExtractorAPI(VeevTo())
+        registerExtractorAPI(Dm21UpnsLive())
+        registerExtractorAPI(HelvidNet())
     }
 }

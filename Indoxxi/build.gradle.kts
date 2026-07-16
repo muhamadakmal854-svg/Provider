@@ -2,11 +2,11 @@ version = 1
 
 cloudstream {
     language    = "id"
-    description = "Provider untuk INDOXXI"
+    description = "Provider untuk INDOXXI - IDLIX"
     authors     = listOf("MTS")
     status      = 1
     tvTypes     = listOf("Movie", "TvSeries")
-    iconUrl     = "https://comblank.com/favicon.ico"
+    iconUrl     = "https://taroscafe.com/favicon.ico"
 }
 
 android {
