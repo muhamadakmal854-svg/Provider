@@ -27,8 +27,8 @@ class Dutamovie21Provider : MainAPI() {
         if (resolvedUrl.isNotBlank()) return resolvedUrl
         for (domain in knownDomains) {
             // Only try checking other domains if the active_url matches the checked domain style
-            if ("taroscafe" in mainUrl && "taroscafe" not in domain) continue
-            if ("taroscafe" not in mainUrl && "taroscafe" in domain) continue
+            if (mainUrl.contains("taroscafe") && !domain.contains("taroscafe")) continue
+            if (!mainUrl.contains("taroscafe") && domain.contains("taroscafe")) continue
             try {
                 val r = app.get(domain, timeout = 8, allowRedirects = true)
                 if (r.isSuccessful) {
