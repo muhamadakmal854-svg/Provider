@@ -58,7 +58,7 @@ class JuraganfilmProvider : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val path = request.data
         val pageUrl = if (page > 1) "$mainUrl/$path/page/$page/" else "$mainUrl/$path"
-        val document = app.get(pageUrl).document
+        val document = app.get(pageUrl, timeout = 30).document
         val homeList = document.select(".listupd .bsx, .listupd .bs, .card, article, div.movie-item").mapNotNull {
             it.toSearchResult()
         }
@@ -66,14 +66,14 @@ class JuraganfilmProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").document
+        val document = app.get("$mainUrl/?s=$query", timeout = 30).document
         return document.select(".listupd .bsx, .listupd .bs, .card, article, div.movie-item").mapNotNull {
             it.toSearchResult()
         }
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url).document
+        val document = app.get(url, timeout = 30).document
         val title = document.selectFirst("h1.entry-title, h1")?.text()?.trim() ?: return null
         val poster = document.selectFirst(".poster img, img.wp-post-image, .thumb img")?.let { img ->
             listOf("data-src", "src").map { img.attr(it) }.firstOrNull { it.isNotBlank() }
@@ -139,7 +139,7 @@ class JuraganfilmProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         if (data.isBlank()) return false
-        val document = app.get(data).document
+        val document = app.get(data, timeout = 30).document
         
         val iframeSrc = document.select("iframe[src*=/file/?id=]").firstOrNull()?.attr("src")
                      ?: document.select("iframe[id^=jf-frame-]").firstOrNull()?.attr("src")
@@ -148,7 +148,7 @@ class JuraganfilmProvider : MainAPI() {
 
         val iframeUrl = fixUrl(iframeSrc)
         val headers = mapOf("Referer" to data, "User-Agent" to "Mozilla/5.0")
-        val iframeResponse = app.get(iframeUrl, headers = headers).text
+        val iframeResponse = app.get(iframeUrl, headers = headers, timeout = 30).text
         
         val regex = Regex("""const\s+SOURCES\s*=\s*(\[.*?\])\s*;""")
         val match = regex.find(iframeResponse) ?: return false
