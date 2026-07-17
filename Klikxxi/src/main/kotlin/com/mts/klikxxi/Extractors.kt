@@ -403,7 +403,7 @@ class Playerp2pXyz : FastdlP2pstreamOnline() {
     override var mainUrl = "https://playerp2p.xyz"
 }
 
-class FastdlP2pstreamOnline : ExtractorApi() {
+open class FastdlP2pstreamOnline : ExtractorApi() {
     override var name = "FastdlP2pstreamOnline"
     override var mainUrl = "https://fastdl.p2pstream.online"
     override val requiresReferer = true
