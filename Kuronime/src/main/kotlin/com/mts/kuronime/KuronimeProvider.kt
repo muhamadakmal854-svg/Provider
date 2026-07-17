@@ -436,10 +436,11 @@ class KuronimeProvider : MainAPI() {
                             "VIP PLAYER 1",
                             "VIP PLAYER 1 1080p",
                             directUrl,
-                            referer = "https://player.animeku.org/",
-                            quality = getQualityFromName("1080p"),
-                            isM3u8 = true
-                        )
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://player.animeku.org/"
+                            this.quality = getQualityFromName("1080p")
+                        }
                     )
                 }
             } catch (_: Exception) {}
@@ -458,10 +459,11 @@ class KuronimeProvider : MainAPI() {
                             "VIP PLAYER 1",
                             "VIP PLAYER 1 480p",
                             directUrl,
-                            referer = "https://player.animeku.org/",
-                            quality = getQualityFromName("480p"),
-                            isM3u8 = true
-                        )
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://player.animeku.org/"
+                            this.quality = getQualityFromName("480p")
+                        }
                     )
                 }
             } catch (_: Exception) {}
@@ -497,9 +499,10 @@ class KuronimeProvider : MainAPI() {
                                 "LOKALAN",
                                 "LOKALAN $label",
                                 fileUrl,
-                                referer = "",
-                                quality = quality
-                            )
+                                type = ExtractorLinkType.VIDEO
+                            ) {
+                                this.quality = quality
+                            }
                         )
                     }
                 }
