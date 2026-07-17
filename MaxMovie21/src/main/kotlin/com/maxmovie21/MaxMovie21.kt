@@ -86,9 +86,8 @@ class MaxMovie21 : MainAPI() {
         return newHomePageResponse(request.name, results, hasNext = true)
     }
 
-    override suspend fun search(query: String, page: Int): List<SearchResponse> {
-        val url = if (page <= 1) "$mainUrl/?s=${query.encodeUrl()}"
-                  else           "$mainUrl/page/$page/?s=${query.encodeUrl()}"
+    override suspend fun search(query: String): List<SearchResponse> {
+        val url = "$mainUrl/?s=${query.encodeUrl()}"
 
         val doc     = app.get(url, headers = mapOf("User-Agent" to UA)).document
         val results = doc.select("article a[href][title]")
@@ -97,6 +96,7 @@ class MaxMovie21 : MainAPI() {
 
         return results
     }
+
 
     override suspend fun load(url: String): LoadResponse {
         val doc     = app.get(url, headers = mapOf("User-Agent" to UA)).document
