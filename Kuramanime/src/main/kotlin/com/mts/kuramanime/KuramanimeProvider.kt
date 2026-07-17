@@ -5,6 +5,7 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.jsoup.nodes.Element
+import org.jsoup.Jsoup
 import org.json.JSONObject
 import org.json.JSONArray
 import android.util.Log
