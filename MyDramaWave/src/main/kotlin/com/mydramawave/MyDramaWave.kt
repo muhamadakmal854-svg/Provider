@@ -4,7 +4,28 @@ import android.util.Base64
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.DubStatus
+import com.lagradost.cloudstream3.Episode
+import com.lagradost.cloudstream3.ErrorLoadingException
+import com.lagradost.cloudstream3.HomePageResponse
+import com.lagradost.cloudstream3.LoadResponse
+import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.MainPageRequest
+import com.lagradost.cloudstream3.SearchResponse
+import com.lagradost.cloudstream3.SearchResponseList
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.addDubStatus
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.fixUrl
+import com.lagradost.cloudstream3.fixUrlNull
+import com.lagradost.cloudstream3.mainPageOf
+import com.lagradost.cloudstream3.newAnimeSearchResponse
+import com.lagradost.cloudstream3.newEpisode
+import com.lagradost.cloudstream3.newHomePageResponse
+import com.lagradost.cloudstream3.newSearchResponseList
+import com.lagradost.cloudstream3.newSubtitleFile
+import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
@@ -36,14 +57,14 @@ class MyDramaWave : MainAPI() {
     private val fallbackApiUrl = "https://api.mydramawave.com/h5-api"
 
     override var name = "MyDramaWave"
-    override var lang = "en"
+    override var lang = "id"
     override val hasMainPage = true
     override val hasQuickSearch = true
     override val hasDownloadSupport = true
 
     override val supportedTypes = setOf(
         TvType.AsianDrama,
-        TvType.Movie
+        TvType.Anime
     )
 
     private val secureRandom = SecureRandom()
@@ -70,13 +91,21 @@ class MyDramaWave : MainAPI() {
     )
 
     private val nativeCategories = listOf(
-        NativeCategory("popular", "Popular", "993", 10000),
-        NativeCategory("new", "Latest", "995", 10000)
+        NativeCategory("popular", "Populer", "993", 10000),
+        NativeCategory("new", "Terbaru", "995", 10000),
+        NativeCategory("dubbing", "Dubbing", "1002", 10000),
+        NativeCategory("female", "Untuk Perempuan", "994", 10000),
+        NativeCategory("male", "Untuk Laki-Laki", "996", 10000),
+        NativeCategory("anime", "Anime", "1005", 10001, TvType.Anime)
     )
 
     override val mainPage = mainPageOf(
-        "popular" to "Popular",
-        "new" to "Latest"
+        "popular" to "Populer",
+        "new" to "Terbaru",
+        "dubbing" to "Dubbing",
+        "female" to "Untuk Perempuan",
+        "male" to "Untuk Laki-Laki",
+        "anime" to "Anime"
     )
 
     private fun decryptIfNeeded(raw: String): String {
@@ -110,18 +139,41 @@ class MyDramaWave : MainAPI() {
         val headers = mutableMapOf(
             "Accept" to "application/json",
             "Content-Type" to "application/json",
-            "OpCountryCode" to "US",
-            "X-AppEngine-Country" to "US",
-            "app-language" to "en",
-            "prefer_country" to "US",
-            "locale" to "en-US",
-            "language" to "en-US",
-            "country" to "US",
+            "OpCountryCode" to "ID",
+            "X-AppEngine-Country" to "ID",
+            "app-language" to "id",
+            "prefer_country" to "ID",
+            "locale" to "id-ID",
+            "language" to "id-ID",
+            "country" to "ID",
+            "X-Timezone" to "Asia/Jakarta",
+            "timezone" to "7",
+            "X-Timezone-offset" to "7",
+            "network-type" to "WIFI",
+            "screen-width" to "411",
+            "screen-height" to "891",
+            "is-mainland" to "false",
+            "device-memory" to "8.00",
+            "device-country" to "ID",
+            "device-language" to "id-ID",
+            "x-device-model" to "23090RA98G",
+            "x-device-manufacturer" to "Xiaomi",
+            "x-device-brand" to "Redmi",
+            "x-device-product" to "sky",
+            "x-device-fingerprint" to "Redmi/sky_global/sky:14/UKQ1.231003.002/V816.0.11.0.UMWMIXM:user/release-keys",
             "session-id" to sessionId,
+            "app-name" to "com.freereels.app",
+            "app-version" to "2.2.91",
             "device-id" to deviceId,
+            "device-version" to "34",
             "device" to "android",
             "Authorization" to "oauth_signature=$signature,oauth_token=${sessionToken ?: "undefined"},ts=$ts"
         )
+
+        if (isVip) {
+            headers["internal-user-code"] = "666666"
+        }
+
         return headers
     }
 
@@ -134,7 +186,7 @@ class MyDramaWave : MainAPI() {
             val loginSig = md5(nativeLoginSalt + deviceId)
             val reqBody = mapOf(
                 "device_id" to deviceId,
-                "device_name" to "Android TV",
+                "device_name" to "Redmi 23090RA98G",
                 "device_sign" to loginSig
             ).toJson().toRequestBody("application/json".toMediaTypeOrNull())
 
@@ -145,6 +197,7 @@ class MyDramaWave : MainAPI() {
             ).text
 
             val authData = tryParseMyDramaWaveJson<NativeAuthResponse>(res)
+
             sessionToken = authData?.data?.authKey ?: authData?.data?.token
             sessionSecret = authData?.data?.authSecret.orEmpty()
         }
@@ -152,20 +205,26 @@ class MyDramaWave : MainAPI() {
 
     private fun extractMovies(dataObj: UniversalFeedData?, dest: MutableList<UniversalItem>) {
         if (dataObj == null) return
+
         fun extract(itemsList: List<UniversalItem>?) {
             itemsList?.forEach { item ->
                 val itemType = item.type.orEmpty()
+
                 if (itemType.contains("banner", true)) return@forEach
                 if (itemType.equals("ad", true)) return@forEach
+
                 val title = item.title ?: item.name
                 val id = item.id?.toString() ?: item.key ?: item.seriesId?.toString()
+
                 if (!title.isNullOrBlank() && !id.isNullOrBlank()) {
                     dest.add(item)
                 }
+
                 extract(item.items)
                 extract(item.list)
             }
         }
+
         extract(dataObj.items)
         extract(dataObj.list)
         extract(dataObj.components)
@@ -186,7 +245,10 @@ class MyDramaWave : MainAPI() {
         if (page <= 1) {
             val items = mutableListOf<UniversalItem>()
             extractMovies(moduleIndex, items)
-            val hasMore = moduleIndex.pageInfo?.hasMore == true || !moduleIndex.pageInfo?.next.isNullOrBlank()
+
+            val hasMore = moduleIndex.pageInfo?.hasMore == true ||
+                !moduleIndex.pageInfo?.next.isNullOrBlank()
+
             return items.distinctBy { it.stableId() } to hasMore
         }
 
@@ -200,6 +262,7 @@ class MyDramaWave : MainAPI() {
 
         for (i in 1 until page) {
             if (currentNext.isNullOrBlank()) break
+
             val reqBody = mapOf(
                 "module_key" to recommendKey,
                 "next" to currentNext
@@ -210,30 +273,70 @@ class MyDramaWave : MainAPI() {
                 headers = getNativeHeaders(),
                 requestBody = reqBody
             ).text
+
             currentData = tryParseMyDramaWaveJson<UniversalFeedResponse>(feedRes)?.data
             currentNext = currentData?.pageInfo?.next
         }
 
         val items = mutableListOf<UniversalItem>()
         extractMovies(currentData, items)
+
         val hasMore = currentData?.pageInfo?.hasMore == true || !currentNext.isNullOrBlank()
         return items.distinctBy { it.stableId() } to hasMore
     }
 
+    private suspend fun findNativeItemBySeriesKey(seriesKey: String): UniversalItem? {
+        for (cat in nativeCategories) {
+            val (items, _) = getCategoryPage(cat, 1)
+            val match = items.firstOrNull {
+                it.key == seriesKey ||
+                    it.id?.toString() == seriesKey ||
+                    it.seriesId?.toString() == seriesKey
+            }
+
+            if (match != null) return match
+        }
+
+        return null
+    }
+
+    private fun hasPlayableSource(ep: NativeEpisode?): Boolean {
+        if (ep == null) return false
+
+        return !ep.externalAudioH264.isNullOrBlank() ||
+            !ep.externalAudioH265.isNullOrBlank() ||
+            !ep.m3u8Url.isNullOrBlank() ||
+            !ep.videoUrl.isNullOrBlank()
+    }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         ensureSession()
+
         val category = nativeCategories.find { it.key == request.data }
-            ?: throw ErrorLoadingException("Category not found: ${request.data}")
+            ?: throw ErrorLoadingException("Kategori tidak ditemukan: ${request.data}")
+
         val (rawItems, hasMore) = getCategoryPage(category, page)
+
         val items = rawItems.mapNotNull { item ->
             item.toSearchResponse(category.type)
         }.distinctBy { it.url }
-        return newHomePageResponse(request.name, items, hasNext = hasMore)
+
+        return newHomePageResponse(
+            request.name,
+            items,
+            hasNext = hasMore
+        )
     }
 
     override suspend fun search(query: String, page: Int): SearchResponseList {
         ensureSession()
-        val nextToken = if (page <= 1) "" else "offset=${(page - 1) * 20}&page_size=20"
+
+        val nextToken = if (page <= 1) {
+            ""
+        } else {
+            "offset=${(page - 1) * 20}&page_size=20"
+        }
+
         val reqBody = mapOf(
             "keyword" to query,
             "next" to nextToken
@@ -246,12 +349,21 @@ class MyDramaWave : MainAPI() {
         ).text
 
         val searchItems = mutableListOf<UniversalItem>()
-        val dataObj = tryParseMyDramaWaveJson<UniversalFeedResponse>(res)?.data
+        val dataObj = runCatching {
+            tryParseMyDramaWaveJson<UniversalFeedResponse>(res)?.data
+        }.getOrNull()
+
         extractMovies(dataObj, searchItems)
-        val hasMore = dataObj?.pageInfo?.hasMore == true || !dataObj?.pageInfo?.next.isNullOrBlank()
+
+        val hasMore = dataObj?.pageInfo?.hasMore == true ||
+            !dataObj?.pageInfo?.next.isNullOrBlank()
+
         val list = searchItems.mapNotNull { item ->
-            item.toSearchResponse(TvType.AsianDrama)
+            item.toSearchResponse(
+                if (item.type?.contains("anime", true) == true) TvType.Anime else TvType.AsianDrama
+            )
         }.distinctBy { it.url }
+
         return newSearchResponseList(list, hasNext = hasMore)
     }
 
@@ -261,31 +373,60 @@ class MyDramaWave : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         ensureSession()
+
         val seriesId = url.substringAfterLast("/").substringBefore("?").trim()
-        if (seriesId.isBlank()) throw ErrorLoadingException("Series ID empty.")
+        if (seriesId.isBlank()) throw ErrorLoadingException("Series ID kosong.")
 
         var info: DramaInfo? = null
+
         runCatching {
             val resRaw = app.get(
                 "$nativeApiUrl/drama/info_v2?series_id=$seriesId",
                 headers = getNativeHeaders(isVip = true)
             ).text
+
             info = tryParseMyDramaWaveJson<NativeDetailResponse>(resRaw)?.data?.info
         }
 
-        val mainCover = fixUrlNull(info?.cover ?: info?.verticalCover)
-        val mainTitle = info?.name ?: "Drama"
-        val mainPlot = info?.desc
-        val episodes = mutableListOf<Episode>()
+        if (info?.episodeList.isNullOrEmpty()) {
+            runCatching {
+                val fallbackRaw = app.get(
+                    "$fallbackApiUrl/drama/info?series_id=$seriesId",
+                    headers = getNativeHeaders(isVip = true)
+                ).text
 
-        info?.episodeList?.forEachIndexed { index, ep ->
-            episodes.add(
-                newEpisode(ep.toJson()) {
-                    this.name = ep.name ?: "Episode ${index + 1}"
-                    this.episode = ep.index ?: (index + 1)
-                    this.posterUrl = fixUrlNull(ep.cover)
+                val fallbackRes = decryptIfNeeded(fallbackRaw)
+                val fallbackInfo = tryParseMyDramaWaveJson<NativeDetailResponse>(fallbackRes)?.data?.info
+
+                if (fallbackInfo != null && !fallbackInfo.episodeList.isNullOrEmpty()) {
+                    info = fallbackInfo
                 }
-            )
+            }
+        }
+
+        val nativeItem = if (info?.episodeList.isNullOrEmpty()) {
+            findNativeItemBySeriesKey(seriesId)
+        } else {
+            null
+        }
+
+        val mainCover = fixUrlNull(
+            info?.cover
+                ?: info?.verticalCover
+                ?: nativeItem?.cover
+                ?: nativeItem?.verticalCover
+        )
+
+        val mainTitle = info?.name
+            ?: nativeItem?.title
+            ?: nativeItem?.name
+            ?: "Drama"
+
+        val mainPlot = info?.desc ?: nativeItem?.desc
+        val episodes = buildEpisodeList(info, nativeItem, mainTitle, mainCover)
+
+        if (mainTitle == "Drama" && mainCover == null && episodes.isEmpty()) {
+            throw ErrorLoadingException("Data drama tidak tersedia dari server.")
         }
 
         return newTvSeriesLoadResponse(mainTitle, url, TvType.AsianDrama, episodes) {
@@ -302,12 +443,18 @@ class MyDramaWave : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val ep = tryParseMyDramaWaveJson<NativeEpisode>(data) ?: return false
-        val videoUrl = ep.externalAudioH264 ?: ep.externalAudioH265 ?: ep.m3u8Url ?: ep.videoUrl
+
+        val videoUrl = ep.externalAudioH264
+            ?: ep.externalAudioH265
+            ?: ep.m3u8Url
+            ?: ep.videoUrl
+
         var found = false
 
         if (!videoUrl.isNullOrBlank()) {
             val isM3u8 = videoUrl.contains(".m3u8", true)
-            callback(
+
+            callback.invoke(
                 newExtractorLink(
                     source = name,
                     name = name,
@@ -320,13 +467,14 @@ class MyDramaWave : MainAPI() {
                     )
                 }
             )
+
             found = true
         }
 
         ep.subtitleList?.forEach { sub ->
             val subUrl = sub.vtt ?: sub.subtitle
             if (!subUrl.isNullOrBlank()) {
-                subtitleCallback(
+                subtitleCallback.invoke(
                     newSubtitleFile(
                         sub.displayName ?: sub.language ?: "Subtitle",
                         fixUrl(subUrl)
@@ -334,81 +482,150 @@ class MyDramaWave : MainAPI() {
                 )
             }
         }
+
         return found
     }
 
-    private data class NativeAuthResponse(
-        @JsonProperty("data") val data: NativeAuthData?
-    )
-    private data class NativeAuthData(
-        @JsonProperty("authKey") val authKey: String?,
-        @JsonProperty("token") val token: String?,
-        @JsonProperty("authSecret") val authSecret: String?
-    )
-    private data class UniversalFeedResponse(
-        @JsonProperty("data") val data: UniversalFeedData?
-    )
-    private data class UniversalFeedData(
-        @JsonProperty("items") val items: List<UniversalItem>?,
-        @JsonProperty("list") val list: List<UniversalItem>?,
-        @JsonProperty("components") val components: List<UniversalItem>?,
-        @JsonProperty("modules") val modules: List<UniversalItem>?,
-        @JsonProperty("pageInfo") val pageInfo: UniversalPageInfo?
-    )
-    private data class UniversalPageInfo(
-        @JsonProperty("hasMore") val hasMore: Boolean?,
-        @JsonProperty("next") val next: String?
-    )
-    private data class UniversalItem(
-        @JsonProperty("id") val id: Any?,
-        @JsonProperty("key") val key: String?,
-        @JsonProperty("seriesId") val seriesId: Any?,
-        @JsonProperty("title") val title: String?,
-        @JsonProperty("name") val name: String?,
-        @JsonProperty("cover") val cover: String?,
-        @JsonProperty("verticalCover") val verticalCover: String?,
-        @JsonProperty("type") val type: String?,
-        @JsonProperty("desc") val desc: String?,
-        @JsonProperty("items") val items: List<UniversalItem>?,
-        @JsonProperty("list") val list: List<UniversalItem>?
-    ) {
-        fun stableId(): String = (id?.toString() ?: key ?: seriesId?.toString() ?: "")
-        fun toSearchResponse(tvType: TvType): SearchResponse? {
-            val titleStr = title ?: name ?: return null
-            val idStr = id?.toString() ?: key ?: seriesId?.toString() ?: return null
-            val linkUrl = "https://m.mydramawave.com/drama/$idStr"
-            return newAnimeSearchResponse(titleStr, linkUrl, tvType) {
-                this.posterUrl = fixUrlNull(cover ?: verticalCover)
-            }
+    private fun buildEpisodeList(
+        info: DramaInfo?,
+        nativeItem: UniversalItem?,
+        mainTitle: String,
+        mainCover: String?
+    ): List<Episode> {
+        val episodes = mutableListOf<Episode>()
+
+        info?.episodeList?.forEachIndexed { index, ep ->
+            episodes.add(
+                newEpisode(ep.toJson()) {
+                    this.name = ep.name ?: "Episode ${ep.index ?: index + 1}"
+                    this.episode = ep.index ?: index + 1
+                    this.posterUrl = fixUrlNull(ep.cover) ?: mainCover
+                }
+            )
+        }
+
+        if (episodes.isEmpty() && hasPlayableSource(nativeItem?.episodeInfo)) {
+            val ep = nativeItem?.episodeInfo ?: return episodes
+
+            episodes.add(
+                newEpisode(ep.toJson()) {
+                    this.name = ep.name ?: mainTitle
+                    this.episode = ep.index ?: 1
+                    this.posterUrl = fixUrlNull(ep.cover) ?: mainCover
+                }
+            )
+        }
+
+        return episodes.distinctBy { it.data }
+    }
+
+    private fun UniversalItem.stableId(): String {
+        return id?.toString()
+            ?: key
+            ?: seriesId?.toString()
+            ?: title
+            ?: name
+            ?: hashCode().toString()
+    }
+
+    private fun UniversalItem.toSearchResponse(type: TvType): SearchResponse? {
+        val title = title ?: name ?: return null
+        val idStr = id?.toString() ?: key ?: seriesId?.toString() ?: return null
+
+        if (title.equals("Ranking", true)) return null
+        if (title.equals("Peringkat", true)) return null
+        if (title.equals("Top", true)) return null
+        if (this.type?.contains("banner", true) == true) return null
+
+        val isDubbed = title.contains("Dubbed", true) ||
+            title.contains("Sulih Suara", true) ||
+            title.contains("(Dub)", true)
+
+        return newAnimeSearchResponse(title, idStr, type) {
+            this.posterUrl = fixUrlNull(cover ?: verticalCover)
+        }.apply {
+            if (isDubbed) addDubStatus(DubStatus.Dubbed)
         }
     }
-    private data class NativeDetailResponse(
-        @JsonProperty("data") val data: NativeDetailData?
-    )
-    private data class NativeDetailData(
-        @JsonProperty("info") val info: DramaInfo?
-    )
-    private data class DramaInfo(
-        @JsonProperty("cover") val cover: String?,
-        @JsonProperty("verticalCover") val verticalCover: String?,
-        @JsonProperty("name") val name: String?,
-        @JsonProperty("desc") val desc: String?,
-        @JsonProperty("episodeList") val episodeList: List<NativeEpisode>?
-    )
-    private data class NativeEpisode(
-        @JsonProperty("name") val name: String?,
-        @JsonProperty("index") val index: Int?,
-        @JsonProperty("cover") val cover: String?,
-        @JsonProperty("videoUrl") val videoUrl: String?,
-        @JsonProperty("m3u8Url") val m3u8Url: String?,
-        @JsonProperty("externalAudioH264") val externalAudioH264: String?,
-        @JsonProperty("externalAudioH265") val externalAudioH265: String?,
-        @JsonProperty("subtitleList") val subtitleList: List<NativeSubtitle>?
-    )
-    private data class NativeSubtitle(
-        @JsonProperty("language") val language: String?,
-        @JsonProperty("displayName") val displayName: String?,
-        @JsonProperty("vtt") val vtt: String?,
-        @JsonProperty("subtitle") val subtitle: String?
-    )
 }
+
+// ==========================================
+// DATA MODELS PURE NATIVE
+// ==========================================
+
+data class NativeAuthResponse(
+    @JsonProperty("data") val data: AuthData?
+)
+
+data class AuthData(
+    @JsonProperty("auth_key") val authKey: String?,
+    @JsonProperty("auth_secret") val authSecret: String?,
+    @JsonProperty("token") val token: String?
+)
+
+data class UniversalFeedResponse(
+    @JsonProperty("data") val data: UniversalFeedData?
+)
+
+data class UniversalFeedData(
+    @JsonProperty("items") val items: List<UniversalItem>?,
+    @JsonProperty("list") val list: List<UniversalItem>?,
+    @JsonProperty("components") val components: List<UniversalItem>?,
+    @JsonProperty("modules") val modules: List<UniversalItem>?,
+    @JsonProperty("page_info") val pageInfo: PageInfo?
+)
+
+data class UniversalItem(
+    @JsonProperty("id") val id: Any?,
+    @JsonProperty("key") val key: String?,
+    @JsonProperty("series_id") val seriesId: Any?,
+    @JsonProperty("title") val title: String?,
+    @JsonProperty("name") val name: String?,
+    @JsonProperty("desc") val desc: String?,
+    @JsonProperty("cover") val cover: String?,
+    @JsonProperty("vertical_cover") val verticalCover: String?,
+    @JsonProperty("type") val type: String?,
+    @JsonProperty("module_key") val moduleKey: String?,
+    @JsonProperty("episode_info") val episodeInfo: NativeEpisode?,
+    @JsonProperty("items") val items: List<UniversalItem>?,
+    @JsonProperty("list") val list: List<UniversalItem>?
+)
+
+data class PageInfo(
+    @JsonProperty("has_more") val hasMore: Boolean?,
+    @JsonProperty("next") val next: String?
+)
+
+data class NativeDetailResponse(
+    @JsonProperty("data") val data: DramaInfoData?
+)
+
+data class DramaInfoData(
+    @JsonProperty("info") val info: DramaInfo?
+)
+
+data class DramaInfo(
+    @JsonProperty("name") val name: String?,
+    @JsonProperty("cover") val cover: String?,
+    @JsonProperty("vertical_cover") val verticalCover: String?,
+    @JsonProperty("desc") val desc: String?,
+    @JsonProperty("episode_list") val episodeList: List<NativeEpisode>?
+)
+
+data class NativeEpisode(
+    @JsonProperty("index") val index: Int?,
+    @JsonProperty("name") val name: String?,
+    @JsonProperty("cover") val cover: String?,
+    @JsonProperty("external_audio_h264_m3u8") val externalAudioH264: String?,
+    @JsonProperty("external_audio_h265_m3u8") val externalAudioH265: String?,
+    @JsonProperty("m3u8_url") val m3u8Url: String?,
+    @JsonProperty("video_url") val videoUrl: String?,
+    @JsonProperty("subtitle_list") val subtitleList: List<NativeSubtitle>?
+)
+
+data class NativeSubtitle(
+    @JsonProperty("language") val language: String?,
+    @JsonProperty("subtitle") val subtitle: String?,
+    @JsonProperty("vtt") val vtt: String?,
+    @JsonProperty("display_name") val displayName: String?
+)
