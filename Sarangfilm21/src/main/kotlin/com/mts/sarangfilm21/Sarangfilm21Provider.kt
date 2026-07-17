@@ -382,7 +382,7 @@ class AbyssExtractor : ExtractorApi() {
         try {
             val cleanUrl = url.replace(92.toChar().toString(), "")
             val pageHtml = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: mainUrl))).text
-            val base64Str = Regex("const datas\s*=\s*"([^"]+)"").find(pageHtml)?.groupValues?.get(1) ?: return
+            val base64Str = Regex("const datas\\s*=\\s*\"([^\"]+)\"").find(pageHtml)?.groupValues?.get(1) ?: return
             val decodedBytes = android.util.Base64.decode(base64Str, android.util.Base64.DEFAULT)
             val latin1Str = String(decodedBytes, Charsets.ISO_8859_1)
             val json = org.json.JSONObject(latin1Str)
