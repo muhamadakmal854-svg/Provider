@@ -86,7 +86,7 @@ class MaxMovie21 : MainAPI() {
         return newHomePageResponse(request.name, results, hasNext = true)
     }
 
-    override suspend fun search(query: String, page: Int): SearchResponseList {
+    override suspend fun search(query: String, page: Int): List<SearchResponse> {
         val url = if (page <= 1) "$mainUrl/?s=${query.encodeUrl()}"
                   else           "$mainUrl/page/$page/?s=${query.encodeUrl()}"
 
