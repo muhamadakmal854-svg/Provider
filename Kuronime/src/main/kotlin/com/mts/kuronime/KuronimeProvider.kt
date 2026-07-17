@@ -16,37 +16,9 @@ import javax.crypto.spec.IvParameterSpec
 
 import java.security.MessageDigest
 
-import okhttp3.OkHttpClient
-
-import okhttp3.Request
-
-import okhttp3.FormBody
-
-import javax.net.ssl.SSLContext
-
-import javax.net.ssl.TrustManager
-
-import javax.net.ssl.X509TrustManager
-
-import java.security.cert.X509Certificate
-
-import kotlinx.coroutines.withContext
-
-import kotlinx.coroutines.Dispatchers
-
 class KuronimeProvider : MainAPI() {
 
-    init {
-        val customDns = object : okhttp3.Dns {
-            override fun lookup(hostname: String): List<java.net.InetAddress> {
-                if (hostname.contains("kuronime", ignoreCase = true)) {
-                    return listOf(java.net.InetAddress.getByName("154.203.167.220"))
-                }
-                return okhttp3.Dns.SYSTEM.lookup(hostname)
-            }
-        }
-        app.okHttpClient = app.okHttpClient.newBuilder().dns(customDns).build()
-    }
+
 
     override var mainUrl        = "https://kuronime.moe"
 
