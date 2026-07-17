@@ -210,11 +210,26 @@ class KuramanimeProvider : MainAPI() {
         // Fetch page param
         val checkRes = app.get(checkEpUrl, headers = mapOf("Referer" to data, "X-Requested-With" to "XMLHttpRequest"), timeout = 15).text
         val pageParam = checkRes.replace("\"", "").trim()
+
+        // Dynamically parse data-kk and load its JS file to extract auth values
+        val dataKk = document.selectFirst("[data-kk]")?.attr("data-kk") ?: ""
+        if (dataKk.isBlank()) return false
+
+        val jsResponse = app.get("$mainUrl/assets/js/$dataKk.js", headers = mapOf("Referer" to data), timeout = 15)
+        if (!jsResponse.isSuccessful) return false
+        val jsText = jsResponse.text
+
+        // Extract MIX_AUTH_ROUTE_PARAM, MIX_AUTH_KEY, MIX_AUTH_TOKEN, etc.
+        val authRouteParam = Regex("MIX_AUTH_ROUTE_PARAM\\s*:\\s*['\"]([^'\"]+)['\"]").find(jsText)?.groupValues?.get(1) ?: "Ks6sqSgloPTlHMl.txt"
+        val authKey = Regex("MIX_AUTH_KEY\\s*:\\s*['\"]([^'\"]+)['\"]").find(jsText)?.groupValues?.get(1) ?: "rFj8fp1nxMuNfKq"
+        val authToken = Regex("MIX_AUTH_TOKEN\\s*:\\s*['\"]([^'\"]+)['\"]").find(jsText)?.groupValues?.get(1) ?: "ijjAwj6Jze0kscx"
+        val pageTokenKey = Regex("MIX_PAGE_TOKEN_KEY\\s*:\\s*['\"]([^'\"]+)['\"]").find(jsText)?.groupValues?.get(1) ?: "Ub3BzhijicHXZdv"
+        val streamServerKey = Regex("MIX_STREAM_SERVER_KEY\\s*:\\s*['\"]([^'\"]+)['\"]").find(jsText)?.groupValues?.get(1) ?: "C2XAPerzX1BM7V9"
         
-        // Fetch token from custom endpoint using authorized headers
-        val tokenUrl = "$mainUrl/assets/Ks6sqSgloPTlHMl.txt"
+        // Fetch token from custom endpoint using dynamically parsed values
+        val tokenUrl = "$mainUrl/assets/$authRouteParam"
         val tokenHeaders = mapOf(
-            "X-Fuck-ID" to "rFj8fp1nxMuNfKq:ijjAwj6Jze0kscx",
+            "X-Fuck-ID" to "$authKey:$authToken",
             "X-Request-ID" to generateRandomString(6),
             "X-Request-Index" to "0",
             "X-Requested-With" to "XMLHttpRequest",
@@ -234,7 +249,7 @@ class KuramanimeProvider : MainAPI() {
         var found = false
         
         for (s in servers) {
-            val pageUrl = "$data?Ub3BzhijicHXZdv=$tokenRes&C2XAPerzX1BM7V9=$s&page=$pageParam"
+            val pageUrl = "$data?$pageTokenKey=$tokenRes&$streamServerKey=$s&page=$pageParam"
             val pageHeaders = mapOf(
                 "X-Requested-With" to "XMLHttpRequest",
                 "X-CSRF-TOKEN" to csrfToken,
