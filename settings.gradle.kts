@@ -1,3 +1,3 @@
 rootProject.name = "cloudstream-extensions"
 
-include(":Kuramanime")
+include(":Kuronime")
