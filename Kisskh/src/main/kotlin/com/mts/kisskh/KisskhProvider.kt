@@ -208,7 +208,10 @@ class KisskhProvider : MainAPI() {
                         type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     ) {
                         this.referer = "$mainUrl/"
-                        this.headers = mapOf("Origin" to mainUrl)
+                        this.headers = mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            "Referer" to "$mainUrl/"
+                        )
                     }
                 )
                 subtitleFiles.forEach { subtitleCallback(it) }
