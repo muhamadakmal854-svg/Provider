@@ -42,7 +42,7 @@ class BloggerCom : ExtractorApi() {
                     this.name,
                     this.name,
                     video.url,
-                    INFER_TYPE
+                    if (video.url.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                 ) {
                     this.referer = directReferer
                     this.headers = mapOf(
