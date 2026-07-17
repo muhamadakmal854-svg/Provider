@@ -13,7 +13,7 @@ class KuronimePlugin : Plugin() {
     override fun load(context: Context) {
 
         registerMainAPI(KuronimeProvider())
-        registerExtractorAPI(KuronimeMoe())
+        registerExtractorAPI(KuronimeSbs())
         registerExtractorAPI(AssetsProductionLinktrEe())
         registerExtractorAPI(AccessLineMe())
         registerExtractorAPI(Playsobat())

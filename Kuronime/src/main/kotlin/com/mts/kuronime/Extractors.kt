@@ -13,9 +13,9 @@ import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-class KuronimeMoe : StreamWishExtractor() {
-    override var name = "KuronimeMoe"
-    override var mainUrl = "https://kuronime.moe"
+class KuronimeSbs : StreamWishExtractor() {
+    override var name = "KuronimeSbs"
+    override var mainUrl = "https://kuronime.sbs"
 }
 
 class AssetsProductionLinktrEe : StreamWishExtractor() {
