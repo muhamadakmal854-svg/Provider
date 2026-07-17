@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "PMSM - PencuriMovieSubMalay"
+    description = "MovieBox - Movies and TV Series"
 
     authors     = listOf("MTS")
 
@@ -12,12 +12,12 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://www.google.com/favicon.ico"
+    iconUrl     = "https://moviebox.ph/favicon.ico"
 
 }
 
 android {
 
-    namespace = "com.pmsm"
+    namespace = "com.moviebox"
 
 }

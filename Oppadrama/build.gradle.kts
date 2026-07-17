@@ -4,13 +4,13 @@ cloudstream {
 
     language    = "id"
 
-    description = "PMSM - PencuriMovieSubMalay"
+    description = "Oppadrama - Korean and Asian Dramas"
 
     authors     = listOf("MTS")
 
     status      = 1
 
-    tvTypes     = listOf("Movie", "TvSeries")
+    tvTypes     = listOf("AsianDrama", "Movie", "TvSeries")
 
     iconUrl     = "https://www.google.com/favicon.ico"
 
@@ -18,6 +18,6 @@ cloudstream {
 
 android {
 
-    namespace = "com.pmsm"
+    namespace = "com.oppadrama"
 
 }
