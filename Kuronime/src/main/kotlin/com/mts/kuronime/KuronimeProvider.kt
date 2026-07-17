@@ -444,7 +444,7 @@ class KuronimeProvider : MainAPI() {
 
         }
 
-        val finalEps = eps.distinctBy { it.url }.sortedBy { it.episode ?: 0 }
+        val finalEps = eps.distinctBy { it.data }.sortedBy { it.episode ?: 0 }
 
         return if (finalEps.isNotEmpty()) {
 

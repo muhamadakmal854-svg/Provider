@@ -90,7 +90,7 @@ class Playsobat : ExtractorApi() {
                     'r' -> builder.append('\r')
                     't' -> builder.append('\t')
                     'b' -> builder.append('\b')
-                    'f' -> builder.append('\f')
+                    'f' -> builder.append('\u000C')
                     '"' -> builder.append('"')
                     '\'' -> builder.append('\'')
                     '\\' -> builder.append('\\')
