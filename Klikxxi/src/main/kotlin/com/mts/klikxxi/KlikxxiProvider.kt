@@ -7,7 +7,7 @@ import org.jsoup.nodes.Element
 import android.util.Log
 
 class KlikxxiProvider : MainAPI() {
-    override var mainUrl = "https://klikxxi.me"
+    override var mainUrl = "https://za-ydf.org"
     override var name = "Klikxxi"
     override val hasMainPage = true
     override var lang = "id"
@@ -15,23 +15,33 @@ class KlikxxiProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "" to "Latest Update",
-        "genre/action/" to "Action",
-        "genre/comedy/" to "Comedy",
-        "type/series/" to "Tv Series"
+        "category/movie/" to "Box Office",
+        "category/anime/" to "Animasi",
+        "category/serial-tv/" to "Serial TV",
+        "" to "Update Terbaru",
+        "category/semi/" to "SEMI",
+        "category/bokep-indo/" to "Bokep Indo",
+        "category/vivamax/" to "VIVAMAX",
+        "category/jav-sub-indo/" to "Jav Sub Indo"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val pageUrl = if (page == 1) {
-            "$mainUrl/${request.data}"
+        val path = request.data
+        var pageUrl = if (page == 1) {
+            if (path.isEmpty()) "$mainUrl/" else "$mainUrl/$path"
         } else {
-            "$mainUrl/${request.data}page/$page/"
+            if (path.isEmpty()) "$mainUrl/page/$page/" else "$mainUrl/$path/page/$page/"
         }
-        val document = app.get(pageUrl).document
-        val items = document.select("article.item-infinite, div.gmr-box-item, article.post")
+        if (pageUrl.startsWith("https://")) {
+            pageUrl = "https://" + pageUrl.substring(8).replace("//", "/")
+        } else if (pageUrl.startsWith("http://")) {
+            pageUrl = "http://" + pageUrl.substring(7).replace("//", "/")
+        }
+        val document = app.get(pageUrl, timeout = 30).document
+        val items = document.select("article.item-infinite, div.gmr-box-item, article.post, article.item")
         val homeItems = items.mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, homeItems, hasNext = homeItems.isNotEmpty())
     }
@@ -123,64 +133,42 @@ class KlikxxiProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        var found = false
         try {
-            val doc = app.get(data).document
-            val playerIdElement = doc.selectFirst("#muvipro_player_content_id")
-            val postId = playerIdElement?.attr("data-id") ?: ""
+            val doc = app.get(data, timeout = 30).document
             
-            val actualPostId = if (postId.isNotBlank()) postId else doc.selectFirst("link[rel='shortlink']")?.attr("href")?.split("?p=")?.lastOrNull() ?: ""
-            if (actualPostId.isBlank()) return false
+            // 1. Extract direct iframe from the current page
+            val mainIframeSrc = doc.selectFirst("iframe")?.attr("src")
+            if (!mainIframeSrc.isNullOrBlank()) {
+                val fixedSrc = fixUrl(mainIframeSrc)
+                if (loadExtractor(fixedSrc, data, subtitleCallback, callback)) {
+                    found = true
+                }
+            }
             
-            val tabs = mutableListOf<String>()
-            val playerTabs = doc.select("ul.muvipro-player-tabs a, ul.player-nav a")
+            // 2. Look for player tabs
+            val playerTabs = doc.select("ul.muvipro-player-tabs a, ul.player-nav a, .gmr-player-nav a")
             playerTabs.forEach { a ->
                 val href = a.attr("href")
-                if (href.startsWith("#p")) {
-                    tabs.add(href.replace("#", ""))
-                }
-            }
-            
-            if (tabs.isEmpty()) {
-                for (i in 1..7) {
-                    tabs.add("p$i")
-                }
-            }
-            
-            val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
-            
-            for (tab in tabs) {
-                try {
-                    val response = app.post(
-                        ajaxUrl,
-                        data = mapOf(
-                            "action" to "muvipro_player_content",
-                            "tab" to tab,
-                            "post_id" to actualPostId
-                        ),
-                        headers = mapOf(
-                            "X-Requested-With" to "XMLHttpRequest",
-                            "Content-Type" to "application/x-www-form-urlencoded"
-                        )
-                    ).text
-                    
-                    if (response.isBlank()) continue
-                    
-                    val ajaxDoc = Jsoup.parse(response)
-                    val iframe = ajaxDoc.select("iframe").first()
-                    val iframeSrc = iframe?.attr("src") ?: ""
-                    
-                    if (iframeSrc.isNotBlank()) {
-                        val fixedSrc = fixUrl(iframeSrc)
-                        loadExtractor(fixedSrc, data, subtitleCallback, callback)
+                if (href.isNotBlank() && !href.startsWith("#") && href != data) {
+                    try {
+                        val tabUrl = fixUrl(href)
+                        val tabDoc = app.get(tabUrl, timeout = 30).document
+                        val tabIframe = tabDoc.selectFirst("iframe")?.attr("src")
+                        if (!tabIframe.isNullOrBlank()) {
+                            val fixedSrc = fixUrl(tabIframe)
+                            if (loadExtractor(fixedSrc, tabUrl, subtitleCallback, callback)) {
+                                found = true
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("KlikxxiProvider", "Error loading tab link: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.e("KlikxxiProvider", "Error loading links for tab $tab: ${e.message}")
                 }
             }
-            return true
         } catch (e: Exception) {
             Log.e("KlikxxiProvider", "Error in loadLinks: ${e.message}")
-            return false
         }
+        return found
     }
 }

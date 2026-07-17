@@ -6,7 +6,7 @@ cloudstream {
     authors     = listOf("MTS")
     status      = 1
     tvTypes     = listOf("Movie", "TvSeries")
-    iconUrl     = "https://klikxxi.me/favicon.ico"
+    iconUrl     = "https://za-ydf.org/favicon.ico"
 }
 
 android {
