@@ -1,4 +1,4 @@
-package com.mts.goodshort
+package com.goodshort
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 
