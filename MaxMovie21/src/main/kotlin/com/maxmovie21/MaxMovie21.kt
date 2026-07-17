@@ -83,7 +83,7 @@ class MaxMovie21 : MainAPI() {
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
 
-        return newHomePageResponse(request.name, results, hasNextPage = true)
+        return newHomePageResponse(request.name, results, hasNext = true)
     }
 
     override suspend fun search(query: String, page: Int): SearchResponseList {
@@ -95,7 +95,7 @@ class MaxMovie21 : MainAPI() {
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
 
-        return results.toSearchResponseList()
+        return results
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -223,8 +223,7 @@ class MaxMovie21 : MainAPI() {
 
     private fun String.encodeUrl(): String = java.net.URLEncoder.encode(this, "UTF-8")
 
-    private fun List<SearchResponse>.toSearchResponseList(): SearchResponseList =
-        com.lagradost.cloudstream3.toNewSearchResponseList(this)
+
 
     data class PlayerData(
         val postId: String,
