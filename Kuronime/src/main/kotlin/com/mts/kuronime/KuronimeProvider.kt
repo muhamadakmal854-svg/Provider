@@ -36,105 +36,19 @@ import kotlinx.coroutines.Dispatchers
 
 class KuronimeProvider : MainAPI() {
 
-    private val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(object : javax.net.ssl.X509TrustManager {
-
-        override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-
-        override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-
-        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
-
-    })
-
-    private val sslContext = javax.net.ssl.SSLContext.getInstance("SSL").apply {
-
-        init(null, trustAllCerts, java.security.SecureRandom())
-
-    }
-
-    private val customClient = okhttp3.OkHttpClient.Builder()
-
-        .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as javax.net.ssl.X509TrustManager)
-
-        .hostnameVerifier { _, _ -> true }
-
-        .build()
-
-    private suspend fun getDoc(url: String, headers: Map<String, String> = emptyMap()): org.jsoup.nodes.Document {
-
-        val referer = headers["Referer"] ?: mainUrl
-
-        val finalHeaders = headers + mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
-        if (mainUrl.contains("154.203.167.220")) {
-
-            val html = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-
-                val req = okhttp3.Request.Builder()
-
-                    .url(url)
-
-                    .apply {
-
-                        finalHeaders.forEach { (k, v) -> addHeader(k, v) }
-
-                    }
-
-                    .build()
-
-                customClient.newCall(req).execute().body?.string() ?: ""
-
+    init {
+        val customDns = object : okhttp3.Dns {
+            override fun lookup(hostname: String): List<java.net.InetAddress> {
+                if (hostname.contains("kuronime", ignoreCase = true)) {
+                    return listOf(java.net.InetAddress.getByName("154.203.167.220"))
+                }
+                return okhttp3.Dns.SYSTEM.lookup(hostname)
             }
-
-            return org.jsoup.Jsoup.parse(html)
-
-        } else {
-
-            return app.get(url, headers = finalHeaders).document
-
         }
-
+        app.client = app.client.newBuilder().dns(customDns).build()
     }
 
-    private suspend fun postHtml(url: String, data: Map<String, String>, headers: Map<String, String> = emptyMap()): String {
-
-        val finalHeaders = headers + mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
-        if (mainUrl.contains("154.203.167.220")) {
-
-            return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-
-                val bodyBuilder = okhttp3.FormBody.Builder()
-
-                data.forEach { (k, v) -> bodyBuilder.add(k, v) }
-
-                val req = okhttp3.Request.Builder()
-
-                    .url(url)
-
-                    .post(bodyBuilder.build())
-
-                    .apply {
-
-                        finalHeaders.forEach { (k, v) -> addHeader(k, v) }
-
-                    }
-
-                    .build()
-
-                customClient.newCall(req).execute().body?.string() ?: ""
-
-            }
-
-        } else {
-
-            return app.post(url, headers = finalHeaders, data = data).text
-
-        }
-
-    }
-
-    override var mainUrl        = "https://154.203.167.220"
+    override var mainUrl        = "https://kuronime.moe"
 
     override var name           = "Kuronime"
 
@@ -266,13 +180,13 @@ class KuronimeProvider : MainAPI() {
 
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
 
-        val doc = getDoc(pageUrl, mapOf(
+        val doc = app.get(pageUrl, headers = mapOf(
 
             "Referer" to mainUrl,
 
             "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 
-        ))
+        )).document
 
         return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
 
@@ -330,7 +244,7 @@ class KuronimeProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
 
-        val doc = getDoc(url, mapOf("Referer" to mainUrl))
+        val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
 
         var currentDoc = doc
 
@@ -362,7 +276,7 @@ class KuronimeProvider : MainAPI() {
 
                 try {
 
-                    val parentDoc = getDoc(resolved, mapOf("Referer" to url))
+                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url)).document
 
                     val newTitle = parentDoc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")
 
@@ -490,7 +404,7 @@ class KuronimeProvider : MainAPI() {
 
     ): Boolean {
 
-        val doc = getDoc(data, mapOf("Referer" to mainUrl))
+        val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
 
         val targets = mutableListOf<String>()
 
@@ -552,7 +466,7 @@ class KuronimeProvider : MainAPI() {
 
             try {
 
-                val tabDoc = getDoc(tabUrl, mapOf("Referer" to data))
+                val tabDoc = app.get(tabUrl, headers = mapOf("Referer" to data)).document
 
                 tabDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src]").forEach { iframe ->
 
@@ -872,7 +786,7 @@ class KuronimeProvider : MainAPI() {
 
                     } catch (_: Exception) { mainUrl }
 
-                    val responseText = postHtml(
+                    val response = app.post(
 
                         url = "$pageBase/wp-admin/admin-ajax.php",
 
@@ -888,11 +802,11 @@ class KuronimeProvider : MainAPI() {
 
                         ),
 
+                        referer = data,
+
                         headers = mapOf(
 
                             "X-Requested-With" to "XMLHttpRequest",
-
-                            "Referer" to data,
 
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -900,9 +814,9 @@ class KuronimeProvider : MainAPI() {
 
                     )
 
-                    if (responseText.isBlank()) continue
+                    if (!response.isSuccessful) continue
 
-                    val json = responseText
+                    val json = response.text
 
                     if (json.isBlank() || json == "0" || json == "false" || json == "null") continue
 

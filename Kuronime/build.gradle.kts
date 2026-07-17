@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Anime", "TvSeries", "OVA")
 
-    iconUrl     = "https://154.203.167.220/favicon.ico"
+    iconUrl     = "https://kuronime.moe/favicon.ico"
 
 }
 
