@@ -215,7 +215,7 @@ class OploverzProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
 
-        val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
+        val doc = app.get(url, headers = mapOf("Referer" to mainUrl, "User-Agent" to USER_AGENT)).document
 
         var currentDoc = doc
 
@@ -247,7 +247,7 @@ class OploverzProvider : MainAPI() {
 
                 try {
 
-                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url)).document
+                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url, "User-Agent" to USER_AGENT)).document
 
                     val newTitle = parentDoc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")
 
@@ -375,7 +375,7 @@ class OploverzProvider : MainAPI() {
 
     ): Boolean {
 
-        val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
+        val doc = app.get(data, headers = mapOf("Referer" to mainUrl, "User-Agent" to USER_AGENT)).document
 
         val targets = mutableListOf<String>()
 
@@ -437,7 +437,7 @@ class OploverzProvider : MainAPI() {
 
             try {
 
-                val tabDoc = app.get(tabUrl, headers = mapOf("Referer" to data)).document
+                 val tabDoc = app.get(tabUrl, headers = mapOf("Referer" to data, "User-Agent" to USER_AGENT)).document
 
                 tabDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src]").forEach { iframe ->
 
