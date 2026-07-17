@@ -58,10 +58,15 @@ class JuraganfilmProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val path = request.data
-        val pageUrl = if (page > 1) {
+        var pageUrl = if (page > 1) {
             if (path.isEmpty()) "$mainUrl/page/$page/" else "$mainUrl/$path/page/$page/"
         } else {
             if (path.isEmpty()) "$mainUrl/" else "$mainUrl/$path"
+        }
+        if (pageUrl.startsWith("https://")) {
+            pageUrl = "https://" + pageUrl.substring(8).replace("//", "/")
+        } else if (pageUrl.startsWith("http://")) {
+            pageUrl = "http://" + pageUrl.substring(7).replace("//", "/")
         }
         val document = app.get(pageUrl, timeout = 30).document
         val homeList = document.select(".listupd .bsx, .listupd .bs, .card, article, div.movie-item").mapNotNull {
