@@ -18,11 +18,10 @@ class KuramanimeProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
     override val mainPage = mainPageOf(
-        "quick/upcoming?order_by=popular" to "Segera Tayang",
-        "quick/movie?order_by=text" to "Film Layar Lebar",
-        "playing" to "Filem Terbaru",
-        "airing" to "TV Series Terbaru",
-        "popular" to "Popular"
+        "quick/ongoing?order_by=updated" to "Sedang Tayang",
+        "quick/finished?order_by=updated" to "Selesai Tayang",
+        "quick/movie?order_by=updated" to "Film Layar Lebar",
+        "DYNAMIC_SEASON_MOST_VIEWED" to "Dilihat Terbanyak Musim Ini"
     )
 
     private fun Element.toSearchResult(): SearchResponse? {
@@ -31,26 +30,22 @@ class KuramanimeProvider : MainAPI() {
         val title = this.selectFirst(".entry-title, h2.entry-title, h2, h3, .title, .film-name, .movie-title, h5")?.text()?.trim()
             ?: a.attr("title").trim().ifEmpty { a.text().trim() }
         if (title.isBlank()) return null
-        val img = this.selectFirst("img")
-        val posterUrl = img?.let { i ->
-            listOf("data-src", "data-lazy-src", "src").map { i.attr(it) }.firstOrNull { it.isNotBlank() }
-        }?.let { fixUrlNull(it) }
+        
+        val posterUrl = (this.selectFirst(".set-bg")?.attr("data-setbg")
+            ?: this.selectFirst("[data-setbg]")?.attr("data-setbg")
+            ?: this.selectFirst("img")?.let { i ->
+                listOf("data-src", "data-lazy-src", "src").map { i.attr(it) }.firstOrNull { it.isNotBlank() }
+            })?.let { fixUrlNull(it) }
 
         val hrefLower = href.lowercase()
-        val isTv = hrefLower.contains("/film-seri/") ||
-                   hrefLower.contains("/tvshows/") ||
-                   hrefLower.contains("/series/") ||
-                   hrefLower.contains("/tv/") ||
-                   hrefLower.contains("/ongoing/") ||
-                   hrefLower.contains("/drakor/") ||
-                   hrefLower.contains("/anime/")
+        val isMovie = hrefLower.contains("/movie/") || this.selectFirst(".type, .label")?.text()?.lowercase()?.contains("movie") == true
 
-        return if (isTv) {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+        return if (isMovie) {
+            newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = posterUrl
             }
         } else {
-            newMovieSearchResponse(title, href, TvType.Movie) {
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = posterUrl
             }
         }
@@ -58,17 +53,32 @@ class KuramanimeProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val path = request.data
-        val cleanPath = path.removePrefix("/").removeSuffix("/")
-        val pageUrl = if (path.startsWith("http")) {
-            val separator = if (path.contains("?")) "&" else "?"
-            path + if (page > 1) "${separator}page=$page" else ""
-        } else {
-            if (cleanPath.isEmpty()) {
-                mainUrl + if (page > 1) "?page=$page" else ""
+        val pageUrl = if (path == "DYNAMIC_SEASON_MOST_VIEWED") {
+            val homeDoc = app.get(mainUrl, headers = mapOf("Referer" to mainUrl), timeout = 30).document
+            val targetLink = homeDoc.select("div, section").firstOrNull { 
+                it.text().contains("Dilihat Terbanyak Musim Ini", ignoreCase = true) 
+            }?.selectFirst("a[href*=season]")?.attr("href")
+            
+            val resolvedLink = if (!targetLink.isNullOrBlank()) {
+                fixUrl(targetLink)
             } else {
-                val separator = if (cleanPath.contains("?")) "&" else "?"
-                val pagedPath = if (page > 1) "$cleanPath${separator}page=$page" else cleanPath
-                "$mainUrl/$pagedPath"
+                "$mainUrl/properties/season/summer-2026?order_by=most_viewed" // fallback
+            }
+            val separator = if (resolvedLink.contains("?")) "&" else "?"
+            resolvedLink + if (page > 1) "${separator}page=$page" else ""
+        } else {
+            val cleanPath = path.removePrefix("/").removeSuffix("/")
+            if (path.startsWith("http")) {
+                val separator = if (path.contains("?")) "&" else "?"
+                path + if (page > 1) "${separator}page=$page" else ""
+            } else {
+                if (cleanPath.isEmpty()) {
+                    mainUrl + if (page > 1) "?page=$page" else ""
+                } else {
+                    val separator = if (cleanPath.contains("?")) "&" else "?"
+                    val pagedPath = if (page > 1) "$cleanPath${separator}page=$page" else cleanPath
+                    "$mainUrl/$pagedPath"
+                }
             }
         }
         val document = app.get(pageUrl, headers = mapOf("Referer" to mainUrl), timeout = 30).document
@@ -86,52 +96,85 @@ class KuramanimeProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url, headers = mapOf("Referer" to mainUrl), timeout = 30).document
+        val targetUrl = if (url.contains("/episode/")) {
+            url.substringBefore("/episode/")
+        } else {
+            url
+        }
+        val document = app.get(targetUrl, headers = mapOf("Referer" to mainUrl), timeout = 30).document
         val title = document.selectFirst(".sheader .data h1, h1.entry-title, .data h1, h1, .heading-name, .film-name, .anime__details__title h3")?.text()?.trim() ?: return null
-        val poster = document.selectFirst(".poster img, img.wp-post-image, .thumb img, .anime__details__pic img")?.let { img ->
-            listOf("data-src", "src").map { img.attr(it) }.firstOrNull { it.isNotBlank() }
-        }?.let { fixUrl(it) }
+        
+        val poster = (document.selectFirst(".anime__details__pic, .set-bg")?.attr("data-setbg")
+            ?: document.selectFirst(".poster img, img.wp-post-image, .thumb img")?.let { img ->
+                listOf("data-src", "src").map { img.attr(it) }.firstOrNull { it.isNotBlank() }
+            })?.let { fixUrl(it) }
+
         val plot = document.selectFirst(".description p, .entry-content p, .synops p, .anime__details__text p")?.text()?.trim() ?: ""
-        val year = document.selectFirst(".date, .year, a[href*='/tahun/'], a[href*='/year/'], .anime__details__widget ul li:contains(Tipe) a")?.text()?.filter { it.isDigit() }?.toIntOrNull()
-        val genres = document.select(".genres a, .genre a, a[href*='/kategori-film/'], .anime__details__widget ul li:contains(Genre) a").map { it.text().trim() }.filter { it.isNotBlank() }
-
-        val isTv = url.contains("/film-seri/") ||
-                   url.contains("/tvshows/") ||
-                   url.contains("/series/") ||
-                   url.contains("/tv/") ||
-                   url.contains("/ongoing/") ||
-                   url.contains("/drakor/") ||
-                   url.contains("/anime/") ||
-                   document.select(".post-page-numbers").isNotEmpty() ||
-                   document.select(".anime__details__episodes").isNotEmpty()
-
-        return if (isTv) {
-            val episodes = mutableListOf<Episode>()
-            val epElements = document.select(".anime__details__episodes a, .eplister ul li a, .episodelist ul li a, .ep-list li a")
-            if (epElements.isNotEmpty()) {
-                epElements.forEachIndexed { i, a ->
-                    val epUrl = fixUrl(a.attr("href"))
-                    val epText = a.text().trim()
-                    episodes.add(newEpisode(epUrl) {
-                        this.name = epText
-                        this.episode = i + 1
-                    })
-                }
+        
+        val year = document.select(".anime__details__widget ul li").firstOrNull { 
+            it.text().contains("Tayang:") || it.text().contains("Musim:") 
+        }?.text()?.filter { it.isDigit() }?.let {
+            val idx = it.indexOf("20")
+            if (idx != -1 && idx + 4 <= it.length) {
+                it.substring(idx, idx + 4).toIntOrNull()
+            } else if (it.length >= 4) {
+                it.substring(0, 4).toIntOrNull()
             } else {
-                episodes.add(newEpisode(url) {
-                    this.name = "Episode 1"
-                    this.episode = 1
-                })
+                null
             }
-            
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+        }
+
+        val genres = document.select(".anime__details__widget ul li a[href*=/genre/], .genres a, .genre a").map { it.text().trim() }.filter { it.isNotBlank() }
+
+        val typeText = document.select(".anime__details__widget ul li").firstOrNull {
+            it.text().contains("Tipe:")
+        }?.text()?.lowercase() ?: ""
+        val isMovie = typeText.contains("movie") || url.contains("/movie/")
+
+        return if (isMovie) {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
                 this.tags = genres
             }
         } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
+            val episodes = mutableListOf<Episode>()
+            val epListsEl = document.selectFirst("#episodeLists")
+            val dataContent = epListsEl?.attr("data-content") ?: ""
+            if (dataContent.isNotEmpty()) {
+                val popoverDoc = Jsoup.parse(dataContent)
+                popoverDoc.select("a[href]").forEachIndexed { i, a ->
+                    val epUrl = fixUrl(a.attr("href"))
+                    val epText = a.text().trim()
+                    episodes.add(newEpisode(epUrl) {
+                        this.name = "Episode $epText"
+                        this.episode = epText.toIntOrNull() ?: (i + 1)
+                    })
+                }
+            }
+            if (episodes.isEmpty()) {
+                val epElements = document.select(".anime__details__episodes a, .eplister ul li a, .episodelist ul li a, .ep-list li a")
+                if (epElements.isNotEmpty()) {
+                    epElements.forEachIndexed { i, a ->
+                        val epUrl = fixUrl(a.attr("href"))
+                        val epText = a.text().trim()
+                        episodes.add(newEpisode(epUrl) {
+                            this.name = epText
+                            this.episode = i + 1
+                        })
+                    }
+                }
+            }
+            if (episodes.isEmpty()) {
+                episodes.add(newEpisode(url) {
+                    this.name = "Episode 1"
+                    this.episode = 1
+                })
+            }
+            episodes.sortBy { it.episode }
+
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
@@ -181,6 +224,11 @@ class KuramanimeProvider : MainAPI() {
         val tokenRes = app.get(tokenUrl, headers = tokenHeaders, timeout = 15).text.trim()
         if (tokenRes.isBlank()) return false
         
+        // Generate UUID session cookie
+        val uuid = java.util.UUID.randomUUID().toString()
+        val timestamp = System.currentTimeMillis()
+        val vsid = "$uuid-$timestamp"
+        
         // Iterate through servers
         val servers = listOf("kuramadrive", "doodstream", "filemoon", "rpmshare", "streamp2p")
         var found = false
@@ -194,9 +242,11 @@ class KuramanimeProvider : MainAPI() {
                 "Accept" to "text/html, */*; q=0.01"
             )
             
-            // Send the POST request to emulate jQuery load() call with authorization parameters
+            // Send the POST request to emulate jQuery load() call with authorization parameters & cookies
             val postData = mapOf("authorization" to "kJuHHkaqcBFXiGMHQf6bJw8YAyDcwGD8Ur")
-            val playerPageRes = app.post(pageUrl, headers = pageHeaders, data = postData, timeout = 30)
+            val cookies = mapOf("kuramanime_vsid" to vsid, "preferred_stserver" to s)
+            
+            val playerPageRes = app.post(pageUrl, headers = pageHeaders, data = postData, cookies = cookies, timeout = 30)
             if (!playerPageRes.isSuccessful) continue
             
             val playerDoc = Jsoup.parse(playerPageRes.text)
