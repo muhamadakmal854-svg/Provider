@@ -432,12 +432,12 @@ class KuronimeProvider : MainAPI() {
                     val srcObj = org.json.JSONObject(decryptedSrc)
                     val directUrl = srcObj.getString("src")
                     callback(
-                        ExtractorLink(
+                        newExtractorLink(
                             "VIP PLAYER 1",
                             "VIP PLAYER 1 1080p",
                             directUrl,
                             referer = "https://player.animeku.org/",
-                            quality = getQualityFromName("1080p").value,
+                            quality = getQualityFromName("1080p"),
                             isM3u8 = true
                         )
                     )
@@ -454,12 +454,12 @@ class KuronimeProvider : MainAPI() {
                     val srcObj = org.json.JSONObject(decryptedSrcSd)
                     val directUrl = srcObj.getString("src")
                     callback(
-                        ExtractorLink(
+                        newExtractorLink(
                             "VIP PLAYER 1",
                             "VIP PLAYER 1 480p",
                             directUrl,
                             referer = "https://player.animeku.org/",
-                            quality = getQualityFromName("480p").value,
+                            quality = getQualityFromName("480p"),
                             isM3u8 = true
                         )
                     )
@@ -493,12 +493,12 @@ class KuronimeProvider : MainAPI() {
                         val label = bObj.getString("label")
                         val quality = if (label == "HD") getQualityFromName("720p") else getQualityFromName("360p")
                         callback(
-                            ExtractorLink(
+                            newExtractorLink(
                                 "LOKALAN",
                                 "LOKALAN $label",
                                 fileUrl,
                                 referer = "",
-                                quality = quality.value
+                                quality = quality
                             )
                         )
                     }
