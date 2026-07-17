@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk INDOXXI - IDLIX"
+    description = "Provider untuk Layar Otaku"
 
     authors     = listOf("MTS")
 
@@ -12,13 +12,13 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://taroscafe.com/favicon.ico"
+    iconUrl     = "https://www.xml-acronym-demystifier.org/favicon.ico"
 
 }
 
 android {
 
-    namespace = "com.mts.indoxxi"
+    namespace = "com.mts.layarotaku"
 
 }
 
