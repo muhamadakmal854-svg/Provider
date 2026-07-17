@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "MovieBox - Movies and TV Series"
+    description = "Provider untuk MovieBox - Movies and TV Series"
 
     authors     = listOf("MTS")
 
@@ -18,6 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.moviebox"
+    namespace = "com.MovieBox"
 
 }
+

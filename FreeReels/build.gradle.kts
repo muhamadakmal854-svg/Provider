@@ -4,13 +4,13 @@ cloudstream {
 
     language    = "id"
 
-    description = "FreeReels - MyDramaWave Korean Dramas"
+    description = "Provider untuk FreeReels - MyDramaWave Korean Dramas"
 
     authors     = listOf("MTS")
 
     status      = 1
 
-    tvTypes     = listOf("TvSeries", "Movie", "AsianDrama")
+    tvTypes     = listOf("Movie", "TvSeries")
 
     iconUrl     = "https://m.mydramawave.com/favicon.ico"
 
@@ -18,6 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.sad25kag.freereels"
+    namespace = "com.sad25kag.FreeReels"
 
 }
+

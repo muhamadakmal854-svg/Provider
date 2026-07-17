@@ -4,15 +4,15 @@ cloudstream {
 
     language    = "id"
 
-    description = "Oppadrama - Korean and Asian Dramas"
+    description = "Provider untuk Oppadrama - Korean and Asian Dramas"
 
     authors     = listOf("MTS")
 
     status      = 1
 
-    tvTypes     = listOf("AsianDrama", "Movie", "TvSeries")
+    tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://www.google.com/favicon.ico"
+    iconUrl     = "http://45.11.57.192/favicon.ico"
 
 }
 
@@ -21,3 +21,4 @@ android {
     namespace = "com.oppadrama"
 
 }
+

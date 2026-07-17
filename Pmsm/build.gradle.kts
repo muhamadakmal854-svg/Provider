@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "PMSM - PencuriMovieSubMalay"
+    description = "Provider untuk PMSM - PencuriMovieSubMalay"
 
     authors     = listOf("MTS")
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://www.google.com/favicon.ico"
+    iconUrl     = "https://ww105.pencurimoviesubmalay.guru/favicon.ico"
 
 }
 
@@ -21,3 +21,4 @@ android {
     namespace = "com.pmsm"
 
 }
+

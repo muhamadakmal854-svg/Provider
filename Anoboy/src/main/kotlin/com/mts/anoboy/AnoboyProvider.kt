@@ -864,7 +864,7 @@ class Anoboy : MainAPI() {
             val fixedUrl = if (bloggerUrl.startsWith("//")) "https:$bloggerUrl" else bloggerUrl
             if (fixedUrl.contains("blogger.googleusercontent.com", true)) {
                 callbackWrapper(
-                    newExtractorLink("Blogger", "Blogger", fixedUrl, INFER_TYPE) {
+                    newExtractorLink("Blogger", "Blogger", fixedUrl, if (fixedUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
                         this.referer = referer ?: fixedUrl
                     }
                 )
@@ -956,7 +956,7 @@ class Anoboy : MainAPI() {
                     fixedUrl
                 }
                 callbackWrapper(
-                    newExtractorLink("Blogger", "Blogger", videoUrl, INFER_TYPE) {
+                    newExtractorLink("Blogger", "Blogger", videoUrl, if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
                         this.referer = directReferer
                         this.headers = mapOf(
                             "Referer" to directReferer,

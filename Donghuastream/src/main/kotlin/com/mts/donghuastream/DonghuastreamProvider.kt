@@ -158,7 +158,7 @@ class DonghuastreamProvider : MainAPI() {
 
         )).document
 
-        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
+        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .gmr-item-modulepost, .gmr-item-archivepost, .gmr-item-module, .gmr-item-archive, .gmr-item, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
 
             val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
 
@@ -214,7 +214,7 @@ class DonghuastreamProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
 
-        val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
+        val doc = app.get(url, headers = mapOf("Referer" to mainUrl, "User-Agent" to USER_AGENT)).document
 
         var currentDoc = doc
 
@@ -246,7 +246,7 @@ class DonghuastreamProvider : MainAPI() {
 
                 try {
 
-                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url)).document
+                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url, "User-Agent" to USER_AGENT)).document
 
                     val newTitle = parentDoc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")
 
@@ -374,7 +374,7 @@ class DonghuastreamProvider : MainAPI() {
 
     ): Boolean {
 
-        val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
+        val doc = app.get(data, headers = mapOf("Referer" to mainUrl, "User-Agent" to USER_AGENT)).document
 
         val targets = mutableListOf<String>()
 
@@ -436,7 +436,7 @@ class DonghuastreamProvider : MainAPI() {
 
             try {
 
-                val tabDoc = app.get(tabUrl, headers = mapOf("Referer" to data)).document
+                 val tabDoc = app.get(tabUrl, headers = mapOf("Referer" to data, "User-Agent" to USER_AGENT)).document
 
                 tabDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src]").forEach { iframe ->
 

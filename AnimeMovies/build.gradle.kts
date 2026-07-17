@@ -4,13 +4,13 @@ cloudstream {
 
     language    = "id"
 
-    description = "AnimeMovies - Anime Movies Subtitle Indonesia"
+    description = "Provider untuk AnimeMovies - Anime Movies Subtitle Indonesia"
 
     authors     = listOf("MTS")
 
     status      = 1
 
-    tvTypes     = listOf("Anime", "AnimeMovie", "OVA")
+    tvTypes     = listOf("Movie", "TvSeries")
 
     iconUrl     = "https://animemovies.org/favicon.ico"
 
@@ -21,3 +21,4 @@ android {
     namespace = "com.sad25kag.animemovies"
 
 }
+

@@ -420,7 +420,7 @@ class DrakoridProvider : MainAPI() {
 
     ): Boolean {
 
-        val doc = app.get(data, headers = mapOf("Referer" to mainUrl)).document
+        val doc = app.get(data, headers = mapOf("Referer" to mainUrl, "User-Agent" to USER_AGENT)).document
 
         val targets = mutableListOf<String>()
 
@@ -482,7 +482,7 @@ class DrakoridProvider : MainAPI() {
 
             try {
 
-                val tabDoc = app.get(tabUrl, headers = mapOf("Referer" to data)).document
+                 val tabDoc = app.get(tabUrl, headers = mapOf("Referer" to data, "User-Agent" to USER_AGENT)).document
 
                 tabDoc.select("iframe[src], iframe[data-src], iframe[data-litespeed-src], iframe[data-lazy-src]").forEach { iframe ->
 

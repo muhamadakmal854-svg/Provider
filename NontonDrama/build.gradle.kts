@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk AnimePlay - Anime Subtitle Indonesia"
+    description = "Provider untuk NontonDrama"
 
     authors     = listOf("MTS")
 
@@ -12,13 +12,13 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://anime-play.id/favicon.ico"
+    iconUrl     = "https://tv4.nontondrama.my/favicon.ico"
 
 }
 
 android {
 
-    namespace = "com.sad25kag.animeplay"
+    namespace = "com.mts.nontondrama"
 
 }
 

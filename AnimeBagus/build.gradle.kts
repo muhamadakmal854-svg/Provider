@@ -4,13 +4,13 @@ cloudstream {
 
     language    = "id"
 
-    description = "AnimeBagus - Anime Subtitle Indonesia"
+    description = "Provider untuk AnimeBagus - Anime Subtitle Indonesia"
 
     authors     = listOf("MTS")
 
     status      = 1
 
-    tvTypes     = listOf("Anime", "AnimeMovie", "OVA")
+    tvTypes     = listOf("Movie", "TvSeries")
 
     iconUrl     = "https://tv2.animebagus.com/favicon.ico"
 
@@ -21,3 +21,4 @@ android {
     namespace = "com.sad25kag.animebagus"
 
 }
+
