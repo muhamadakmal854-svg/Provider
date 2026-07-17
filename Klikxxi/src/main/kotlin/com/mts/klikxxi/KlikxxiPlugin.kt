@@ -35,5 +35,10 @@ class KlikxxiPlugin : Plugin() {
         registerExtractorAPI(DnsperfCom())
         registerExtractorAPI(Emas188May14Ink())
         registerExtractorAPI(XfilesharingproDocsApiaryIo())
+        registerExtractorAPI(EmbedpyroxXyz())
+        registerExtractorAPI(AbyssplayerCom())
+        registerExtractorAPI(MorenciusCom())
+        registerExtractorAPI(Playerp2pXyz())
+        registerExtractorAPI(FastdlP2pstreamOnline())
     }
 }
