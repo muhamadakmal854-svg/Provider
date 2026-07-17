@@ -17,11 +17,12 @@ class JuraganfilmProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "movies/" to "Film Terbaru",
-        "tvshows/" to "TV Series Terbaru",
-        "genre/action/" to "Aksi",
-        "genre/horror/" to "Seram",
-        "genre/comedy/" to "Komedi"
+        "" to "Movies",
+        "film-seri/" to "Serial TV",
+        "kategori-film/kelas-bintang/" to "Kelas Bintang",
+        "kategori-film/jav-hd/" to "JAV HD",
+        "kategori-film/semi/" to "SEMI",
+        "kategori-film/anime/" to "Animasi"
     )
 
     private fun Element.toSearchResult(): SearchResponse? {
@@ -57,7 +58,11 @@ class JuraganfilmProvider : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val path = request.data
-        val pageUrl = if (page > 1) "$mainUrl/$path/page/$page/" else "$mainUrl/$path"
+        val pageUrl = if (page > 1) {
+            if (path.isEmpty()) "$mainUrl/page/$page/" else "$mainUrl/$path/page/$page/"
+        } else {
+            if (path.isEmpty()) "$mainUrl/" else "$mainUrl/$path"
+        }
         val document = app.get(pageUrl, timeout = 30).document
         val homeList = document.select(".listupd .bsx, .listupd .bs, .card, article, div.movie-item").mapNotNull {
             it.toSearchResult()
@@ -169,6 +174,10 @@ class JuraganfilmProvider : MainAPI() {
                         type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     ) {
                         this.referer = iframeUrl
+                        this.headers = mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                            "Referer" to iframeUrl
+                        )
                     }
                 )
                 found = true
