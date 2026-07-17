@@ -8,26 +8,26 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
 class CvGenipspillionCom : StreamWishExtractor() {
-    override val name = "CvGenipspillionCom"
-    override val mainUrl = "https://cv.genipspillion.com"
+    override var name = "CvGenipspillionCom"
+    override var mainUrl = "https://cv.genipspillion.com"
 }
 
 class KuyhaaMe : StreamWishExtractor() {
-    override val name = "KuyhaaMe"
-    override val mainUrl = "https://kuyhaa.me"
+    override var name = "KuyhaaMe"
+    override var mainUrl = "https://kuyhaa.me"
 }
 
 class Edgestorewebpmed2HnhfgbgnfmfuhaZ01AzurefdNet : StreamWishExtractor() {
-    override val name = "Edgestorewebpmed2HnhfgbgnfmfuhaZ01AzurefdNet"
-    override val mainUrl = "https://edgestorewebpme-d2hnhfgbgnfmfuha.z01.azurefd.net"
+    override var name = "Edgestorewebpmed2HnhfgbgnfmfuhaZ01AzurefdNet"
+    override var mainUrl = "https://edgestorewebpme-d2hnhfgbgnfmfuha.z01.azurefd.net"
 }
 
 class StoreimagesSmicrosoftCom : StreamWishExtractor() {
-    override val name = "StoreimagesSmicrosoftCom"
-    override val mainUrl = "https://store-images.s-microsoft.com"
+    override var name = "StoreimagesSmicrosoftCom"
+    override var mainUrl = "https://store-images.s-microsoft.com"
 }
 
 class MicrosoftCom : StreamWishExtractor() {
-    override val name = "MicrosoftCom"
-    override val mainUrl = "https://microsoft.com"
+    override var name = "MicrosoftCom"
+    override var mainUrl = "https://microsoft.com"
 }

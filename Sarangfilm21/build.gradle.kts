@@ -1,14 +1,24 @@
 version = 1
 
 cloudstream {
+
     language    = "id"
-    description = "Provider untuk SARANGFILM21"
+
+    description = "Provider untuk Sarangfilm21"
+
     authors     = listOf("MTS")
+
     status      = 1
+
     tvTypes     = listOf("Anime", "TvSeries", "OVA")
-    iconUrl     = "https://corymcabee.net/favicon.ico"
+
+    iconUrl     = "https://sarangfilm.asia/favicon.ico"
+
 }
 
 android {
+
     namespace = "com.mts.sarangfilm21"
+
 }
+
