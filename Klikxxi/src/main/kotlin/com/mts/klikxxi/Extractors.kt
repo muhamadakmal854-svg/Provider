@@ -12,7 +12,6 @@ import javax.crypto.spec.IvParameterSpec
 import org.jsoup.Jsoup
 import android.util.Log
 import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.extractors.FastdlP2pstreamOnline
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.extractors.Voe
 import com.lagradost.cloudstream3.utils.Qualities
