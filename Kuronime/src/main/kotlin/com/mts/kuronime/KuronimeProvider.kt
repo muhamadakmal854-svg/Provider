@@ -45,7 +45,7 @@ class KuronimeProvider : MainAPI() {
                 return okhttp3.Dns.SYSTEM.lookup(hostname)
             }
         }
-        app.client = app.client.newBuilder().dns(customDns).build()
+        app.okHttpClient = app.okHttpClient.newBuilder().dns(customDns).build()
     }
 
     override var mainUrl        = "https://kuronime.moe"
