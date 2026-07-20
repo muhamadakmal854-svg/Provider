@@ -12,7 +12,6 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
-import java.util.Base64
 
 object DrakorKitaResolver {
 
@@ -33,7 +32,7 @@ object DrakorKitaResolver {
     fun extractEmbedCandidates(document: Document, mainUrl: String): List<String> {
         val candidates = linkedSetOf<String>()
 
-        document.select("iframe[src], embed[src], video[src], source[src]").forEach { element ->
+        document.select("iframe[src], iframe[data-src], embed[src], video[src], source[src]").forEach { element ->
             val src = element.attr("src").ifBlank { element.attr("data-src") }
             normalizeUrl(src, mainUrl).takeIf { it.isNotBlank() }?.let(candidates::add)
         }
@@ -76,14 +75,14 @@ object DrakorKitaResolver {
     fun isEmbedCandidate(url: String): Boolean {
         if (url.isBlank()) return false
         val lower = url.lowercase()
-        val ignoredExtensions = listOf(".png", ".jpg", ".jpeg", ".gif", ".webp", ".css", ".js", ".svg", ".ico", ".woff", ".woff2", ".ttf")
-        if (ignoredExtensions.any { lower.endsWith(it) || lower.contains("$it?") }) return false
+        val ignoredExtensions = listOf(".png", ".jpg", ".jpeg", ".gif", ".webp", ".css", ".js", ".svg", ".ico", ".woff", ".woff2", ".ttf", "disqus")
+        if (ignoredExtensions.any { lower.contains(it) }) return false
 
         val knownKeywords = listOf(
             ".m3u8", ".mp4", "embed", "player", "stream", "video", "drive", "file",
             "dood", "streamwish", "filemoon", "vidhide", "mixdrop", "streamtape",
             "lulustream", "krakenfiles", "pixeldrain", "gofile", "mediafire", "hxfile",
-            "hydrax", "p2p"
+            "hydrax", "p2p", "load.my.id", "nonton.bid"
         )
         return knownKeywords.any { lower.contains(it) }
     }
@@ -141,7 +140,7 @@ object DrakorKitaResolver {
         }
 
         // 2. Check for P2P / Stream embeds
-        val p2pMatch = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:p2p|peer|hls\.p2p|p2pstream)[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
+        val p2pMatch = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:p2p|peer|hls\.p2p|p2pstream|playerp2p|fastdl\.p2pstream)[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
         if (p2pMatch != null) {
             val p2pUrl = normalizeUrl(p2pMatch.value, mainUrl)
             if (p2pUrl.isNotBlank()) {
