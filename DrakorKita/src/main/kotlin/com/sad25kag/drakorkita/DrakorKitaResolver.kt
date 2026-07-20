@@ -5,8 +5,8 @@ import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
-import com.lagradost.cloudstream3.utils.JsUnpacker
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
@@ -113,7 +113,7 @@ object DrakorKitaResolver {
     ): Boolean {
         var foundAny = false
 
-        fun emitLink(
+        suspend fun emitLink(
             source: String,
             name: String,
             url: String,
@@ -203,7 +203,7 @@ object DrakorKitaResolver {
         headers: Map<String, String>,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit,
-        onDirectLink: (label: String, streamUrl: String) -> Unit
+        onDirectLink: suspend (label: String, streamUrl: String) -> Unit
     ) {
         val lower = candidateUrl.lowercase()
         when {
@@ -319,7 +319,7 @@ object DrakorKitaResolver {
             .find(text)?.groupValues?.getOrNull(1)
         if (!iframeSrc.isNullOrBlank()) return iframeSrc
 
-        val unpacked = runCatching { JsUnpacker.unpackAndCombine(text) }.getOrNull().orEmpty()
+        val unpacked = runCatching { getAndUnpack(text) }.getOrNull().orEmpty()
         val targetText = if (unpacked.isNotBlank()) unpacked else text
 
         val direct = Regex("""https?:\\?/\\?/[^"'\s<>]+\.(?:m3u8|mp4)[^"'\s<>]*""", RegexOption.IGNORE_CASE)
@@ -333,3 +333,4 @@ object DrakorKitaResolver {
         return ""
     }
 }
+
