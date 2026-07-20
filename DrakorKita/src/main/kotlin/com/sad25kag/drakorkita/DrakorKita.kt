@@ -97,7 +97,17 @@ class DrakorKita : MainAPI() {
 
         val episodes = mutableListOf<com.lagradost.cloudstream3.Episode>()
 
-        // Extract episode links from episode pagination / list
+        // 1. Check for loadEpisode call in HTML e.g. loadEpisode('id','hs','ind')
+        val loadEpMatch = Regex("""loadEpisode\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""").find(document.html())
+        val (movieId, tag, ver) = if (loadEpMatch != null) {
+            Triple(loadEpMatch.groupValues[1], loadEpMatch.groupValues[2], loadEpMatch.groupValues[3])
+        } else {
+            Triple("", "hs", "ind")
+        }
+
+        val serverTag = if (tag.isNotBlank() && ver.isNotBlank()) "${tag}_$ver" else "hs_ind"
+
+        // 2. Extract episode links from episode pagination / list
         val epElements = document.select("div#episode_lists a, div.pagination a, ul.episodes a, div.episode-list a")
         epElements.forEachIndexed { index, el ->
             val href = el.attr("href")
@@ -114,10 +124,11 @@ class DrakorKita : MainAPI() {
             )
         }
 
-        // Fallback: If no episode links found, create single episode pointing to main detail URL
+        // 3. Fallback: Create episode URLs pointing to /detail/slug/{serverTag}/1/
         if (episodes.isEmpty()) {
+            val ep1Url = if (url.endsWith("/")) "${url.trimEnd('/')}/$serverTag/1/" else "$url/$serverTag/1/"
             episodes.add(
-                newEpisode(url) {
+                newEpisode(ep1Url) {
                     this.name = "Episode 1"
                     this.episode = 1
                     this.posterUrl = poster
@@ -125,7 +136,7 @@ class DrakorKita : MainAPI() {
             )
         }
 
-        return if (!isMovie && episodes.size >= 1) {
+        return if (!isMovie && episodes.size > 1) {
             newTvSeriesLoadResponse(cleanTitle, url, TvType.AsianDrama, episodes.distinctBy { it.data }) {
                 this.posterUrl = poster
                 this.plot = plot
@@ -133,7 +144,8 @@ class DrakorKita : MainAPI() {
                 this.tags = tags
             }
         } else {
-            newMovieLoadResponse(cleanTitle, url, TvType.Movie, url) {
+            val movieEpUrl = episodes.firstOrNull()?.data ?: url
+            newMovieLoadResponse(cleanTitle, url, TvType.Movie, movieEpUrl) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
@@ -149,11 +161,28 @@ class DrakorKita : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val pageUrl = fixUrl(data)
-        val doc = getDocument(pageUrl)
+        var doc = getDocument(pageUrl)
 
         var foundAny = false
 
-        // 1. Resolve P2P & HYDRAX & Direct Embeds via DrakorKitaResolver
+        // If doc is main detail page without episode path, try episode 1 path
+        if (!pageUrl.contains("/hs_") && !pageUrl.contains("/1/")) {
+            val ep1Url = "${pageUrl.trimEnd('/')}/hs_ind/1/"
+            runCatching {
+                val epDoc = getDocument(ep1Url)
+                val resolvedEp = DrakorKitaResolver.resolvePageLinks(
+                    document = epDoc,
+                    pageUrl = ep1Url,
+                    mainUrl = mainUrl,
+                    headers = sourceHeaders,
+                    subtitleCallback = subtitleCallback,
+                    callback = callback
+                )
+                if (resolvedEp) foundAny = true
+            }
+        }
+
+        // Resolve P2P & HYDRAX & Direct Embeds via DrakorKitaResolver on primary doc
         val resolved = DrakorKitaResolver.resolvePageLinks(
             document = doc,
             pageUrl = pageUrl,
@@ -164,7 +193,7 @@ class DrakorKita : MainAPI() {
         )
         if (resolved) foundAny = true
 
-        // 2. Extract standard embed candidates (iframes, server buttons, data-src)
+        // Extract standard embed candidates (iframes, server buttons, data-src)
         val candidates = DrakorKitaResolver.extractEmbedCandidates(doc, mainUrl)
         candidates.forEach { candidate ->
             val clean = DrakorKitaResolver.normalizeUrl(candidate, mainUrl)
@@ -191,14 +220,22 @@ class DrakorKita : MainAPI() {
             val rawTitle = element.selectFirst(".titit, .title, .entry-title, h2, h3, h4, .name")?.text()
                 ?: linkElement.attr("title").ifBlank { linkElement.attr("alt") }
                 ?: linkElement.text()
+
             val cleanTitle = cleanDetailTitle(rawTitle)
             if (cleanTitle.isBlank()) return@forEach
 
-            val imageElement = element.selectFirst("img.poster, img") ?: linkElement.selectFirst("img")
-            val poster = imageElement?.attr("data-src")
+            // Filter out flagsapi.com or flag images!
+            val imageElement = element.selectFirst("img.poster, img[src*='tmdb'], img:not([src*='flagsapi']):not([src*='flag'])")
+                ?: linkElement.selectFirst("img.poster, img[src*='tmdb'], img:not([src*='flagsapi']):not([src*='flag'])")
+
+            var poster = imageElement?.attr("data-src")
                 ?.ifBlank { imageElement.attr("src") }
                 ?.ifBlank { imageElement.attr("data-lazy-src") }
                 ?.let { fixUrlNull(it) }
+
+            if (poster != null && (poster.contains("flagsapi") || poster.contains("flag"))) {
+                poster = null
+            }
 
             val isMovie = sectionName.contains("Movie", ignoreCase = true) ||
                 fullUrl.contains("media_type=movie", ignoreCase = true) ||
@@ -261,11 +298,16 @@ class DrakorKita : MainAPI() {
     }
 
     private fun Document.pickPoster(): String? {
-        val img = selectFirst("img.poster, .poster img, .thumb img, article img, div.entry-content img")
+        val img = selectFirst("img.poster, img[src*='tmdb'], img:not([src*='flagsapi']):not([src*='flag'])")
         val src = img?.attr("data-src")
             ?.ifBlank { img.attr("src") }
             ?.ifBlank { img.attr("data-lazy-src") }
-        return fixUrlNull(src) ?: fixUrlNull(selectFirst("meta[property=og:image]")?.attr("content"))
+
+        val posterUrl = fixUrlNull(src) ?: fixUrlNull(selectFirst("meta[property=og:image]")?.attr("content"))
+        if (posterUrl != null && (posterUrl.contains("flagsapi") || posterUrl.contains("flag"))) {
+            return null
+        }
+        return posterUrl
     }
 
     private fun Document.pickDescription(): String? {
