@@ -8,7 +8,6 @@ import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SearchResponseList
 import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.fixUrl
@@ -22,15 +21,13 @@ import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import org.json.JSONObject
+import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
 import java.net.URLEncoder
-import java.util.Base64
 
 class DrakorKita : MainAPI() {
-    override var mainUrl = "https://drakor.kita.mobi"
+    override var mainUrl = "https://drakorindo18.kita.baby"
     override var name = "DrakorKita"
     override val hasMainPage = true
     override var lang = "id"
@@ -40,25 +37,22 @@ class DrakorKita : MainAPI() {
     private val sourceHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36",
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
-    )
-
-    private val ajaxHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36",
-        "Accept" to "text/plain, */*; q=0.01",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Origin" to mainUrl
+        "Referer" to "$mainUrl/"
     )
 
     override val mainPage = mainPageOf(
-        "/" to "Eps Terbaru",
-        "/" to "Complete / Ended",
-        "/" to "Movie Terbaru",
-        "/" to "Serie Terbaru",
+        "all?media_type=movie"            to "Movie",
+        "all?media_type=tv"               to "Series",
+        "all?status=returning%20series"   to "Ongoing",
+        "all?status=ended"                to "Complete",
+        "all"                             to "All"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = getDocument(buildPagedUrl(request.data, page))
+        val path = request.data
+        val url = buildPagedUrl(path, page)
+        val document = getDocument(url)
         val list = document.toSearchResults(request.name)
 
         return newHomePageResponse(
@@ -73,20 +67,13 @@ class DrakorKita : MainAPI() {
 
     override suspend fun search(query: String, page: Int): SearchResponseList? {
         val encoded = URLEncoder.encode(query, "UTF-8")
-        val searchUrls = listOf(
-            buildPagedUrl("all?q=$encoded", page)
-        )
+        val url = buildPagedUrl("all?q=$encoded", page)
 
-        val results = linkedMapOf<String, SearchResponse>()
-        searchUrls.forEach { url ->
-            runCatching {
-                getDocument(url).toSearchResults("Search")
-            }.getOrDefault(emptyList()).forEach { item ->
-                results[item.url] = item
-            }
-        }
+        val results = runCatching {
+            getDocument(url).toSearchResults("Search")
+        }.getOrDefault(emptyList())
 
-        return results.values.toList().toNewSearchResponseList()
+        return results.toNewSearchResponseList()
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -103,45 +90,50 @@ class DrakorKita : MainAPI() {
             ?.getOrNull(1)
             ?.toIntOrNull()
 
-        val configs = parseApiConfigs(document, url, cleanTitle, poster)
-        val apiEpisodes = configs
-            .take(1)
-            .flatMap { config -> fetchEpisodes(config) }
-            .distinctBy { it.data }
-            .sortedBy { it.episode ?: Int.MAX_VALUE }
+        val isMovie = url.contains("media_type=movie") ||
+            url.contains("/movie/") ||
+            title.contains("Movie", ignoreCase = true) ||
+            document.select(".anf").text().contains("Type : Movie", ignoreCase = true)
 
-        val infoText = document.select("ul.anf").text()
-        val isSeries = apiEpisodes.size > 1 ||
-            infoText.contains("Type : TV Series", ignoreCase = true) ||
-            title.contains("Season", ignoreCase = true) ||
-            title.contains(Regex("""Episode\s+\d+\s*-\s*\d+""", RegexOption.IGNORE_CASE))
+        val episodes = mutableListOf<com.lagradost.cloudstream3.Episode>()
 
-        return if (isSeries) {
-            val episodes = if (apiEpisodes.isNotEmpty()) {
-                apiEpisodes
-            } else {
-                configs.firstOrNull()?.let { config ->
-                    listOf(
-                        newEpisode(config.toPayloadJson()) {
-                            name = "Episode"
-                            posterUrl = poster
-                        }
-                    )
-                } ?: emptyList()
-            }
+        // Extract episode links from episode pagination / list
+        val epElements = document.select("div#episode_lists a, div.pagination a, ul.episodes a, div.episode-list a")
+        epElements.forEachIndexed { index, el ->
+            val href = el.attr("href")
+            val fullEpUrl = fixUrlNull(href) ?: return@forEachIndexed
+            val epNum = Regex("""\d+""").find(el.text())?.value?.toIntOrNull() ?: (index + 1)
+            val epName = el.text().ifBlank { "Episode $epNum" }
 
-            newTvSeriesLoadResponse(cleanTitle, url, TvType.AsianDrama, episodes) {
+            episodes.add(
+                newEpisode(fullEpUrl) {
+                    this.name = epName
+                    this.episode = epNum
+                    this.posterUrl = poster
+                }
+            )
+        }
+
+        // Fallback: If no episode links found, create single episode pointing to main detail URL
+        if (episodes.isEmpty()) {
+            episodes.add(
+                newEpisode(url) {
+                    this.name = "Episode 1"
+                    this.episode = 1
+                    this.posterUrl = poster
+                }
+            )
+        }
+
+        return if (!isMovie && episodes.size >= 1) {
+            newTvSeriesLoadResponse(cleanTitle, url, TvType.AsianDrama, episodes.distinctBy { it.data }) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
                 this.tags = tags
             }
         } else {
-            val movieData = apiEpisodes.firstOrNull()?.data
-                ?: configs.firstOrNull()?.toPayloadJson()
-                ?: url
-
-            newMovieLoadResponse(cleanTitle, url, TvType.Movie, movieData) {
+            newMovieLoadResponse(cleanTitle, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
@@ -156,212 +148,38 @@ class DrakorKita : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val payload = ApiConfig.fromPayloadJson(data)
-        if (payload != null) {
-            val resolvedPayload = DrakorKitaResolver.resolvePayloadLinks(
-                payload = payload.toResolverPayload(),
-                mainUrl = mainUrl,
-                headers = sourceHeaders,
-                subtitleCallback = subtitleCallback,
-                callback = callback
-            )
-            if (resolvedPayload) return true
-        }
-
-        val pageUrl = payload?.detailUrl ?: data
-        if (!pageUrl.startsWith("http")) return false
-
+        val pageUrl = fixUrl(data)
         val doc = getDocument(pageUrl)
-        val candidates = DrakorKitaResolver.extractEmbedCandidates(doc, mainUrl)
 
         var foundAny = false
+
+        // 1. Resolve P2P & HYDRAX & Direct Embeds via DrakorKitaResolver
+        val resolved = DrakorKitaResolver.resolvePageLinks(
+            document = doc,
+            pageUrl = pageUrl,
+            mainUrl = mainUrl,
+            headers = sourceHeaders,
+            subtitleCallback = subtitleCallback,
+            callback = callback
+        )
+        if (resolved) foundAny = true
+
+        // 2. Extract standard embed candidates (iframes, server buttons, data-src)
+        val candidates = DrakorKitaResolver.extractEmbedCandidates(doc, mainUrl)
         candidates.forEach { candidate ->
             val clean = DrakorKitaResolver.normalizeUrl(candidate, mainUrl)
             if (clean.isNotBlank()) {
-                val lower = clean.lowercase()
-                if (lower.contains(".m3u8") || lower.contains(".mp4")) {
-                    foundAny = true
-                    callback(
-                        com.lagradost.cloudstream3.utils.newExtractorLink(
-                            source = name,
-                            name = "$name Direct",
-                            url = clean
-                        ) {
-                            this.referer = pageUrl
-                        }
-                    )
-                } else {
-                    val loaded = com.lagradost.cloudstream3.utils.loadExtractor(
-                        clean,
-                        pageUrl,
-                        subtitleCallback,
-                        callback
-                    )
-                    if (loaded) foundAny = true
-                }
+                val loaded = loadExtractor(clean, pageUrl, subtitleCallback, callback)
+                if (loaded) foundAny = true
             }
         }
 
         return foundAny
     }
 
-    private fun parseApiConfigs(
-        doc: Document,
-        detailUrl: String,
-        fallbackTitle: String,
-        fallbackPoster: String?
-    ): List<ApiConfig> {
-        val list = mutableListOf<ApiConfig>()
-        val jsonBlocks = extractInlineJsonObjects(doc.html())
-
-        jsonBlocks.forEach { raw ->
-            runCatching {
-                val obj = JSONObject(raw)
-                val isTarget = obj.has("movie_id") || obj.has("c_api_host") || obj.has("server_xid") || obj.has("episode_id")
-                if (isTarget) {
-                    val config = ApiConfig(
-                        detailUrl = detailUrl,
-                        title = obj.optString("title", fallbackTitle).ifBlank { fallbackTitle },
-                        movieId = obj.optString("movie_id").ifBlank { "0" },
-                        episodeId = obj.optString("episode_id").ifBlank { "0" },
-                        serverXid = obj.optString("server_xid").ifBlank { "0" },
-                        tag = obj.optString("tag").ifBlank { "" },
-                        c = obj.optString("c").ifBlank { "" },
-                        t = obj.optString("t").ifBlank { "" },
-                        ver = obj.optString("ver").ifBlank { "1" },
-                        cApiHost = obj.optString("c_api_host", mainUrl).ifBlank { mainUrl },
-                        isMob = obj.optString("is_mob").ifBlank { "1" },
-                        isUc = obj.optString("is_uc").ifBlank { "0" },
-                        mediaType = obj.optString("media_type").ifBlank { "drama" }
-                    )
-                    list.add(config)
-                }
-            }
-        }
-
-        return list.distinctBy { "${it.movieId}_${it.episodeId}_${it.serverXid}_${it.tag}" }
-    }
-
-    private suspend fun fetchEpisodes(config: ApiConfig): List<com.lagradost.cloudstream3.Episode> {
-        val episodes = mutableListOf<com.lagradost.cloudstream3.Episode>()
-
-        val rawEpisodeText = runCatching {
-            val endpoint = "${config.cApiHost.trimEnd('/')}/api/v1/episodes"
-            val query = listOf(
-                "movie_id" to config.movieId,
-                "detail_url" to config.detailUrl,
-                "tag" to config.tag,
-                "c" to config.c,
-                "t" to config.t,
-                "ver" to config.ver,
-                "is_mob" to config.isMob,
-                "is_uc" to config.isUc
-            ).joinToString("&") { "${it.first}=${URLEncoder.encode(it.second, "UTF-8")}" }
-
-            app.get("$endpoint?$query", headers = ajaxHeaders).text
-        }.getOrDefault("")
-
-        if (rawEpisodeText.isNotBlank()) {
-            runCatching {
-                val root = JSONObject(rawEpisodeText)
-                val array = root.optJSONArray("data") ?: root.optJSONArray("episodes")
-                if (array != null) {
-                    for (i in 0 until array.length()) {
-                        val item = array.optJSONObject(i) ?: continue
-                        val epNumber = item.optInt("episode", item.optInt("ep", i + 1))
-                        val epName = item.optString("name", item.optString("title", "Episode $epNumber"))
-                        val epDataConfig = config.copy(
-                            episodeId = item.optString("episode_id", item.optString("id", config.episodeId)),
-                            serverXid = item.optString("server_xid", config.serverXid),
-                            tag = item.optString("tag", config.tag)
-                        )
-
-                        episodes.add(
-                            newEpisode(epDataConfig.toPayloadJson()) {
-                                this.name = epName
-                                this.episode = epNumber
-                            }
-                        )
-                    }
-                }
-            }
-        }
-
-        if (episodes.isEmpty()) {
-            val formEpisodes = runCatching {
-                val ajaxUrl = "${config.cApiHost.trimEnd('/')}/wp-admin/admin-ajax.php"
-                val body = mapOf(
-                    "action" to "get_episodes",
-                    "movie_id" to config.movieId,
-                    "tag" to config.tag,
-                    "c" to config.c,
-                    "t" to config.t,
-                    "ver" to config.ver
-                )
-                app.post(ajaxUrl, data = body, headers = ajaxHeaders).text
-            }.getOrDefault("")
-
-            if (formEpisodes.isNotBlank()) {
-                val parsedDoc = Jsoup.parse(formEpisodes)
-                parsedDoc.select("a, button, li").forEachIndexed { index, element ->
-                    val epName = element.text().ifBlank { "Episode ${index + 1}" }
-                    val epNum = Regex("""\d+""").find(epName)?.value?.toIntOrNull() ?: (index + 1)
-                    val epId = element.attr("data-episode_id").ifBlank { element.attr("data-id") }
-                    val epConfig = config.copy(
-                        episodeId = if (epId.isNotBlank()) epId else config.episodeId
-                    )
-
-                    episodes.add(
-                        newEpisode(epConfig.toPayloadJson()) {
-                            this.name = epName
-                            this.episode = epNum
-                        }
-                    )
-                }
-            }
-        }
-
-        return episodes.distinctBy { "${it.episode}_${it.data}" }
-    }
-
-    private fun extractInlineJsonObjects(html: String): List<String> {
-        val results = mutableListOf<String>()
-        val regex = Regex("""\{[^{}]*"movie_id"\s*:\s*[^}]*\}""", RegexOption.IGNORE_CASE)
-        regex.findAll(html).forEach { match ->
-            results.add(match.value)
-        }
-
-        if (results.isEmpty()) {
-            var depth = 0
-            var start = -1
-            for (i in html.indices) {
-                when (html[i]) {
-                    '{' -> {
-                        if (depth == 0) start = i
-                        depth++
-                    }
-                    '}' -> {
-                        if (depth > 0) {
-                            depth--
-                            if (depth == 0 && start != -1) {
-                                val block = html.substring(start, i + 1)
-                                if (block.contains("movie_id", ignoreCase = true) || block.contains("c_api_host", ignoreCase = true)) {
-                                    results.add(block)
-                                }
-                                start = -1
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return results
-    }
-
     private fun Document.toSearchResults(sectionName: String): List<SearchResponse> {
         val results = mutableListOf<SearchResponse>()
-        val targetElements = select(".content-item, .post-item, article, div.item, div.post-thumbnail, div.box, a.poster, a[href*='/drama/'], a[href*='/movie/'], a[href*='/series/']")
+        val targetElements = select("a.poster, .content-item, .post-item, article, div.item, a[href*='/detail/']")
 
         targetElements.forEach { element ->
             val linkElement = if (element.tagName() == "a") element else element.selectFirst("a[href]") ?: return@forEach
@@ -370,24 +188,21 @@ class DrakorKita : MainAPI() {
 
             if (!isValidContentUrl(fullUrl)) return@forEach
 
-            val rawTitle = element.selectFirst(".title, .entry-title, h2, h3, h4, .name")?.text()
+            val rawTitle = element.selectFirst(".titit, .title, .entry-title, h2, h3, h4, .name")?.text()
                 ?: linkElement.attr("title").ifBlank { linkElement.attr("alt") }
                 ?: linkElement.text()
             val cleanTitle = cleanDetailTitle(rawTitle)
             if (cleanTitle.isBlank()) return@forEach
 
-            val imageElement = element.selectFirst("img") ?: linkElement.selectFirst("img")
+            val imageElement = element.selectFirst("img.poster, img") ?: linkElement.selectFirst("img")
             val poster = imageElement?.attr("data-src")
                 ?.ifBlank { imageElement.attr("src") }
                 ?.ifBlank { imageElement.attr("data-lazy-src") }
                 ?.let { fixUrlNull(it) }
 
             val isMovie = sectionName.contains("Movie", ignoreCase = true) ||
-                fullUrl.contains("/movie/", ignoreCase = true) ||
+                fullUrl.contains("media_type=movie", ignoreCase = true) ||
                 rawTitle.contains("Movie", ignoreCase = true)
-
-            val isEnd = sectionName.contains("Ended", ignoreCase = true) ||
-                sectionName.contains("Complete", ignoreCase = true)
 
             val response = if (isMovie) {
                 newMovieSearchResponse(cleanTitle, fullUrl, TvType.Movie) {
@@ -397,10 +212,6 @@ class DrakorKita : MainAPI() {
                 newTvSeriesSearchResponse(cleanTitle, fullUrl, TvType.AsianDrama) {
                     this.posterUrl = poster
                 }
-            }
-
-            if (sectionName == "Complete / Ended" && !isEnd) {
-                return@forEach
             }
 
             results.add(response)
@@ -414,13 +225,13 @@ class DrakorKita : MainAPI() {
         val lower = url.lowercase()
         val blacklisted = listOf(
             "/category/", "/tag/", "/genre/", "/page/", "/dmca", "/about",
-            "/contact", "/privacy", "/disclaimer", "/login", "/register"
+            "/contact", "/privacy", "/disclaimer", "/login", "/register", "/change_theme"
         )
         return blacklisted.none { lower.contains(it) }
     }
 
     private fun hasNextPage(doc: Document, currentPage: Int): Boolean {
-        val nextLink = doc.selectFirst("a.next, a.next-page, a[rel=next], .pagination a:contains(Next), .pagination a:contains(>)")
+        val nextLink = doc.selectFirst("a.next, a.next-page, a[rel=next], .pagination a:contains(Next), .pagination a:contains(>), li.next a")
         if (nextLink != null) return true
         val pageNumbers = doc.select(".pagination a, .nav-links a").mapNotNull {
             Regex("""\d+""").find(it.text())?.value?.toIntOrNull()
@@ -444,13 +255,13 @@ class DrakorKita : MainAPI() {
     }
 
     private fun Document.pickTitle(): String {
-        return selectFirst("h1.entry-title, h1.title, h1.name, h1")?.text()
+        return selectFirst("h1.entry-title, h1.title, h1.name, h1, .titit")?.text()
             ?: selectFirst("meta[property=og:title]")?.attr("content")
             ?: title()
     }
 
     private fun Document.pickPoster(): String? {
-        val img = selectFirst(".poster img, .thumb img, article img, div.entry-content img")
+        val img = selectFirst("img.poster, .poster img, .thumb img, article img, div.entry-content img")
         val src = img?.attr("data-src")
             ?.ifBlank { img.attr("src") }
             ?.ifBlank { img.attr("data-lazy-src") }
@@ -458,7 +269,7 @@ class DrakorKita : MainAPI() {
     }
 
     private fun Document.pickDescription(): String? {
-        return selectFirst(".entry-content p, .synopsis, .description, .desc")?.text()?.trim()
+        return selectFirst(".entry-content p, .synopsis, .description, .desc, .mv-description")?.text()?.trim()
             ?.ifBlank { selectFirst("meta[property=og:description]")?.attr("content")?.trim() }
     }
 
@@ -477,80 +288,5 @@ class DrakorKita : MainAPI() {
     private suspend fun getDocument(url: String): Document {
         val res = app.get(url, headers = sourceHeaders)
         return Jsoup.parse(res.text, url)
-    }
-
-    data class ApiConfig(
-        val detailUrl: String,
-        val title: String,
-        val movieId: String,
-        val episodeId: String,
-        val serverXid: String,
-        val tag: String,
-        val c: String,
-        val t: String,
-        val ver: String,
-        val cApiHost: String,
-        val isMob: String,
-        val isUc: String,
-        val mediaType: String
-    ) {
-        fun toPayloadJson(): String {
-            val json = JSONObject()
-            json.put("detail_url", detailUrl)
-            json.put("title", title)
-            json.put("movie_id", movieId)
-            json.put("episode_id", episodeId)
-            json.put("server_xid", serverXid)
-            json.put("tag", tag)
-            json.put("c", c)
-            json.put("t", t)
-            json.put("ver", ver)
-            json.put("c_api_host", cApiHost)
-            json.put("is_mob", isMob)
-            json.put("is_uc", isUc)
-            json.put("media_type", mediaType)
-            return json.toString()
-        }
-
-        fun toResolverPayload(): DrakorKitaResolver.ApiPayload {
-            return DrakorKitaResolver.ApiPayload(
-                detailUrl = detailUrl,
-                title = title,
-                movieId = movieId,
-                episodeId = episodeId,
-                serverXid = serverXid,
-                tag = tag,
-                c = c,
-                t = t,
-                ver = ver,
-                cApiHost = cApiHost,
-                isMob = isMob,
-                isUc = isUc,
-                mediaType = mediaType
-            )
-        }
-
-        companion object {
-            fun fromPayloadJson(jsonString: String): ApiConfig? {
-                return runCatching {
-                    val obj = JSONObject(jsonString)
-                    ApiConfig(
-                        detailUrl = obj.optString("detail_url"),
-                        title = obj.optString("title"),
-                        movieId = obj.optString("movie_id"),
-                        episodeId = obj.optString("episode_id"),
-                        serverXid = obj.optString("server_xid"),
-                        tag = obj.optString("tag"),
-                        c = obj.optString("c"),
-                        t = obj.optString("t"),
-                        ver = obj.optString("ver"),
-                        cApiHost = obj.optString("c_api_host"),
-                        isMob = obj.optString("is_mob"),
-                        isUc = obj.optString("is_uc"),
-                        mediaType = obj.optString("media_type")
-                    )
-                }.getOrNull()
-            }
-        }
     }
 }

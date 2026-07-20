@@ -1,6 +1,5 @@
 package com.sad25kag.drakorkita
 
-import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -14,24 +13,8 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
 import java.util.Base64
-import kotlinx.coroutines.runBlocking
 
 object DrakorKitaResolver {
-    data class ApiPayload(
-        val detailUrl: String,
-        val title: String,
-        val movieId: String,
-        val episodeId: String,
-        val serverXid: String,
-        val tag: String,
-        val c: String,
-        val t: String,
-        val ver: String,
-        val cApiHost: String,
-        val isMob: String,
-        val isUc: String,
-        val mediaType: String
-    )
 
     fun normalizeUrl(url: String, mainUrl: String): String {
         val trimmed = url.trim()
@@ -74,7 +57,7 @@ object DrakorKitaResolver {
         val html = document.html()
         val regexes = listOf(
             Regex("""https?:\\?/\\?/[^"'\s<>]+\.(?:m3u8|mp4|mkv)[^"'\s<>]*""", RegexOption.IGNORE_CASE),
-            Regex("""https?:\\?/\\?/[^"'\s<>]*(?:embed|player|video|stream|drive|file)[^"'\s<>]*""", RegexOption.IGNORE_CASE),
+            Regex("""https?:\\?/\\?/[^"'\s<>]*(?:embed|player|video|stream|drive|file|hydrax|p2p)[^"'\s<>]*""", RegexOption.IGNORE_CASE),
             Regex("""//[^"'\s<>]+\.(?:m3u8|mp4|mkv)[^"'\s<>]*""", RegexOption.IGNORE_CASE)
         )
 
@@ -99,13 +82,15 @@ object DrakorKitaResolver {
         val knownKeywords = listOf(
             ".m3u8", ".mp4", "embed", "player", "stream", "video", "drive", "file",
             "dood", "streamwish", "filemoon", "vidhide", "mixdrop", "streamtape",
-            "lulustream", "krakenfiles", "pixeldrain", "gofile", "mediafire", "hxfile"
+            "lulustream", "krakenfiles", "pixeldrain", "gofile", "mediafire", "hxfile",
+            "hydrax", "p2p"
         )
         return knownKeywords.any { lower.contains(it) }
     }
 
-    suspend fun resolvePayloadLinks(
-        payload: ApiPayload,
+    suspend fun resolvePageLinks(
+        document: Document,
+        pageUrl: String,
         mainUrl: String,
         headers: Map<String, String>,
         subtitleCallback: (SubtitleFile) -> Unit,
@@ -117,7 +102,7 @@ object DrakorKitaResolver {
             source: String,
             name: String,
             url: String,
-            referer: String = mainUrl,
+            referer: String = pageUrl,
             quality: Int = Qualities.Unknown.value,
             type: ExtractorLinkType = ExtractorLinkType.VIDEO
         ) {
@@ -139,198 +124,48 @@ object DrakorKitaResolver {
             }
         }
 
-        val pageDoc = runCatching {
-            val res = app.get(payload.detailUrl, headers = headers)
-            Jsoup.parse(res.text, payload.detailUrl)
-        }.getOrNull()
+        val html = document.html()
 
-        if (pageDoc != null) {
-            val candidates = extractEmbedCandidates(pageDoc, mainUrl)
-            candidates.forEach { candidate ->
-                resolveDirectOrExtractor(
-                    candidateUrl = candidate,
-                    referer = payload.detailUrl,
-                    headers = headers,
-                    subtitleCallback = subtitleCallback,
-                    callback = callback,
-                    onDirectLink = { label, streamUrl ->
-                        emitLink("DrakorKita", "DrakorKita - $label", streamUrl, referer = payload.detailUrl)
-                    }
-                )
+        // 1. Check for Hydrax embeds / links
+        val hydraxMatch = Regex("""(?:hydrax|iamcdn|playhydrax|multi\.hydrax)\.[a-z]+/?[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
+        if (hydraxMatch != null) {
+            val hydraxUrl = normalizeUrl(hydraxMatch.value, mainUrl)
+            if (hydraxUrl.isNotBlank()) {
+                val loaded = loadExtractor(hydraxUrl, pageUrl, subtitleCallback, callback)
+                if (loaded) {
+                    foundAny = true
+                } else {
+                    emitLink("HYDRAX", "[HYDRAX] Server", hydraxUrl, referer = pageUrl)
+                }
             }
         }
 
-        val formResult = fetchFromAjaxForm(payload, headers)
-        if (formResult.isNotBlank()) {
-            val clean = normalizeUrl(formResult, mainUrl)
-            if (clean.isNotBlank()) {
-                resolveDirectOrExtractor(
-                    candidateUrl = clean,
-                    referer = payload.detailUrl,
-                    headers = headers,
-                    subtitleCallback = subtitleCallback,
-                    callback = callback,
-                    onDirectLink = { label, streamUrl ->
-                        emitLink("DrakorKita", "DrakorKita - $label", streamUrl, referer = payload.detailUrl)
-                    }
-                )
+        // 2. Check for P2P / Stream embeds
+        val p2pMatch = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:p2p|peer|hls\.p2p|p2pstream)[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
+        if (p2pMatch != null) {
+            val p2pUrl = normalizeUrl(p2pMatch.value, mainUrl)
+            if (p2pUrl.isNotBlank()) {
+                val loaded = loadExtractor(p2pUrl, pageUrl, subtitleCallback, callback)
+                if (loaded) {
+                    foundAny = true
+                } else {
+                    emitLink("P2P", "[P2P] Server", p2pUrl, referer = pageUrl)
+                }
             }
         }
 
-        val jsonResult = fetchFromJsonApi(payload, headers)
-        jsonResult.forEach { candidate ->
-            val clean = normalizeUrl(candidate, mainUrl)
-            if (clean.isNotBlank()) {
-                resolveDirectOrExtractor(
-                    candidateUrl = clean,
-                    referer = payload.detailUrl,
-                    headers = headers,
-                    subtitleCallback = subtitleCallback,
-                    callback = callback,
-                    onDirectLink = { label, streamUrl ->
-                        emitLink("DrakorKita", "DrakorKita - $label", streamUrl, referer = payload.detailUrl)
-                    }
-                )
+        // 3. Extract direct M3U8 / MP4 URLs from HTML / scripts
+        val m3u8Matches = Regex("""https?:\\?/\\?/[^"'\s<>]+\.(?:m3u8|mp4)[^"'\s<>]*""", RegexOption.IGNORE_CASE).findAll(html)
+        m3u8Matches.forEach { match ->
+            val directUrl = normalizeUrl(match.value, mainUrl)
+            if (directUrl.isNotBlank() && !directUrl.contains("favicon")) {
+                val nameTag = if (directUrl.contains("p2p", ignoreCase = true)) "[P2P] Server"
+                             else if (directUrl.contains("hydrax", ignoreCase = true)) "[HYDRAX] Server"
+                             else "DrakorKita Direct"
+                emitLink("DrakorKita", nameTag, directUrl, referer = pageUrl)
             }
         }
 
         return foundAny
     }
-
-    private suspend fun resolveDirectOrExtractor(
-        candidateUrl: String,
-        referer: String,
-        headers: Map<String, String>,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-        onDirectLink: suspend (label: String, streamUrl: String) -> Unit
-    ) {
-        val lower = candidateUrl.lowercase()
-        when {
-            lower.contains(".m3u8") -> onDirectLink("HLS", candidateUrl)
-            lower.contains(".mp4") -> onDirectLink("MP4", candidateUrl)
-            else -> {
-                val loaded = loadExtractor(candidateUrl, referer, subtitleCallback, callback)
-                if (!loaded) {
-                    runCatching {
-                        val doc = app.get(candidateUrl, headers = headers, referer = referer).document
-                        extractEmbedCandidates(doc, referer).forEach { nested ->
-                            val nLower = nested.lowercase()
-                            if (nLower.contains(".m3u8") || nLower.contains(".mp4")) {
-                                onDirectLink("Direct", nested)
-                            } else {
-                                loadExtractor(nested, candidateUrl, subtitleCallback, callback)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private suspend fun fetchFromAjaxForm(payload: ApiPayload, headers: Map<String, String>): String {
-        return runCatching {
-            val bodyData = mapOf(
-                "action" to "get_player",
-                "movie_id" to payload.movieId,
-                "episode_id" to payload.episodeId,
-                "server_xid" to payload.serverXid,
-                "tag" to payload.tag,
-                "c" to payload.c,
-                "t" to payload.t,
-                "ver" to payload.ver
-            )
-            val res = app.post(
-                url = "${payload.cApiHost.trimEnd('/')}/wp-admin/admin-ajax.php",
-                data = bodyData,
-                headers = headers + mapOf(
-                    "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                    "X-Requested-With" to "XMLHttpRequest",
-                    "Referer" to payload.detailUrl
-                )
-            ).text
-
-            extractUrlFromText(res)
-        }.getOrDefault("")
-    }
-
-    private suspend fun fetchFromJsonApi(payload: ApiPayload, headers: Map<String, String>): List<String> {
-        return runCatching {
-            val endpoint = "${payload.cApiHost.trimEnd('/')}/api/v1/stream"
-            val query = mapOf(
-                "detail_url" to payload.detailUrl,
-                "title" to payload.title,
-                "movie_id" to payload.movieId,
-                "episode_id" to payload.episodeId,
-                "server_xid" to payload.serverXid,
-                "tag" to payload.tag,
-                "c" to payload.c,
-                "t" to payload.t,
-                "ver" to payload.ver,
-                "is_mob" to payload.isMob,
-                "is_uc" to payload.isUc,
-                "media_type" to payload.mediaType
-            ).entries.joinToString("&") { "${it.key}=${URLEncoder.encode(it.value, "UTF-8")}" }
-
-            val fullUrl = "$endpoint?$query"
-            val text = app.get(
-                url = fullUrl,
-                headers = headers + mapOf(
-                    "Accept" to "application/json, text/plain, */*",
-                    "Referer" to payload.detailUrl
-                )
-            ).text
-
-            val results = mutableListOf<String>()
-            val root = JSONObject(text)
-
-            fun collect(obj: Any?) {
-                when (obj) {
-                    is JSONObject -> {
-                        val keys = obj.keys()
-                        while (keys.hasNext()) {
-                            val k = keys.next()
-                            val v = obj.opt(k)
-                            if (k.contains("url", ignoreCase = true) || k.contains("file", ignoreCase = true) || k.contains("link", ignoreCase = true) || k.contains("src", ignoreCase = true) || k.contains("embed", ignoreCase = true)) {
-                                if (v is String && isEmbedCandidate(v)) {
-                                    results.add(v)
-                                }
-                            }
-                            collect(v)
-                        }
-                    }
-                    is org.json.JSONArray -> {
-                        for (i in 0 until obj.length()) {
-                            collect(obj.opt(i))
-                        }
-                    }
-                }
-            }
-
-            collect(root)
-            results.distinct()
-        }.getOrDefault(emptyList())
-    }
-
-    private fun extractUrlFromText(text: String): String {
-        if (text.isBlank()) return ""
-
-        val iframeSrc = Regex("""<iframe[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-            .find(text)?.groupValues?.getOrNull(1)
-        if (!iframeSrc.isNullOrBlank()) return iframeSrc
-
-        val unpacked = runCatching { getAndUnpack(text) }.getOrNull().orEmpty()
-        val targetText = if (unpacked.isNotBlank()) unpacked else text
-
-        val direct = Regex("""https?:\\?/\\?/[^"'\s<>]+\.(?:m3u8|mp4)[^"'\s<>]*""", RegexOption.IGNORE_CASE)
-            .find(targetText)?.groupValues?.getOrNull(0)
-        if (!direct.isNullOrBlank()) return direct
-
-        val embed = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:embed|player|video|stream|drive|file)[^"'\s<>]*""", RegexOption.IGNORE_CASE)
-            .find(targetText)?.groupValues?.getOrNull(0)
-        if (!embed.isNullOrBlank()) return embed
-
-        return ""
-    }
 }
-
