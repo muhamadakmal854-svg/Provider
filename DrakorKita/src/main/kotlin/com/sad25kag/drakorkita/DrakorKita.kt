@@ -25,7 +25,6 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
 import java.net.URLEncoder
 import java.util.Base64
 
@@ -112,10 +111,11 @@ class DrakorKita : MainAPI() {
             .distinctBy { it.data }
             .sortedBy { it.episode ?: Int.MAX_VALUE }
 
-        val infoText = document.select("ul.anf").text()
+        val infoText = document.select("ul.anf, .anf").text()
         val isSeries = apiEpisodes.size > 1 ||
             infoText.contains("Type : TV Series", ignoreCase = true) ||
             infoText.contains("Type: TV Series", ignoreCase = true) ||
+            infoText.contains("Type:  TV Series", ignoreCase = true) ||
             title.contains("Season", ignoreCase = true) ||
             title.contains(Regex("""Episode\s+\d+\s*-\s*\d+""", RegexOption.IGNORE_CASE))
 
@@ -126,8 +126,9 @@ class DrakorKita : MainAPI() {
                 configs.firstOrNull()?.let { config ->
                     listOf(
                         newEpisode(config.toPayloadJson()) {
-                            name = "Episode"
-                            posterUrl = poster
+                            this.name = "Episode 1"
+                            this.episode = 1
+                            this.posterUrl = poster
                         }
                     )
                 } ?: emptyList()
@@ -197,58 +198,113 @@ class DrakorKita : MainAPI() {
     }
 
     private suspend fun fetchEpisodes(config: ApiConfig): List<com.lagradost.cloudstream3.Episode> {
-        val cApiHost = config.cApiHost.trimEnd('/')
-        val url = "$cApiHost/episode_mob.php" +
-            "?is_mob=${config.isMob}" +
-            "&is_uc=${config.isUc}" +
-            "&movie_id=${encode(config.movieId)}" +
-            "&tag=${encode(config.tag)}" +
-            "&c=${encode(config.c)}" +
-            "&t=${encode(config.t)}" +
-            "&ver=${encode(config.ver)}"
-
-        val json = runCatching {
-            val res = app.get(url, headers = ajaxHeaders, referer = config.detailUrl)
-            JSONObject(res.text)
-        }.getOrNull() ?: return emptyList()
-
-        val episodeArray = json.optJSONArray("episode") ?: return emptyList()
-        val defaultServerXid = json.optString("server_xid")
+        val candidateApiHosts = listOf(
+            "$mainUrl/c_api",
+            "https://drakorindo18.kita.baby/c_api",
+            "https://drakor43.nicewap.sbs/c_api",
+            config.cApiHost.trimEnd('/')
+        ).distinct()
 
         val episodes = mutableListOf<com.lagradost.cloudstream3.Episode>()
-        for (i in 0 until episodeArray.length()) {
-            val item = episodeArray.optJSONObject(i) ?: continue
-            val epId = item.optString("id")
-            val epName = item.optString("name").ifBlank { "Episode ${i + 1}" }
-            val epNum = item.optString("eps_no").toIntOrNull()
-                ?: Regex("""\d+""").find(epName)?.value?.toIntOrNull()
-                ?: (i + 1)
-            val epXid = item.optString("server_xid").ifBlank { defaultServerXid }
 
-            val payload = DrakorKitaResolver.ApiPayload(
-                detailUrl = config.detailUrl,
-                title = config.cleanTitle,
-                movieId = config.movieId,
-                episodeId = epId,
-                serverXid = epXid,
-                tag = config.tag,
-                c = config.c,
-                t = config.t,
-                ver = config.ver,
-                cApiHost = config.cApiHost,
-                isMob = config.isMob,
-                isUc = config.isUc,
-                mediaType = "tv"
-            )
+        for (cApiHost in candidateApiHosts) {
+            val url = "$cApiHost/episode_mob.php" +
+                "?is_mob=${config.isMob}" +
+                "&is_uc=${config.isUc}" +
+                "&movie_id=${encode(config.movieId)}" +
+                "&tag=${encode(config.tag)}" +
+                "&c=${encode(config.c)}" +
+                "&t=${encode(config.t)}" +
+                "&ver=${encode(config.ver)}"
 
-            episodes.add(
-                newEpisode(payload.toPayloadJson()) {
-                    name = epName
-                    episode = epNum
-                    posterUrl = config.poster
+            val json = runCatching {
+                val res = app.get(url, headers = ajaxHeaders, referer = config.detailUrl)
+                JSONObject(res.text)
+            }.getOrNull() ?: continue
+
+            val episodeListsHtml = json.optString("episode_lists")
+            val defaultServerXid = json.optString("server_xid")
+
+            if (episodeListsHtml.isNotBlank()) {
+                val doc = Jsoup.parse(episodeListsHtml)
+                val buttons = doc.select("a.btn-svr, a[data-epid]")
+
+                buttons.forEachIndexed { i, btn ->
+                    val epId = btn.attr("data-epid").ifBlank { btn.attr("data-id") }
+                    val epNameText = btn.text().trim()
+                    val epNum = epNameText.toIntOrNull()
+                        ?: Regex("""\d+""").find(epNameText)?.value?.toIntOrNull()
+                        ?: (i + 1)
+                    val epXid = btn.attr("data-server_xid").ifBlank { defaultServerXid }
+                    val epCat = btn.attr("data-cat").ifBlank { config.tag }
+                    val epVer = btn.attr("data-tag").ifBlank { config.ver }
+
+                    val payload = DrakorKitaResolver.ApiPayload(
+                        detailUrl = config.detailUrl,
+                        title = config.cleanTitle,
+                        movieId = config.movieId,
+                        episodeId = epId,
+                        serverXid = epXid,
+                        tag = epCat,
+                        c = config.c,
+                        t = config.t,
+                        ver = epVer,
+                        cApiHost = config.cApiHost,
+                        isMob = config.isMob,
+                        isUc = config.isUc,
+                        mediaType = "tv"
+                    )
+
+                    episodes.add(
+                        newEpisode(payload.toPayloadJson()) {
+                            this.name = "Episode $epNum"
+                            this.episode = epNum
+                            this.posterUrl = config.poster
+                        }
+                    )
                 }
-            )
+            }
+
+            if (episodes.isEmpty()) {
+                val episodeArray = json.optJSONArray("episode")
+                if (episodeArray != null) {
+                    for (i in 0 until episodeArray.length()) {
+                        val item = episodeArray.optJSONObject(i) ?: continue
+                        val epId = item.optString("id")
+                        val epName = item.optString("name").ifBlank { "Episode ${i + 1}" }
+                        val epNum = item.optString("eps_no").toIntOrNull() ?: (i + 1)
+                        val epXid = item.optString("server_xid").ifBlank { defaultServerXid }
+
+                        val payload = DrakorKitaResolver.ApiPayload(
+                            detailUrl = config.detailUrl,
+                            title = config.cleanTitle,
+                            movieId = config.movieId,
+                            episodeId = epId,
+                            serverXid = epXid,
+                            tag = config.tag,
+                            c = config.c,
+                            t = config.t,
+                            ver = config.ver,
+                            cApiHost = config.cApiHost,
+                            isMob = config.isMob,
+                            isUc = config.isUc,
+                            mediaType = "tv"
+                        )
+
+                        episodes.add(
+                            newEpisode(payload.toPayloadJson()) {
+                                this.name = epName
+                                this.episode = epNum
+                                this.posterUrl = config.poster
+                            }
+                        )
+                    }
+                }
+            }
+
+            if (episodes.isNotEmpty()) break
         }
+
         return episodes
     }
 
@@ -270,7 +326,7 @@ class DrakorKita : MainAPI() {
         val isUc = combinedVars["is_uc"].orEmpty().ifBlank { "0" }
         val cApiHost = combinedVars["c_api_host"].orEmpty()
             .ifBlank { combinedVars["api_host"].orEmpty() }
-            .ifBlank { "https://api.nonton.bid/c_api" }
+            .ifBlank { "$mainUrl/c_api" }
 
         val configs = mutableListOf<ApiConfig>()
 
@@ -340,9 +396,10 @@ class DrakorKita : MainAPI() {
 
         payload.split('.').forEach { chunk ->
             if (chunk.isNotBlank()) {
+                val padded = chunk + "=".repeat((4 - chunk.length % 4) % 4)
                 runCatching {
-                    val raw = String(Base64.getDecoder().decode(chunk), Charsets.ISO_8859_1)
-                    val digits = raw.replace(Regex("""\D"""), "")
+                    val rawStr = String(Base64.getDecoder().decode(padded), Charsets.ISO_8859_1)
+                    val digits = rawStr.replace(Regex("""\D"""), "")
                     if (digits.isNotBlank()) {
                         decodedChars.add(digits.toInt().toChar())
                     }
