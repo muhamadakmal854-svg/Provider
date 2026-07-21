@@ -96,67 +96,61 @@ class DrakorKita : MainAPI() {
         val isMovie = url.contains("media_type=movie") ||
             url.contains("/movie/") ||
             infoText.contains("Type : Movie", ignoreCase = true) ||
-            infoText.contains("Type: Movie", ignoreCase = true)
+            infoText.contains("Type: Movie", ignoreCase = true) ||
+            infoText.contains("Type:  Movie", ignoreCase = true)
 
         val isSeries = url.contains("media_type=tv") ||
             url.contains("/tv/") ||
             infoText.contains("Type : TV Series", ignoreCase = true) ||
+            infoText.contains("Type: TV Series", ignoreCase = true) ||
+            infoText.contains("Type:  TV Series", ignoreCase = true) ||
             infoText.contains("Episode Count", ignoreCase = true) ||
             infoText.contains("Ongoing", ignoreCase = true) ||
-            title.contains("Season", ignoreCase = true) ||
-            document.select("div#episode_lists a, div.pagination a").size > 1
+            title.contains("Season", ignoreCase = true)
+
+        // Extract total episode count
+        val epCountMatch = Regex("""\[Episode\s*\d+\s*-\s*(\d+)\]""", RegexOption.IGNORE_CASE).find(title)
+            ?: Regex("""Episode Count:\s*(\d+)""", RegexOption.IGNORE_CASE).find(infoText)
+        val totalEpisodes = epCountMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
+
+        // Extract loadEpisode call parameters
+        val loadEpMatch = Regex("""loadEpisode\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""").find(document.html())
+        val serverTag = if (loadEpMatch != null) {
+            val (_, tag, ver) = loadEpMatch.destructured
+            "${tag}_$ver"
+        } else {
+            "hs_ind"
+        }
 
         val episodes = mutableListOf<com.lagradost.cloudstream3.Episode>()
 
-        // 1. Extract episode links from pagination / list
-        val epElements = document.select("div#episode_lists a, div.pagination a, ul.episodes a, div.episode-list a")
-        epElements.forEachIndexed { index, el ->
-            val href = el.attr("href")
-            val fullEpUrl = fixUrlNull(href) ?: return@forEachIndexed
-            val epNum = Regex("""\d+""").find(el.text())?.value?.toIntOrNull() ?: (index + 1)
-            val epName = el.text().ifBlank { "Episode $epNum" }
+        val isFinalTv = isSeries || (!isMovie && totalEpisodes > 1)
 
-            episodes.add(
-                newEpisode(fullEpUrl) {
-                    this.name = epName
-                    this.episode = epNum
-                    this.posterUrl = poster
-                }
-            )
-        }
-
-        // 2. Extract loadEpisode call parameters
-        val loadEpMatch = Regex("""loadEpisode\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""").find(document.html())
-        val (movieId, tag, ver) = if (loadEpMatch != null) {
-            Triple(loadEpMatch.groupValues[1], loadEpMatch.groupValues[2], loadEpMatch.groupValues[3])
-        } else {
-            Triple("", "hs", "ind")
-        }
-
-        val serverTag = if (tag.isNotBlank() && ver.isNotBlank()) "${tag}_$ver" else "hs_ind"
-
-        // 3. Fallback: If no episodes found, generate episode URLs for hs_ind, ss_ind
-        if (episodes.isEmpty()) {
+        if (isFinalTv) {
             val baseTrimmed = url.trimEnd('/')
-            val ep1Url = when {
-                url.contains("/$serverTag/") -> url
-                isMovie -> "$baseTrimmed/$serverTag/"
-                else -> "$baseTrimmed/$serverTag/1/"
+            for (i in 1..totalEpisodes) {
+                val epUrl = "$baseTrimmed/$serverTag/$i/"
+                episodes.add(
+                    newEpisode(epUrl) {
+                        this.name = "Episode $i"
+                        this.episode = i
+                        this.posterUrl = poster
+                    }
+                )
             }
-
+        } else {
+            val movieEpUrl = "${url.trimEnd('/')}/$serverTag/"
             episodes.add(
-                newEpisode(ep1Url) {
-                    this.name = if (isMovie) "Play Movie" else "Episode 1"
+                newEpisode(movieEpUrl) {
+                    this.name = "Play Movie"
                     this.episode = 1
                     this.posterUrl = poster
                 }
             )
         }
 
-        val isFinalTv = isSeries || (!isMovie && episodes.size > 1)
-
         return if (isFinalTv) {
-            newTvSeriesLoadResponse(cleanTitle, url, TvType.AsianDrama, episodes.distinctBy { it.data }) {
+            newTvSeriesLoadResponse(cleanTitle, url, TvType.AsianDrama, episodes) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year

@@ -5,7 +5,6 @@ import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
-import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.jsoup.nodes.Document
@@ -122,7 +121,42 @@ object DrakorKitaResolver {
 
         val html = document.html()
 
-        // 1. Check for Hydrax embeds / links
+        // 1. Extract movieId from loadEpisode call e.g. loadEpisode('2r8htL7gWr', 'hs', 'ind')
+        val loadEpMatch = Regex("""loadEpisode\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""").find(html)
+        val movieId = loadEpMatch?.groupValues?.getOrNull(1) ?: ""
+
+        if (movieId.isNotBlank()) {
+            val p2pUrls = listOf(
+                "https://stb.strp2p.com/e/$movieId",
+                "https://player.upn.one/e/$movieId",
+                "https://fastdl.p2pstream.online/e/$movieId"
+            )
+
+            p2pUrls.forEach { p2pUrl ->
+                val loaded = loadExtractor(p2pUrl, pageUrl, subtitleCallback, callback)
+                if (loaded) {
+                    foundAny = true
+                } else {
+                    emitLink("P2P", "[P2P] Server", p2pUrl, referer = pageUrl)
+                }
+            }
+
+            val hydraxUrls = listOf(
+                "https://iamcdn.net/v/$movieId",
+                "https://playhydrax.com/v/$movieId"
+            )
+
+            hydraxUrls.forEach { hydraxUrl ->
+                val loaded = loadExtractor(hydraxUrl, pageUrl, subtitleCallback, callback)
+                if (loaded) {
+                    foundAny = true
+                } else {
+                    emitLink("HYDRAX", "[HYDRAX] Server", hydraxUrl, referer = pageUrl)
+                }
+            }
+        }
+
+        // 2. Check for Hydrax embeds / links in HTML
         val hydraxMatch = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:hydrax|iamcdn|playhydrax|multi\.hydrax)[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
         if (hydraxMatch != null) {
             val hydraxUrl = normalizeUrl(hydraxMatch.value, mainUrl)
@@ -136,7 +170,7 @@ object DrakorKitaResolver {
             }
         }
 
-        // 2. Check for P2P / Stream embeds (stb.strp2p.com, player.upn.one, p2pstream, etc.)
+        // 3. Check for P2P / Stream embeds in HTML
         val p2pMatch = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:p2p|strp2p|upn\.one|peer|hls\.p2p|p2pstream|playerp2p|fastdl\.p2pstream)[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
         if (p2pMatch != null) {
             val p2pUrl = normalizeUrl(p2pMatch.value, mainUrl)
@@ -150,7 +184,7 @@ object DrakorKitaResolver {
             }
         }
 
-        // 3. Extract direct M3U8 / MP4 URLs from HTML / scripts
+        // 4. Extract direct M3U8 / MP4 URLs from HTML / scripts
         val m3u8Matches = Regex("""https?:\\?/\\?/[^"'\s<>]+\.(?:m3u8|mp4)[^"'\s<>]*""", RegexOption.IGNORE_CASE).findAll(html)
         m3u8Matches.forEach { match ->
             val directUrl = normalizeUrl(match.value, mainUrl)
