@@ -1,38 +1,40 @@
 package com.sad25kag.drakorkita
 
-import com.lagradost.cloudstream3.extractors.VidStack
+import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.utils.ExtractorApi
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
+import com.lagradost.cloudstream3.utils.getAndUnpack
 
-class StbP2P : VidStack() {
-    override var mainUrl = "https://stb.strp2p.com"
-    override var name = "STBP2P"
+open class P2pStreamExtractor(
+    override val name: String,
+    override val mainUrl: String
+) : ExtractorApi() {
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val response = app.get(url, referer = referer ?: "$mainUrl/")
+        val text = response.text
+        val unpacked = getAndUnpack(text)
+        val m3u8Regex = Regex("""https?://[^'"\s<>]+\.m3u8[^'"\s<>]*""")
+        val matches = m3u8Regex.findAll(unpacked.ifBlank { text }).toList()
+
+        matches.forEach { match ->
+            generateM3u8(name, match.value, mainUrl).forEach(callback)
+        }
+    }
 }
 
-class Playerupnone : VidStack() {
-    override var mainUrl = "https://player.upn.one"
-    override var name = "UPNP2P"
-}
-
-class FastdlP2P : VidStack() {
-    override var mainUrl = "https://fastdl.p2pstream.online"
-    override var name = "FastDLP2P"
-}
-
-class P2PStreamOnline : VidStack() {
-    override var mainUrl = "https://p2pstream.online"
-    override var name = "P2PStream"
-}
-
-class Strp2pCom : VidStack() {
-    override var mainUrl = "https://strp2p.com"
-    override var name = "STRP2P"
-}
-
-class UpnOneCom : VidStack() {
-    override var mainUrl = "https://upn.one"
-    override var name = "UPNOne"
-}
-
-class DrakorKitaStream : VidStack() {
-    override var mainUrl = "https://drakorkita.stream"
-    override var name = "DrakorKitaP2P"
-}
+class StbP2P : P2pStreamExtractor("STBP2P", "https://stb.strp2p.com")
+class Playerupnone : P2pStreamExtractor("UPNP2P", "https://player.upn.one")
+class FastdlP2P : P2pStreamExtractor("FastDLP2P", "https://fastdl.p2pstream.online")
+class P2PStreamOnline : P2pStreamExtractor("P2PStream", "https://p2pstream.online")
+class Strp2pCom : P2pStreamExtractor("STRP2P", "https://strp2p.com")
+class UpnOneCom : P2pStreamExtractor("UPNOne", "https://upn.one")
+class DrakorKitaStream : P2pStreamExtractor("DrakorKitaP2P", "https://drakorkita.stream")
