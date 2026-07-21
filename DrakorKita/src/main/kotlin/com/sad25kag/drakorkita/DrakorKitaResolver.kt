@@ -93,7 +93,7 @@ object DrakorKitaResolver {
     ): Boolean {
         var foundAny = false
 
-        suspend fun emitLink(
+        suspend fun emitLinkIfValid(
             source: String,
             name: String,
             url: String,
@@ -102,7 +102,15 @@ object DrakorKitaResolver {
             type: ExtractorLinkType = ExtractorLinkType.VIDEO
         ) {
             val normalized = normalizeUrl(url, mainUrl)
-            if (normalized.isNotBlank()) {
+            if (normalized.isBlank()) return
+
+            // Test URL health to avoid BAD_HTTP_STATUS (2004) in ExoPlayer
+            val isHealthy = runCatching {
+                val check = app.get(normalized, headers = headers, timeout = 5)
+                check.isSuccessful
+            }.getOrDefault(false)
+
+            if (isHealthy) {
                 foundAny = true
                 val linkType = if (normalized.contains(".m3u8", ignoreCase = true)) ExtractorLinkType.M3U8 else type
                 callback(
@@ -114,6 +122,7 @@ object DrakorKitaResolver {
                     ) {
                         this.referer = referer
                         this.quality = quality
+                        this.headers = headers
                     }
                 )
             }
@@ -132,12 +141,14 @@ object DrakorKitaResolver {
                 "https://fastdl.p2pstream.online/e/$movieId"
             )
 
-            p2pUrls.forEach { p2pUrl ->
+            for (p2pUrl in p2pUrls) {
                 val loaded = loadExtractor(p2pUrl, pageUrl, subtitleCallback, callback)
                 if (loaded) {
                     foundAny = true
+                    break
                 } else {
-                    emitLink("P2P", "[P2P] Server", p2pUrl, referer = pageUrl)
+                    emitLinkIfValid("P2P", "[P2P] Server", p2pUrl, referer = pageUrl)
+                    if (foundAny) break
                 }
             }
 
@@ -146,45 +157,19 @@ object DrakorKitaResolver {
                 "https://playhydrax.com/v/$movieId"
             )
 
-            hydraxUrls.forEach { hydraxUrl ->
+            for (hydraxUrl in hydraxUrls) {
                 val loaded = loadExtractor(hydraxUrl, pageUrl, subtitleCallback, callback)
                 if (loaded) {
                     foundAny = true
+                    break
                 } else {
-                    emitLink("HYDRAX", "[HYDRAX] Server", hydraxUrl, referer = pageUrl)
+                    emitLinkIfValid("HYDRAX", "[HYDRAX] Server", hydraxUrl, referer = pageUrl)
+                    if (foundAny) break
                 }
             }
         }
 
-        // 2. Check for Hydrax embeds / links in HTML
-        val hydraxMatch = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:hydrax|iamcdn|playhydrax|multi\.hydrax)[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
-        if (hydraxMatch != null) {
-            val hydraxUrl = normalizeUrl(hydraxMatch.value, mainUrl)
-            if (hydraxUrl.isNotBlank()) {
-                val loaded = loadExtractor(hydraxUrl, pageUrl, subtitleCallback, callback)
-                if (loaded) {
-                    foundAny = true
-                } else {
-                    emitLink("HYDRAX", "[HYDRAX] Server", hydraxUrl, referer = pageUrl)
-                }
-            }
-        }
-
-        // 3. Check for P2P / Stream embeds in HTML
-        val p2pMatch = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:p2p|strp2p|upn\.one|peer|hls\.p2p|p2pstream|playerp2p|fastdl\.p2pstream)[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
-        if (p2pMatch != null) {
-            val p2pUrl = normalizeUrl(p2pMatch.value, mainUrl)
-            if (p2pUrl.isNotBlank()) {
-                val loaded = loadExtractor(p2pUrl, pageUrl, subtitleCallback, callback)
-                if (loaded) {
-                    foundAny = true
-                } else {
-                    emitLink("P2P", "[P2P] Server", p2pUrl, referer = pageUrl)
-                }
-            }
-        }
-
-        // 4. Extract direct M3U8 / MP4 URLs from HTML / scripts
+        // 2. Extract direct M3U8 / MP4 URLs from HTML / scripts
         val m3u8Matches = Regex("""https?:\\?/\\?/[^"'\s<>]+\.(?:m3u8|mp4)[^"'\s<>]*""", RegexOption.IGNORE_CASE).findAll(html)
         m3u8Matches.forEach { match ->
             val directUrl = normalizeUrl(match.value, mainUrl)
@@ -192,7 +177,7 @@ object DrakorKitaResolver {
                 val nameTag = if (directUrl.contains("p2p", ignoreCase = true) || directUrl.contains("strp2p", ignoreCase = true)) "[P2P] Server"
                              else if (directUrl.contains("hydrax", ignoreCase = true)) "[HYDRAX] Server"
                              else "DrakorKita Direct"
-                emitLink("DrakorKita", nameTag, directUrl, referer = pageUrl)
+                emitLinkIfValid("DrakorKita", nameTag, directUrl, referer = pageUrl)
             }
         }
 
