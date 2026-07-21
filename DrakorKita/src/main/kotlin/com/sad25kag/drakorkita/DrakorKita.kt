@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SearchResponseList
 import com.lagradost.cloudstream3.SubtitleFile
+import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.fixUrl
@@ -21,10 +22,12 @@ import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.toNewSearchResponseList
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.loadExtractor
+import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import java.net.URLEncoder
+import java.util.Base64
 
 class DrakorKita : MainAPI() {
     override var mainUrl = "https://drakorindo18.kita.baby"
@@ -35,10 +38,17 @@ class DrakorKita : MainAPI() {
     override val supportedTypes = setOf(TvType.AsianDrama, TvType.TvSeries, TvType.Movie)
 
     private val sourceHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0",
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36",
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer" to "$mainUrl/"
+    )
+
+    private val ajaxHeaders = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36",
+        "Accept" to "text/plain, */*; q=0.01",
+        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Origin" to mainUrl
     )
 
     override val mainPage = mainPageOf(
@@ -50,9 +60,7 @@ class DrakorKita : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val path = request.data
-        val url = buildPagedUrl(path, page)
-        val document = getDocument(url)
+        val document = getDocument(buildPagedUrl(request.data, page))
         val list = document.toSearchResults(request.name)
 
         return newHomePageResponse(
@@ -65,15 +73,22 @@ class DrakorKita : MainAPI() {
         )
     }
 
-    override suspend fun search(query: String, page: Int): SearchResponseList? {
+    override suspend fun search(query: String, page: Int): SearchResponseList {
         val encoded = URLEncoder.encode(query, "UTF-8")
-        val url = buildPagedUrl("all?q=$encoded", page)
+        val searchUrls = listOf(
+            buildPagedUrl("all?q=$encoded", page)
+        )
 
-        val results = runCatching {
-            getDocument(url).toSearchResults("Search")
-        }.getOrDefault(emptyList())
+        val results = linkedMapOf<String, SearchResponse>()
+        searchUrls.forEach { url ->
+            runCatching {
+                getDocument(url).toSearchResults("Search")
+            }.getOrDefault(emptyList()).forEach { item ->
+                results[item.url] = item
+            }
+        }
 
-        return results.toNewSearchResponseList()
+        return results.values.toList().toNewSearchResponseList()
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -90,66 +105,34 @@ class DrakorKita : MainAPI() {
             ?.getOrNull(1)
             ?.toIntOrNull()
 
-        val infoText = document.select(".anf").text()
+        val configs = parseApiConfigs(document, url, cleanTitle, poster)
+        val apiEpisodes = configs
+            .take(1)
+            .flatMap { config -> fetchEpisodes(config) }
+            .distinctBy { it.data }
+            .sortedBy { it.episode ?: Int.MAX_VALUE }
 
-        // Strict Movie vs Series Classification
-        val isMovie = url.contains("media_type=movie") ||
-            url.contains("/movie/") ||
-            infoText.contains("Type : Movie", ignoreCase = true) ||
-            infoText.contains("Type: Movie", ignoreCase = true) ||
-            infoText.contains("Type:  Movie", ignoreCase = true)
-
-        val isSeries = url.contains("media_type=tv") ||
-            url.contains("/tv/") ||
+        val infoText = document.select("ul.anf").text()
+        val isSeries = apiEpisodes.size > 1 ||
             infoText.contains("Type : TV Series", ignoreCase = true) ||
             infoText.contains("Type: TV Series", ignoreCase = true) ||
-            infoText.contains("Type:  TV Series", ignoreCase = true) ||
-            infoText.contains("Episode Count", ignoreCase = true) ||
-            infoText.contains("Ongoing", ignoreCase = true) ||
-            title.contains("Season", ignoreCase = true)
+            title.contains("Season", ignoreCase = true) ||
+            title.contains(Regex("""Episode\s+\d+\s*-\s*\d+""", RegexOption.IGNORE_CASE))
 
-        // Extract total episode count
-        val epCountMatch = Regex("""\[Episode\s*\d+\s*-\s*(\d+)\]""", RegexOption.IGNORE_CASE).find(title)
-            ?: Regex("""Episode Count:\s*(\d+)""", RegexOption.IGNORE_CASE).find(infoText)
-        val totalEpisodes = epCountMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
-
-        // Extract loadEpisode call parameters
-        val loadEpMatch = Regex("""loadEpisode\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""").find(document.html())
-        val serverTag = if (loadEpMatch != null) {
-            val (_, tag, ver) = loadEpMatch.destructured
-            "${tag}_$ver"
-        } else {
-            "hs_ind"
-        }
-
-        val episodes = mutableListOf<com.lagradost.cloudstream3.Episode>()
-
-        val isFinalTv = isSeries || (!isMovie && totalEpisodes > 1)
-
-        if (isFinalTv) {
-            val baseTrimmed = url.trimEnd('/')
-            for (i in 1..totalEpisodes) {
-                val epUrl = "$baseTrimmed/$serverTag/$i/"
-                episodes.add(
-                    newEpisode(epUrl) {
-                        this.name = "Episode $i"
-                        this.episode = i
-                        this.posterUrl = poster
-                    }
-                )
+        return if (isSeries) {
+            val episodes = if (apiEpisodes.isNotEmpty()) {
+                apiEpisodes
+            } else {
+                configs.firstOrNull()?.let { config ->
+                    listOf(
+                        newEpisode(config.toPayloadJson()) {
+                            name = "Episode"
+                            posterUrl = poster
+                        }
+                    )
+                } ?: emptyList()
             }
-        } else {
-            val movieEpUrl = "${url.trimEnd('/')}/$serverTag/"
-            episodes.add(
-                newEpisode(movieEpUrl) {
-                    this.name = "Play Movie"
-                    this.episode = 1
-                    this.posterUrl = poster
-                }
-            )
-        }
 
-        return if (isFinalTv) {
             newTvSeriesLoadResponse(cleanTitle, url, TvType.AsianDrama, episodes) {
                 this.posterUrl = poster
                 this.plot = plot
@@ -157,8 +140,11 @@ class DrakorKita : MainAPI() {
                 this.tags = tags
             }
         } else {
-            val movieEpUrl = episodes.firstOrNull()?.data ?: url
-            newMovieLoadResponse(cleanTitle, url, TvType.Movie, movieEpUrl) {
+            val movieData = apiEpisodes.firstOrNull()?.data
+                ?: configs.firstOrNull()?.toPayloadJson()
+                ?: url
+
+            newMovieLoadResponse(cleanTitle, url, TvType.Movie, movieData) {
                 this.posterUrl = poster
                 this.plot = plot
                 this.year = year
@@ -173,48 +159,231 @@ class DrakorKita : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val pageUrl = fixUrl(data)
+        var foundAny = false
+        val payload = parsePayload(data)
 
-        val urlCandidates = linkedSetOf(pageUrl)
-        val baseTrimmed = pageUrl.trimEnd('/')
-
-        // Generate candidate server URLs for TV and Movies
-        if (!pageUrl.contains("/hs_") && !pageUrl.contains("/ss_")) {
-            urlCandidates.add("$baseTrimmed/hs_ind/1/")
-            urlCandidates.add("$baseTrimmed/ss_ind/1/")
-            urlCandidates.add("$baseTrimmed/hs_ind/")
-            urlCandidates.add("$baseTrimmed/ss_ind/")
+        if (payload != null) {
+            val apiHandled = DrakorKitaResolver.resolveApiPlayback(
+                providerName = name,
+                mainUrl = mainUrl,
+                payload = payload,
+                ajaxHeaders = ajaxHeaders,
+                subtitleCallback = subtitleCallback,
+                callback = callback
+            )
+            if (apiHandled) foundAny = true
         }
 
-        var foundAny = false
+        val pageUrl = payload?.detailUrl ?: fixUrl(data)
+        runCatching {
+            val document = getDocument(pageUrl)
 
-        for (candidateUrl in urlCandidates) {
-            runCatching {
-                val doc = getDocument(candidateUrl)
+            val subs = DrakorKitaResolver.extractSubtitles(document, mainUrl)
+            subs.forEach(subtitleCallback)
 
-                val resolved = DrakorKitaResolver.resolvePageLinks(
-                    document = doc,
-                    pageUrl = candidateUrl,
-                    mainUrl = mainUrl,
-                    headers = sourceHeaders,
-                    subtitleCallback = subtitleCallback,
-                    callback = callback
-                )
-                if (resolved) foundAny = true
-
-                val embeds = DrakorKitaResolver.extractEmbedCandidates(doc, mainUrl)
-                embeds.forEach { candidateEmbed ->
-                    val cleanEmbed = DrakorKitaResolver.normalizeUrl(candidateEmbed, mainUrl)
-                    if (cleanEmbed.isNotBlank()) {
-                        val loaded = loadExtractor(cleanEmbed, candidateUrl, subtitleCallback, callback)
-                        if (loaded) foundAny = true
-                    }
-                }
-            }
-            if (foundAny) break
+            val embedCandidates = DrakorKitaResolver.extractEmbedCandidates(document, mainUrl)
+            val embedHandled = DrakorKitaResolver.resolveCandidates(
+                providerName = name,
+                mainUrl = mainUrl,
+                pageUrl = pageUrl,
+                candidates = embedCandidates,
+                subtitleCallback = subtitleCallback,
+                callback = callback
+            )
+            if (embedHandled) foundAny = true
         }
 
         return foundAny
+    }
+
+    private suspend fun fetchEpisodes(config: ApiConfig): List<com.lagradost.cloudstream3.Episode> {
+        val cApiHost = config.cApiHost.trimEnd('/')
+        val url = "$cApiHost/episode_mob.php" +
+            "?is_mob=${config.isMob}" +
+            "&is_uc=${config.isUc}" +
+            "&movie_id=${encode(config.movieId)}" +
+            "&tag=${encode(config.tag)}" +
+            "&c=${encode(config.c)}" +
+            "&t=${encode(config.t)}" +
+            "&ver=${encode(config.ver)}"
+
+        val json = runCatching {
+            val res = app.get(url, headers = ajaxHeaders, referer = config.detailUrl)
+            JSONObject(res.text)
+        }.getOrNull() ?: return emptyList()
+
+        val episodeArray = json.optJSONArray("episode") ?: return emptyList()
+        val defaultServerXid = json.optString("server_xid")
+
+        val episodes = mutableListOf<com.lagradost.cloudstream3.Episode>()
+        for (i in 0 until episodeArray.length()) {
+            val item = episodeArray.optJSONObject(i) ?: continue
+            val epId = item.optString("id")
+            val epName = item.optString("name").ifBlank { "Episode ${i + 1}" }
+            val epNum = item.optString("eps_no").toIntOrNull()
+                ?: Regex("""\d+""").find(epName)?.value?.toIntOrNull()
+                ?: (i + 1)
+            val epXid = item.optString("server_xid").ifBlank { defaultServerXid }
+
+            val payload = DrakorKitaResolver.ApiPayload(
+                detailUrl = config.detailUrl,
+                title = config.cleanTitle,
+                movieId = config.movieId,
+                episodeId = epId,
+                serverXid = epXid,
+                tag = config.tag,
+                c = config.c,
+                t = config.t,
+                ver = config.ver,
+                cApiHost = config.cApiHost,
+                isMob = config.isMob,
+                isUc = config.isUc,
+                mediaType = "tv"
+            )
+
+            episodes.add(
+                newEpisode(payload.toPayloadJson()) {
+                    name = epName
+                    episode = epNum
+                    posterUrl = config.poster
+                }
+            )
+        }
+        return episodes
+    }
+
+    private fun parseApiConfigs(
+        document: Document,
+        detailUrl: String,
+        cleanTitle: String,
+        poster: String?
+    ): List<ApiConfig> {
+        val html = document.html()
+        val script2Vars = decodeScript2Variables(html)
+
+        val jsVars = extractJsVariables(html)
+        val combinedVars = script2Vars + jsVars
+
+        val c = combinedVars["c"].orEmpty()
+        val t = combinedVars["t"].orEmpty()
+        val isMob = combinedVars["is_mob"].orEmpty().ifBlank { "1" }
+        val isUc = combinedVars["is_uc"].orEmpty().ifBlank { "0" }
+        val cApiHost = combinedVars["c_api_host"].orEmpty()
+            .ifBlank { combinedVars["api_host"].orEmpty() }
+            .ifBlank { "https://api.nonton.bid/c_api" }
+
+        val configs = mutableListOf<ApiConfig>()
+
+        val epButtons = document.select("a.post-page-numbers, div.pagination a, button[onclick*='loadEpisode'], a[onclick*='loadEpisode']")
+        epButtons.forEach { element ->
+            val onclick = element.attr("onclick")
+            val (movieId, tag, ver) = parseOnclickLoadEpisode(onclick)
+            if (movieId.isNotBlank()) {
+                configs.add(
+                    ApiConfig(
+                        detailUrl = detailUrl,
+                        cleanTitle = cleanTitle,
+                        poster = poster,
+                        movieId = movieId,
+                        tag = tag.ifBlank { "hs" },
+                        c = c,
+                        t = t,
+                        ver = ver.ifBlank { "ind" },
+                        cApiHost = cApiHost,
+                        isMob = isMob,
+                        isUc = isUc
+                    )
+                )
+            }
+        }
+
+        if (configs.isEmpty()) {
+            val initMatch = Regex("""initEpisodeList\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""").find(html)
+            if (initMatch != null) {
+                val (movieId, tag, ver) = initMatch.destructured
+                configs.add(
+                    ApiConfig(
+                        detailUrl = detailUrl,
+                        cleanTitle = cleanTitle,
+                        poster = poster,
+                        movieId = movieId,
+                        tag = tag.ifBlank { "hs" },
+                        c = c,
+                        t = t,
+                        ver = ver.ifBlank { "ind" },
+                        cApiHost = cApiHost,
+                        isMob = isMob,
+                        isUc = isUc
+                    )
+                )
+            }
+        }
+
+        return configs.distinctBy { "${it.movieId}_${it.tag}" }
+    }
+
+    private fun parseOnclickLoadEpisode(onclick: String): Triple<String, String, String> {
+        val match = Regex("""loadEpisode\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""").find(onclick)
+            ?: Regex("""initEpisodeList\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""").find(onclick)
+        if (match != null) {
+            return Triple(match.groupValues[1], match.groupValues[2], match.groupValues[3])
+        }
+        return Triple("", "", "")
+    }
+
+    private fun decodeScript2Variables(html: String): Map<String, String> {
+        val script2Regex = Regex("""([a-zA-Z0-9_$]+)\s*=\s*'([A-Za-z0-9+/=]{10,}(?:\.[A-Za-z0-9+/=]{10,})+)'""")
+        val script2Match = script2Regex.find(html) ?: return emptyMap()
+
+        val payload = script2Match.groupValues[2]
+        val decodedChars = mutableListOf<Char>()
+
+        payload.split('.').forEach { chunk ->
+            if (chunk.isNotBlank()) {
+                runCatching {
+                    val raw = String(Base64.getDecoder().decode(chunk), Charsets.ISO_8859_1)
+                    val digits = raw.replace(Regex("""\D"""), "")
+                    if (digits.isNotBlank()) {
+                        decodedChars.add(digits.toInt().toChar())
+                    }
+                }
+            }
+        }
+
+        val decodedScript = decodedChars.joinToString("")
+        return extractJsVariables(decodedScript)
+    }
+
+    private fun extractJsVariables(script: String): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        val varRegex = Regex("""var\s+([a-zA-Z0-9_$]+)\s*=\s*['"]([^'"]*)['"]""")
+        varRegex.findAll(script).forEach { match ->
+            result[match.groupValues[1]] = match.groupValues[2]
+        }
+        return result
+    }
+
+    private fun parsePayload(data: String): DrakorKitaResolver.ApiPayload? {
+        val trimmed = data.trim()
+        if (!trimmed.startsWith("{")) return null
+        return runCatching {
+            val json = JSONObject(trimmed)
+            DrakorKitaResolver.ApiPayload(
+                detailUrl = json.optString("detailUrl"),
+                title = json.optString("title"),
+                movieId = json.optString("movieId"),
+                episodeId = json.optString("episodeId"),
+                serverXid = json.optString("serverXid"),
+                tag = json.optString("tag"),
+                c = json.optString("c"),
+                t = json.optString("t"),
+                ver = json.optString("ver"),
+                cApiHost = json.optString("cApiHost"),
+                isMob = json.optString("isMob", "1"),
+                isUc = json.optString("isUc", "0"),
+                mediaType = json.optString("mediaType")
+            )
+        }.getOrNull()
     }
 
     private fun Document.toSearchResults(sectionName: String): List<SearchResponse> {
@@ -235,7 +404,6 @@ class DrakorKita : MainAPI() {
             val cleanTitle = cleanDetailTitle(rawTitle)
             if (cleanTitle.isBlank()) return@forEach
 
-            // Filter out flagsapi.com or flag images!
             val imageElement = element.selectFirst("img.poster, img[src*='tmdb'], img:not([src*='flagsapi']):not([src*='flag'])")
                 ?: linkElement.selectFirst("img.poster, img[src*='tmdb'], img:not([src*='flagsapi']):not([src*='flag'])")
 
@@ -248,7 +416,6 @@ class DrakorKita : MainAPI() {
                 poster = null
             }
 
-            // Strict isMovie check
             val isMovie = sectionName.equals("Movie", ignoreCase = true) ||
                 fullUrl.contains("media_type=movie", ignoreCase = true) ||
                 fullUrl.contains("/movie/", ignoreCase = true)
@@ -342,5 +509,54 @@ class DrakorKita : MainAPI() {
     private suspend fun getDocument(url: String): Document {
         val res = app.get(url, headers = sourceHeaders)
         return Jsoup.parse(res.text, url)
+    }
+
+    private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
+
+    data class ApiConfig(
+        val detailUrl: String,
+        val cleanTitle: String,
+        val poster: String?,
+        val movieId: String,
+        val tag: String,
+        val c: String,
+        val t: String,
+        val ver: String,
+        val cApiHost: String,
+        val isMob: String,
+        val isUc: String
+    ) {
+        fun toPayloadJson(): String {
+            val json = JSONObject()
+            json.put("detailUrl", detailUrl)
+            json.put("title", cleanTitle)
+            json.put("movieId", movieId)
+            json.put("tag", tag)
+            json.put("c", c)
+            json.put("t", t)
+            json.put("ver", ver)
+            json.put("cApiHost", cApiHost)
+            json.put("isMob", isMob)
+            json.put("isUc", isUc)
+            return json.toString()
+        }
+    }
+
+    private fun DrakorKitaResolver.ApiPayload.toPayloadJson(): String {
+        val json = JSONObject()
+        json.put("detailUrl", detailUrl)
+        json.put("title", title)
+        json.put("movieId", movieId)
+        json.put("episodeId", episodeId)
+        json.put("serverXid", serverXid)
+        json.put("tag", tag)
+        json.put("c", c)
+        json.put("t", t)
+        json.put("ver", ver)
+        json.put("cApiHost", cApiHost)
+        json.put("isMob", isMob)
+        json.put("isUc", isUc)
+        json.put("mediaType", mediaType)
+        return json.toString()
     }
 }

@@ -2,14 +2,35 @@ package com.sad25kag.drakorkita
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import org.json.JSONObject
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import java.net.URLEncoder
+import java.util.Base64
 
 object DrakorKitaResolver {
+    data class ApiPayload(
+        val detailUrl: String,
+        val title: String,
+        val movieId: String,
+        val episodeId: String,
+        val serverXid: String,
+        val tag: String,
+        val c: String,
+        val t: String,
+        val ver: String,
+        val cApiHost: String,
+        val isMob: String,
+        val isUc: String,
+        val mediaType: String
+    )
 
     fun normalizeUrl(url: String, mainUrl: String): String {
         val trimmed = url.trim()
@@ -28,7 +49,7 @@ object DrakorKitaResolver {
     fun extractEmbedCandidates(document: Document, mainUrl: String): List<String> {
         val candidates = linkedSetOf<String>()
 
-        document.select("iframe[src], iframe[data-src], embed[src], video[src], source[src]").forEach { element ->
+        document.select("iframe[src], embed[src], video[src], source[src]").forEach { element ->
             val src = element.attr("src").ifBlank { element.attr("data-src") }
             normalizeUrl(src, mainUrl).takeIf { it.isNotBlank() }?.let(candidates::add)
         }
@@ -38,149 +59,395 @@ object DrakorKitaResolver {
                 element.attr("href"),
                 element.attr("data-src"),
                 element.attr("data-url"),
-                element.attr("data-embed"),
+                element.attr("data-video"),
                 element.attr("data-link"),
-                element.attr("data-stream")
+                element.attr("data-embed")
             ).forEach { raw ->
-                val normalized = normalizeUrl(raw, mainUrl)
-                if (isEmbedCandidate(normalized)) {
-                    candidates.add(normalized)
-                }
+                val fixed = normalizeUrl(raw, mainUrl)
+                if (isPlayableOrEmbed(fixed)) candidates.add(fixed)
             }
         }
 
-        val html = document.html()
-        val regexes = listOf(
-            Regex("""https?:\\?/\\?/[^"'\s<>]+\.(?:m3u8|mp4|mkv)[^"'\s<>]*""", RegexOption.IGNORE_CASE),
-            Regex("""https?:\\?/\\?/[^"'\s<>]*(?:embed|player|video|stream|drive|file|hydrax|p2p|strp2p|upn\.one)[^"'\s<>]*""", RegexOption.IGNORE_CASE),
-            Regex("""//[^"'\s<>]+\.(?:m3u8|mp4|mkv)[^"'\s<>]*""", RegexOption.IGNORE_CASE)
-        )
+        document.select("option[value]").forEach { option ->
+            val raw = option.attr("value").trim()
+            val direct = normalizeUrl(raw, mainUrl)
+            if (isPlayableOrEmbed(direct)) candidates.add(direct)
 
-        regexes.forEach { regex ->
-            regex.findAll(html).forEach { match ->
-                val normalized = normalizeUrl(match.value, mainUrl)
-                if (isEmbedCandidate(normalized)) {
-                    candidates.add(normalized)
+            decodeBase64(raw)?.let { decoded ->
+                val decodedDoc = Jsoup.parse(decoded)
+                decodedDoc.select("iframe[src], embed[src], video[src], source[src], a[href]").forEach { element ->
+                    val url = normalizeUrl(
+                        element.attr("src").ifBlank { element.attr("href") },
+                        mainUrl
+                    )
+                    if (isPlayableOrEmbed(url)) candidates.add(url)
                 }
+                extractUrlsFromText(decoded, mainUrl).forEach(candidates::add)
             }
         }
 
-        return candidates.toList()
+        extractUnpackedUrls(document, mainUrl).forEach(candidates::add)
+        extractUrlsFromText(document.html(), mainUrl).forEach(candidates::add)
+
+        return candidates.filter { it.isNotBlank() }.distinct()
     }
 
-    fun isEmbedCandidate(url: String): Boolean {
-        if (url.isBlank()) return false
-        val lower = url.lowercase()
-        val ignoredExtensions = listOf(".png", ".jpg", ".jpeg", ".gif", ".webp", ".css", ".js", ".svg", ".ico", ".woff", ".woff2", ".ttf", "disqus")
-        if (ignoredExtensions.any { lower.contains(it) }) return false
-
-        val knownKeywords = listOf(
-            ".m3u8", ".mp4", "embed", "player", "stream", "video", "drive", "file",
-            "dood", "streamwish", "filemoon", "vidhide", "mixdrop", "streamtape",
-            "lulustream", "krakenfiles", "pixeldrain", "gofile", "mediafire", "hxfile",
-            "hydrax", "p2p", "strp2p", "upn.one", "load.my.id", "nonton.bid"
-        )
-        return knownKeywords.any { lower.contains(it) }
+    suspend fun extractSubtitles(document: Document, mainUrl: String): List<SubtitleFile> {
+        return document.select("track[src], a[href$=.srt], a[href$=.vtt]").mapNotNull { element ->
+            val url = normalizeUrl(element.attr("src").ifBlank { element.attr("href") }, mainUrl)
+            if (url.isBlank()) return@mapNotNull null
+            val label = element.attr("srclang")
+                .ifBlank { element.attr("label") }
+                .ifBlank { element.text() }
+                .ifBlank { "Indonesia" }
+            newSubtitleFile(label, url)
+        }.distinctBy { it.url }
     }
 
-    suspend fun resolvePageLinks(
-        document: Document,
-        pageUrl: String,
+    suspend fun resolveApiPlayback(
+        providerName: String,
         mainUrl: String,
-        headers: Map<String, String>,
+        payload: ApiPayload,
+        ajaxHeaders: Map<String, String>,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        var foundAny = false
+        val candidates = linkedSetOf<String>()
+        val cApiHost = payload.cApiHost.trimEnd('/')
 
-        suspend fun emitLinkIfValid(
-            source: String,
-            name: String,
-            url: String,
-            referer: String = pageUrl,
-            quality: Int = Qualities.Unknown.value,
-            type: ExtractorLinkType = ExtractorLinkType.VIDEO
-        ) {
-            val normalized = normalizeUrl(url, mainUrl)
-            if (normalized.isBlank()) return
+        var episodeIdSeed = payload.episodeId
+        var serverXidSeed = payload.serverXid
+        var tagSeed = payload.tag
 
-            // Test URL health to avoid BAD_HTTP_STATUS (2004) in ExoPlayer
-            val isHealthy = runCatching {
-                val check = app.get(normalized, headers = headers, timeout = 5)
-                check.isSuccessful
-            }.getOrDefault(false)
+        if (episodeIdSeed.isBlank() && payload.movieId.isNotBlank()) {
+            val episodeJson = apiGetJson(
+                url = "$cApiHost/episode_mob.php" +
+                    "?is_mob=${payload.isMob}" +
+                    "&is_uc=${payload.isUc}" +
+                    "&movie_id=${encode(payload.movieId)}" +
+                    "&tag=${encode(payload.tag)}" +
+                    "&c=${encode(payload.c)}" +
+                    "&t=${encode(payload.t)}" +
+                    "&ver=${encode(payload.ver)}",
+                headers = ajaxHeaders,
+                referer = payload.detailUrl
+            )
+            episodeIdSeed = episodeJson?.optString("first_ep_id").orEmpty()
+            serverXidSeed = episodeJson?.optString("server_xid").orEmpty()
+                .ifBlank { serverXidSeed }
+            tagSeed = episodeJson?.optString("tag").orEmpty()
+                .ifBlank { tagSeed }
+        }
 
-            if (isHealthy) {
-                foundAny = true
-                val linkType = if (normalized.contains(".m3u8", ignoreCase = true)) ExtractorLinkType.M3U8 else type
-                callback(
-                    newExtractorLink(
-                        source = source,
-                        name = name,
-                        url = normalized,
-                        type = linkType
-                    ) {
-                        this.referer = referer
-                        this.quality = quality
-                        this.headers = headers
+        val serverJson = if (episodeIdSeed.isNotBlank()) {
+            apiGetJson(
+                url = "$cApiHost/server_mob.php" +
+                    "?is_mob=${payload.isMob}" +
+                    "&is_uc=${payload.isUc}" +
+                    "&episode_id=${encode(episodeIdSeed)}" +
+                    "&tag=${encode(tagSeed)}" +
+                    "&server_xid=${encode(serverXidSeed)}" +
+                    "&c=${encode(payload.c)}" +
+                    "&t=${encode(payload.t)}" +
+                    "&ver=${encode(payload.ver)}",
+                headers = ajaxHeaders,
+                referer = payload.detailUrl
+            )
+        } else {
+            null
+        }
+
+        val serverData = serverJson?.optJSONObject("data") ?: JSONObject()
+        val episodeId = serverData.optString("id").ifBlank { episodeIdSeed }
+        val serverId = serverData.optString("server_id").ifBlank { serverXidSeed }
+        val tag = serverData.optString("tag").ifBlank { tagSeed }
+        val quality = serverData.optString("qua").ifBlank { "web" }
+        val res = serverData.optString("res").ifBlank { "1080" }
+
+        if (episodeId.isNotBlank()) {
+            val videoJson = apiGetJson(
+                url = "$cApiHost/video.php" +
+                    "?is_mob=${payload.isMob}" +
+                    "&is_uc=${payload.isUc}" +
+                    "&id=${encode(episodeId)}" +
+                    "&qua=${encode(quality)}" +
+                    "&server_id=${encode(serverId)}" +
+                    "&tag=${encode(tag)}" +
+                    "&c=${encode(payload.c)}" +
+                    "&t=${encode(payload.t)}" +
+                    "&ver=${encode(payload.ver)}",
+                headers = ajaxHeaders,
+                referer = payload.detailUrl
+            )
+
+            videoJson?.let { json ->
+                listOf("file", "source", "video", "hls", "url", "download").forEach { field ->
+                    val value = json.optString(field)
+                    if (value.isNotBlank()) extractUrlsFromText(value, mainUrl).forEach(candidates::add)
+                }
+                json.optJSONObject("dl")?.let { dl ->
+                    dl.keys().forEach { key ->
+                        val value = normalizeUrl(dl.optString(key), mainUrl)
+                        if (value.isNotBlank()) candidates.add(value)
+                        extractUrlsFromText(dl.optString(key), mainUrl).forEach(candidates::add)
                     }
-                )
-            }
-        }
-
-        val html = document.html()
-
-        // 1. Extract movieId from loadEpisode call e.g. loadEpisode('2r8htL7gWr', 'hs', 'ind')
-        val loadEpMatch = Regex("""loadEpisode\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""").find(html)
-        val movieId = loadEpMatch?.groupValues?.getOrNull(1) ?: ""
-
-        if (movieId.isNotBlank()) {
-            val p2pUrls = listOf(
-                "https://stb.strp2p.com/e/$movieId",
-                "https://player.upn.one/e/$movieId",
-                "https://fastdl.p2pstream.online/e/$movieId"
-            )
-
-            for (p2pUrl in p2pUrls) {
-                val loaded = loadExtractor(p2pUrl, pageUrl, subtitleCallback, callback)
-                if (loaded) {
-                    foundAny = true
-                    break
-                } else {
-                    emitLinkIfValid("P2P", "[P2P] Server", p2pUrl, referer = pageUrl)
-                    if (foundAny) break
                 }
             }
 
-            val hydraxUrls = listOf(
-                "https://iamcdn.net/v/$movieId",
-                "https://playhydrax.com/v/$movieId"
-            )
-
-            for (hydraxUrl in hydraxUrls) {
-                val loaded = loadExtractor(hydraxUrl, pageUrl, subtitleCallback, callback)
-                if (loaded) {
-                    foundAny = true
-                    break
-                } else {
-                    emitLinkIfValid("HYDRAX", "[HYDRAX] Server", hydraxUrl, referer = pageUrl)
-                    if (foundAny) break
+            listOf(
+                "1080",
+                res,
+                "720",
+                "480"
+            ).distinct().forEach { wantedRes ->
+                listOf(
+                    "video_sb.php" to "sb_url",
+                    "video_hydrax.php" to "hydrax_url",
+                    "video_p2p.php" to "p2p_url"
+                ).forEach { (endpoint, field) ->
+                    val json = apiGetJson(
+                        url = "$cApiHost/$endpoint" +
+                            "?is_mob=${payload.isMob}" +
+                            "&is_uc=${payload.isUc}" +
+                            "&id=${encode(episodeId)}" +
+                            "&qua=${encode(quality)}" +
+                            "&res=${encode(wantedRes)}" +
+                            "&server_id=${encode(serverId)}" +
+                            "&tag=${encode(tag)}" +
+                            "&c=${encode(payload.c)}" +
+                            "&t=${encode(payload.t)}" +
+                            "&ver=${encode(payload.ver)}",
+                        headers = ajaxHeaders,
+                        referer = payload.detailUrl
+                    )
+                    json?.optString(field)
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { candidates.add(normalizeUrl(it, mainUrl)) }
                 }
             }
         }
 
-        // 2. Extract direct M3U8 / MP4 URLs from HTML / scripts
-        val m3u8Matches = Regex("""https?:\\?/\\?/[^"'\s<>]+\.(?:m3u8|mp4)[^"'\s<>]*""", RegexOption.IGNORE_CASE).findAll(html)
-        m3u8Matches.forEach { match ->
-            val directUrl = normalizeUrl(match.value, mainUrl)
-            if (directUrl.isNotBlank() && !directUrl.contains("favicon")) {
-                val nameTag = if (directUrl.contains("p2p", ignoreCase = true) || directUrl.contains("strp2p", ignoreCase = true)) "[P2P] Server"
-                             else if (directUrl.contains("hydrax", ignoreCase = true)) "[HYDRAX] Server"
-                             else "DrakorKita Direct"
-                emitLinkIfValid("DrakorKita", nameTag, directUrl, referer = pageUrl)
-            }
-        }
+        if (candidates.isEmpty()) return false
 
-        return foundAny
+        return resolveCandidates(
+            providerName = providerName,
+            mainUrl = mainUrl,
+            pageUrl = payload.detailUrl,
+            candidates = candidates.toList(),
+            subtitleCallback = subtitleCallback,
+            callback = callback
+        )
     }
+
+    suspend fun resolveCandidates(
+        providerName: String,
+        mainUrl: String,
+        pageUrl: String,
+        candidates: List<String>,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val seen = linkedSetOf<String>()
+        var handled = false
+
+        suspend fun resolve(link: String, referer: String, depth: Int) {
+            val fixed = normalizeUrl(link, mainUrl)
+            if (fixed.isBlank() || !seen.add(fixed) || depth > 2) return
+
+            when {
+                fixed.contains(".m3u8", ignoreCase = true) -> {
+                    callback.invoke(
+                        newExtractorLink(
+                            providerName,
+                            providerName,
+                            fixed,
+                            ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = referer
+                            this.quality = parseQuality(fixed)
+                        }
+                    )
+                    handled = true
+                }
+                fixed.contains(".mp4", ignoreCase = true) -> {
+                    callback.invoke(
+                        newExtractorLink(
+                            providerName,
+                            providerName,
+                            fixed,
+                            ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = referer
+                            this.quality = parseQuality(fixed)
+                        }
+                    )
+                    handled = true
+                }
+                else -> {
+                    runCatching {
+                        var extractorCount = 0
+                        loadExtractor(fixed, referer, subtitleCallback) { l ->
+                            callback.invoke(l)
+                            extractorCount++
+                        }
+                        if (extractorCount > 0) handled = true
+                    }
+
+                    if (shouldScanNestedPage(fixed)) {
+                        runCatching {
+                            val response = app.get(
+                                url = fixed,
+                                headers = mapOf(
+                                    "User-Agent" to "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36",
+                                    "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                                ),
+                                referer = referer
+                            )
+                            val doc = response.document
+                            extractSubtitles(doc, mainUrl).forEach(subtitleCallback)
+                            extractEmbedCandidates(doc, mainUrl).forEach { nested ->
+                                resolve(nested, fixed, depth + 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        candidates.forEach { resolve(it, pageUrl, 0) }
+        return handled
+    }
+
+    private fun decodeBase64(value: String): String? {
+        val normalized = value.trim()
+        if (normalized.isBlank()) return null
+        val padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), '=')
+        return runCatching {
+            String(Base64.getDecoder().decode(padded))
+        }.getOrElse {
+            runCatching { String(Base64.getUrlDecoder().decode(padded)) }.getOrNull()
+        }
+    }
+
+    private suspend fun apiGetJson(
+        url: String,
+        headers: Map<String, String>,
+        referer: String
+    ): JSONObject? {
+        return runCatching {
+            JSONObject(
+                app.get(
+                    url = url,
+                    headers = headers,
+                    referer = referer
+                ).text
+            )
+        }.getOrNull()
+    }
+
+    private fun extractUnpackedUrls(document: Document, mainUrl: String): List<String> {
+        val results = linkedSetOf<String>()
+        document.select("script").forEach { script ->
+            val scriptText = script.data().ifBlank { script.html() }
+            if (scriptText.contains("function(p,a,c,k,e,d)")) {
+                runCatching { getAndUnpack(scriptText) }.getOrNull()?.let { unpacked ->
+                    extractUrlsFromText(unpacked, mainUrl).forEach(results::add)
+                    buildDqtHlsCandidates(unpacked).forEach(results::add)
+                }
+            }
+        }
+        return results.toList()
+    }
+
+    private fun buildDqtHlsCandidates(unpacked: String): List<String> {
+        val direct = Regex("""https?://[^'"\s<>]+\.m3u8[^'"\s<>]*""")
+            .find(unpacked)
+            ?.value
+            ?.replace("\\/", "/")
+        if (!direct.isNullOrBlank()) return listOf(direct)
+
+        val tokens = Regex("""['"]([A-Za-z0-9_-]{8,})['"]""")
+            .findAll(unpacked)
+            .map { it.groupValues[1] }
+            .toList()
+        val streamId = tokens.firstOrNull { it.length >= 20 }
+        val folder = tokens.firstOrNull { it.length >= 12 && it != streamId }
+        val expires = Regex("""\b(17\d{8,})\b""")
+            .findAll(unpacked)
+            .map { it.groupValues[1] }
+            .firstOrNull()
+        val fileId = Regex("""file_code['"]?\s*[:=]\s*['"]?([A-Za-z0-9_-]+)""")
+            .find(unpacked)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: Regex("""\b([A-Za-z0-9]{10,})_n\b""")
+                .find(unpacked)
+                ?.groupValues
+                ?.getOrNull(1)
+
+        if (streamId.isNullOrBlank() || folder.isNullOrBlank() || expires.isNullOrBlank() || fileId.isNullOrBlank()) {
+            return emptyList()
+        }
+
+        return listOf("https://dqt.my.id/stream/$streamId/$folder/$expires/$fileId/master.m3u8")
+    }
+
+    private fun extractUrlsFromText(text: String, mainUrl: String): List<String> {
+        val results = linkedSetOf<String>()
+        val normalized = text
+            .replace("\\/", "/")
+            .replace("&amp;", "&")
+        val urlRegex = Regex("""https?://[^'"\\\s<>]+|//[^'"\s<>]+""")
+        urlRegex.findAll(normalized).forEach { match ->
+            val fixed = normalizeUrl(match.value, mainUrl)
+                .trimEnd(',', '.', ';', ')', ']', '}')
+            if (isPlayableOrEmbed(fixed)) results.add(fixed)
+        }
+        return results.toList()
+    }
+
+    private fun isPlayableOrEmbed(url: String): Boolean {
+        if (url.isBlank()) return false
+        val lower = url.lowercase()
+        return lower.contains("/embed") ||
+            lower.contains("/e/") ||
+            lower.contains("/v/") ||
+            lower.contains("iframe") ||
+            lower.contains("player") ||
+            lower.contains("stream") ||
+            lower.contains("watch") ||
+            lower.contains("abysscdn") ||
+            lower.contains("dqt.my.id") ||
+            lower.contains("uyeshare") ||
+            lower.contains("drakorkita.stream") ||
+            lower.contains("handal.bid") ||
+            lower.contains("uyeshare.cc") ||
+            lower.contains("/download/") ||
+            lower.contains(".m3u8") ||
+            lower.contains(".mp4")
+    }
+
+    private fun shouldScanNestedPage(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("dqt.my.id") ||
+            lower.contains("abysscdn") ||
+            lower.contains("drakorkita.stream") ||
+            lower.contains("uyeshare")
+    }
+
+    private fun parseQuality(url: String): Int {
+        return Regex("""(2160|1440|1080|720|480|360|240)p""", RegexOption.IGNORE_CASE)
+            .find(url)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+            ?: Regex("""(?:^|[^\d])(2160|1440|1080|720|480|360|240)(?:[^\d]|$)""")
+                .find(url)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
+            ?: Qualities.Unknown.value
+    }
+
+    private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 }
