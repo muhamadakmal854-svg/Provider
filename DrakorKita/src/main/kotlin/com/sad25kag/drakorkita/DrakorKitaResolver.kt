@@ -113,118 +113,128 @@ object DrakorKitaResolver {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val candidates = linkedSetOf<String>()
-        val cApiHost = payload.cApiHost.trimEnd('/')
+        val baseApi = payload.cApiHost.trimEnd('/')
+        val candidateApiHosts = listOf(
+            "$mainUrl/c_api",
+            "https://drakorindo18.kita.baby/c_api",
+            "https://drakor43.nicewap.sbs/c_api",
+            baseApi
+        ).distinct()
 
-        var episodeIdSeed = payload.episodeId
-        var serverXidSeed = payload.serverXid
-        var tagSeed = payload.tag
+        for (cApiHost in candidateApiHosts) {
+            var episodeIdSeed = payload.episodeId
+            var serverXidSeed = payload.serverXid
+            var tagSeed = payload.tag
 
-        if (episodeIdSeed.isBlank() && payload.movieId.isNotBlank()) {
-            val episodeJson = apiGetJson(
-                url = "$cApiHost/episode_mob.php" +
-                    "?is_mob=${payload.isMob}" +
-                    "&is_uc=${payload.isUc}" +
-                    "&movie_id=${encode(payload.movieId)}" +
-                    "&tag=${encode(payload.tag)}" +
-                    "&c=${encode(payload.c)}" +
-                    "&t=${encode(payload.t)}" +
-                    "&ver=${encode(payload.ver)}",
-                headers = ajaxHeaders,
-                referer = payload.detailUrl
-            )
-            episodeIdSeed = episodeJson?.optString("first_ep_id").orEmpty()
-            serverXidSeed = episodeJson?.optString("server_xid").orEmpty()
-                .ifBlank { serverXidSeed }
-            tagSeed = episodeJson?.optString("tag").orEmpty()
-                .ifBlank { tagSeed }
-        }
+            if (episodeIdSeed.isBlank() && payload.movieId.isNotBlank()) {
+                val episodeJson = apiGetJson(
+                    url = "$cApiHost/episode_mob.php" +
+                        "?is_mob=${payload.isMob}" +
+                        "&is_uc=${payload.isUc}" +
+                        "&movie_id=${encode(payload.movieId)}" +
+                        "&tag=${encode(payload.tag)}" +
+                        "&c=${encode(payload.c)}" +
+                        "&t=${encode(payload.t)}" +
+                        "&ver=${encode(payload.ver)}",
+                    headers = ajaxHeaders,
+                    referer = payload.detailUrl
+                )
+                episodeIdSeed = episodeJson?.optString("first_ep_id").orEmpty()
+                serverXidSeed = episodeJson?.optString("server_xid").orEmpty()
+                    .ifBlank { serverXidSeed }
+                tagSeed = episodeJson?.optString("tag").orEmpty()
+                    .ifBlank { tagSeed }
+            }
 
-        val serverJson = if (episodeIdSeed.isNotBlank()) {
-            apiGetJson(
-                url = "$cApiHost/server_mob.php" +
-                    "?is_mob=${payload.isMob}" +
-                    "&is_uc=${payload.isUc}" +
-                    "&episode_id=${encode(episodeIdSeed)}" +
-                    "&tag=${encode(tagSeed)}" +
-                    "&server_xid=${encode(serverXidSeed)}" +
-                    "&c=${encode(payload.c)}" +
-                    "&t=${encode(payload.t)}" +
-                    "&ver=${encode(payload.ver)}",
-                headers = ajaxHeaders,
-                referer = payload.detailUrl
-            )
-        } else {
-            null
-        }
+            val serverJson = if (episodeIdSeed.isNotBlank()) {
+                apiGetJson(
+                    url = "$cApiHost/server_mob.php" +
+                        "?is_mob=${payload.isMob}" +
+                        "&is_uc=${payload.isUc}" +
+                        "&episode_id=${encode(episodeIdSeed)}" +
+                        "&tag=${encode(tagSeed)}" +
+                        "&server_xid=${encode(serverXidSeed)}" +
+                        "&c=${encode(payload.c)}" +
+                        "&t=${encode(payload.t)}" +
+                        "&ver=${encode(payload.ver)}",
+                    headers = ajaxHeaders,
+                    referer = payload.detailUrl
+                )
+            } else {
+                null
+            }
 
-        val serverData = serverJson?.optJSONObject("data") ?: JSONObject()
-        val episodeId = serverData.optString("id").ifBlank { episodeIdSeed }
-        val serverId = serverData.optString("server_id").ifBlank { serverXidSeed }
-        val tag = serverData.optString("tag").ifBlank { tagSeed }
-        val quality = serverData.optString("qua").ifBlank { "web" }
-        val res = serverData.optString("res").ifBlank { "1080" }
+            val serverData = serverJson?.optJSONObject("data") ?: JSONObject()
+            val episodeId = serverData.optString("id").ifBlank { episodeIdSeed }
+            val serverId = serverData.optString("server_id").ifBlank { serverXidSeed }
+            val tag = serverData.optString("tag").ifBlank { tagSeed }
+            val quality = serverData.optString("qua").ifBlank { "web" }
+            val res = serverData.optString("res").ifBlank { "1080" }
 
-        if (episodeId.isNotBlank()) {
-            val videoJson = apiGetJson(
-                url = "$cApiHost/video.php" +
-                    "?is_mob=${payload.isMob}" +
-                    "&is_uc=${payload.isUc}" +
-                    "&id=${encode(episodeId)}" +
-                    "&qua=${encode(quality)}" +
-                    "&server_id=${encode(serverId)}" +
-                    "&tag=${encode(tag)}" +
-                    "&c=${encode(payload.c)}" +
-                    "&t=${encode(payload.t)}" +
-                    "&ver=${encode(payload.ver)}",
-                headers = ajaxHeaders,
-                referer = payload.detailUrl
-            )
+            if (episodeId.isNotBlank()) {
+                val videoJson = apiGetJson(
+                    url = "$cApiHost/video.php" +
+                        "?is_mob=${payload.isMob}" +
+                        "&is_uc=${payload.isUc}" +
+                        "&id=${encode(episodeId)}" +
+                        "&qua=${encode(quality)}" +
+                        "&server_id=${encode(serverId)}" +
+                        "&cat=${encode(tag)}" +
+                        "&tag=${encode(payload.ver)}" +
+                        "&c=${encode(payload.c)}" +
+                        "&t=${encode(payload.t)}",
+                    headers = ajaxHeaders,
+                    referer = payload.detailUrl
+                )
 
-            videoJson?.let { json ->
-                listOf("file", "source", "video", "hls", "url", "download").forEach { field ->
-                    val value = json.optString(field)
-                    if (value.isNotBlank()) extractUrlsFromText(value, mainUrl).forEach(candidates::add)
+                videoJson?.let { json ->
+                    listOf("file", "source", "video", "hls", "url", "download").forEach { field ->
+                        val value = json.optString(field)
+                        if (value.isNotBlank()) extractUrlsFromText(value, mainUrl).forEach(candidates::add)
+                    }
+                    json.optJSONObject("dl")?.let { dl ->
+                        dl.keys().forEach { key ->
+                            val value = normalizeUrl(dl.optString(key), mainUrl)
+                            if (value.isNotBlank()) candidates.add(value)
+                            extractUrlsFromText(dl.optString(key), mainUrl).forEach(candidates::add)
+                        }
+                    }
                 }
-                json.optJSONObject("dl")?.let { dl ->
-                    dl.keys().forEach { key ->
-                        val value = normalizeUrl(dl.optString(key), mainUrl)
-                        if (value.isNotBlank()) candidates.add(value)
-                        extractUrlsFromText(dl.optString(key), mainUrl).forEach(candidates::add)
+
+                listOf(
+                    "1080",
+                    res,
+                    "720",
+                    "480"
+                ).distinct().forEach { wantedRes ->
+                    listOf(
+                        "video_sb.php" to "sb_url",
+                        "video_hydrax.php" to "hydrax_url",
+                        "video_p2p.php" to "p2p_url"
+                    ).forEach { (endpoint, field) ->
+                        val json = apiGetJson(
+                            url = "$cApiHost/$endpoint" +
+                                "?is_mob=${payload.isMob}" +
+                                "&is_uc=${payload.isUc}" +
+                                "&id=${encode(episodeId)}" +
+                                "&qua=${encode(quality)}" +
+                                "&res=${encode(wantedRes)}" +
+                                "&server_id=${encode(serverId)}" +
+                                "&cat=${encode(tag)}" +
+                                "&tag=${encode(payload.ver)}" +
+                                "&c=${encode(payload.c)}" +
+                                "&t=${encode(payload.t)}",
+                            headers = ajaxHeaders,
+                            referer = payload.detailUrl
+                        )
+                        json?.optString(field)
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { candidates.add(normalizeUrl(it, mainUrl)) }
                     }
                 }
             }
 
-            listOf(
-                "1080",
-                res,
-                "720",
-                "480"
-            ).distinct().forEach { wantedRes ->
-                listOf(
-                    "video_sb.php" to "sb_url",
-                    "video_hydrax.php" to "hydrax_url",
-                    "video_p2p.php" to "p2p_url"
-                ).forEach { (endpoint, field) ->
-                    val json = apiGetJson(
-                        url = "$cApiHost/$endpoint" +
-                            "?is_mob=${payload.isMob}" +
-                            "&is_uc=${payload.isUc}" +
-                            "&id=${encode(episodeId)}" +
-                            "&qua=${encode(quality)}" +
-                            "&res=${encode(wantedRes)}" +
-                            "&server_id=${encode(serverId)}" +
-                            "&tag=${encode(tag)}" +
-                            "&c=${encode(payload.c)}" +
-                            "&t=${encode(payload.t)}" +
-                            "&ver=${encode(payload.ver)}",
-                        headers = ajaxHeaders,
-                        referer = payload.detailUrl
-                    )
-                    json?.optString(field)
-                        ?.takeIf { it.isNotBlank() }
-                        ?.let { candidates.add(normalizeUrl(it, mainUrl)) }
-                }
-            }
+            if (candidates.isNotEmpty()) break
         }
 
         if (candidates.isEmpty()) return false
@@ -303,10 +313,13 @@ object DrakorKitaResolver {
                                 ),
                                 referer = referer
                             )
-                            val doc = response.document
-                            extractSubtitles(doc, mainUrl).forEach(subtitleCallback)
-                            extractEmbedCandidates(doc, mainUrl).forEach { nested ->
-                                resolve(nested, fixed, depth + 1)
+                            val body = response.text
+                            if (response.isSuccessful && !body.contains("Video not found", ignoreCase = true) && !body.contains("expired or has been deleted", ignoreCase = true)) {
+                                val doc = response.document
+                                extractSubtitles(doc, mainUrl).forEach(subtitleCallback)
+                                extractEmbedCandidates(doc, mainUrl).forEach { nested ->
+                                    resolve(nested, fixed, depth + 1)
+                                }
                             }
                         }
                     }
