@@ -8,10 +8,7 @@ import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import org.json.JSONObject
-import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
-import java.net.URLEncoder
 
 object DrakorKitaResolver {
 
@@ -56,7 +53,7 @@ object DrakorKitaResolver {
         val html = document.html()
         val regexes = listOf(
             Regex("""https?:\\?/\\?/[^"'\s<>]+\.(?:m3u8|mp4|mkv)[^"'\s<>]*""", RegexOption.IGNORE_CASE),
-            Regex("""https?:\\?/\\?/[^"'\s<>]*(?:embed|player|video|stream|drive|file|hydrax|p2p)[^"'\s<>]*""", RegexOption.IGNORE_CASE),
+            Regex("""https?:\\?/\\?/[^"'\s<>]*(?:embed|player|video|stream|drive|file|hydrax|p2p|strp2p|upn\.one)[^"'\s<>]*""", RegexOption.IGNORE_CASE),
             Regex("""//[^"'\s<>]+\.(?:m3u8|mp4|mkv)[^"'\s<>]*""", RegexOption.IGNORE_CASE)
         )
 
@@ -82,7 +79,7 @@ object DrakorKitaResolver {
             ".m3u8", ".mp4", "embed", "player", "stream", "video", "drive", "file",
             "dood", "streamwish", "filemoon", "vidhide", "mixdrop", "streamtape",
             "lulustream", "krakenfiles", "pixeldrain", "gofile", "mediafire", "hxfile",
-            "hydrax", "p2p", "load.my.id", "nonton.bid"
+            "hydrax", "p2p", "strp2p", "upn.one", "load.my.id", "nonton.bid"
         )
         return knownKeywords.any { lower.contains(it) }
     }
@@ -126,7 +123,7 @@ object DrakorKitaResolver {
         val html = document.html()
 
         // 1. Check for Hydrax embeds / links
-        val hydraxMatch = Regex("""(?:hydrax|iamcdn|playhydrax|multi\.hydrax)\.[a-z]+/?[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
+        val hydraxMatch = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:hydrax|iamcdn|playhydrax|multi\.hydrax)[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
         if (hydraxMatch != null) {
             val hydraxUrl = normalizeUrl(hydraxMatch.value, mainUrl)
             if (hydraxUrl.isNotBlank()) {
@@ -139,8 +136,8 @@ object DrakorKitaResolver {
             }
         }
 
-        // 2. Check for P2P / Stream embeds
-        val p2pMatch = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:p2p|peer|hls\.p2p|p2pstream|playerp2p|fastdl\.p2pstream)[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
+        // 2. Check for P2P / Stream embeds (stb.strp2p.com, player.upn.one, p2pstream, etc.)
+        val p2pMatch = Regex("""https?:\\?/\\?/[^"'\s<>]*(?:p2p|strp2p|upn\.one|peer|hls\.p2p|p2pstream|playerp2p|fastdl\.p2pstream)[^"'\s<>]*""", RegexOption.IGNORE_CASE).find(html)
         if (p2pMatch != null) {
             val p2pUrl = normalizeUrl(p2pMatch.value, mainUrl)
             if (p2pUrl.isNotBlank()) {
@@ -158,7 +155,7 @@ object DrakorKitaResolver {
         m3u8Matches.forEach { match ->
             val directUrl = normalizeUrl(match.value, mainUrl)
             if (directUrl.isNotBlank() && !directUrl.contains("favicon")) {
-                val nameTag = if (directUrl.contains("p2p", ignoreCase = true)) "[P2P] Server"
+                val nameTag = if (directUrl.contains("p2p", ignoreCase = true) || directUrl.contains("strp2p", ignoreCase = true)) "[P2P] Server"
                              else if (directUrl.contains("hydrax", ignoreCase = true)) "[HYDRAX] Server"
                              else "DrakorKita Direct"
                 emitLink("DrakorKita", nameTag, directUrl, referer = pageUrl)

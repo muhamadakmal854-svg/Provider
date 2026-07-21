@@ -35,7 +35,7 @@ class DrakorKita : MainAPI() {
     override val supportedTypes = setOf(TvType.AsianDrama, TvType.TvSeries, TvType.Movie)
 
     private val sourceHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 16; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36",
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0",
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "Referer" to "$mainUrl/"
@@ -91,8 +91,8 @@ class DrakorKita : MainAPI() {
             ?.toIntOrNull()
 
         val infoText = document.select(".anf").text()
-        
-        // Strict isMovie check (DO NOT check title.contains("Movie")!)
+
+        // Strict Movie vs Series Classification
         val isMovie = url.contains("media_type=movie") ||
             url.contains("/movie/") ||
             infoText.contains("Type : Movie", ignoreCase = true) ||
@@ -103,11 +103,12 @@ class DrakorKita : MainAPI() {
             infoText.contains("Type : TV Series", ignoreCase = true) ||
             infoText.contains("Episode Count", ignoreCase = true) ||
             infoText.contains("Ongoing", ignoreCase = true) ||
-            title.contains("Season", ignoreCase = true)
+            title.contains("Season", ignoreCase = true) ||
+            document.select("div#episode_lists a, div.pagination a").size > 1
 
         val episodes = mutableListOf<com.lagradost.cloudstream3.Episode>()
 
-        // 1. Extract episode links from episode list / pagination
+        // 1. Extract episode links from pagination / list
         val epElements = document.select("div#episode_lists a, div.pagination a, ul.episodes a, div.episode-list a")
         epElements.forEachIndexed { index, el ->
             val href = el.attr("href")
@@ -124,34 +125,37 @@ class DrakorKita : MainAPI() {
             )
         }
 
-        // 2. Extract loadEpisode call e.g. loadEpisode('id','hs','ind')
+        // 2. Extract loadEpisode call parameters
         val loadEpMatch = Regex("""loadEpisode\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]""").find(document.html())
-        val serverTag = if (loadEpMatch != null) {
-            val (_, tag, ver) = loadEpMatch.destructured
-            "${tag}_$ver"
+        val (movieId, tag, ver) = if (loadEpMatch != null) {
+            Triple(loadEpMatch.groupValues[1], loadEpMatch.groupValues[2], loadEpMatch.groupValues[3])
         } else {
-            "hs_ind"
+            Triple("", "hs", "ind")
         }
 
-        // 3. Fallback: Create episode URLs pointing to /detail/slug/{serverTag}/1/
+        val serverTag = if (tag.isNotBlank() && ver.isNotBlank()) "${tag}_$ver" else "hs_ind"
+
+        // 3. Fallback: If no episodes found, generate episode URLs for hs_ind, ss_ind
         if (episodes.isEmpty()) {
-            val ep1Url = if (url.contains("/$serverTag/")) {
-                url
-            } else {
-                "${url.trimEnd('/')}/$serverTag/1/"
+            val baseTrimmed = url.trimEnd('/')
+            val ep1Url = when {
+                url.contains("/$serverTag/") -> url
+                isMovie -> "$baseTrimmed/$serverTag/"
+                else -> "$baseTrimmed/$serverTag/1/"
             }
+
             episodes.add(
                 newEpisode(ep1Url) {
-                    this.name = "Episode 1"
+                    this.name = if (isMovie) "Play Movie" else "Episode 1"
                     this.episode = 1
                     this.posterUrl = poster
                 }
             )
         }
 
-        val finalType = if (isMovie && !isSeries && episodes.size <= 1) TvType.Movie else TvType.AsianDrama
+        val isFinalTv = isSeries || (!isMovie && episodes.size > 1)
 
-        return if (finalType == TvType.AsianDrama) {
+        return if (isFinalTv) {
             newTvSeriesLoadResponse(cleanTitle, url, TvType.AsianDrama, episodes.distinctBy { it.data }) {
                 this.posterUrl = poster
                 this.plot = plot
@@ -176,46 +180,44 @@ class DrakorKita : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val pageUrl = fixUrl(data)
-        var doc = getDocument(pageUrl)
+
+        val urlCandidates = linkedSetOf(pageUrl)
+        val baseTrimmed = pageUrl.trimEnd('/')
+
+        // Generate candidate server URLs for TV and Movies
+        if (!pageUrl.contains("/hs_") && !pageUrl.contains("/ss_")) {
+            urlCandidates.add("$baseTrimmed/hs_ind/1/")
+            urlCandidates.add("$baseTrimmed/ss_ind/1/")
+            urlCandidates.add("$baseTrimmed/hs_ind/")
+            urlCandidates.add("$baseTrimmed/ss_ind/")
+        }
 
         var foundAny = false
 
-        // Primary doc resolution
-        val resolvedPrimary = DrakorKitaResolver.resolvePageLinks(
-            document = doc,
-            pageUrl = pageUrl,
-            mainUrl = mainUrl,
-            headers = sourceHeaders,
-            subtitleCallback = subtitleCallback,
-            callback = callback
-        )
-        if (resolvedPrimary) foundAny = true
-
-        // Fallback: If doc is main detail page without episode path, try episode 1 path (/hs_ind/1/)
-        if (!foundAny && !pageUrl.contains("/hs_") && !pageUrl.contains("/1/")) {
-            val ep1Url = "${pageUrl.trimEnd('/')}/hs_ind/1/"
+        for (candidateUrl in urlCandidates) {
             runCatching {
-                val epDoc = getDocument(ep1Url)
-                val resolvedEp = DrakorKitaResolver.resolvePageLinks(
-                    document = epDoc,
-                    pageUrl = ep1Url,
+                val doc = getDocument(candidateUrl)
+
+                val resolved = DrakorKitaResolver.resolvePageLinks(
+                    document = doc,
+                    pageUrl = candidateUrl,
                     mainUrl = mainUrl,
                     headers = sourceHeaders,
                     subtitleCallback = subtitleCallback,
                     callback = callback
                 )
-                if (resolvedEp) foundAny = true
-            }
-        }
+                if (resolved) foundAny = true
 
-        // Standard embed candidates resolution
-        val candidates = DrakorKitaResolver.extractEmbedCandidates(doc, mainUrl)
-        candidates.forEach { candidate ->
-            val clean = DrakorKitaResolver.normalizeUrl(candidate, mainUrl)
-            if (clean.isNotBlank()) {
-                val loaded = loadExtractor(clean, pageUrl, subtitleCallback, callback)
-                if (loaded) foundAny = true
+                val embeds = DrakorKitaResolver.extractEmbedCandidates(doc, mainUrl)
+                embeds.forEach { candidateEmbed ->
+                    val cleanEmbed = DrakorKitaResolver.normalizeUrl(candidateEmbed, mainUrl)
+                    if (cleanEmbed.isNotBlank()) {
+                        val loaded = loadExtractor(cleanEmbed, candidateUrl, subtitleCallback, callback)
+                        if (loaded) foundAny = true
+                    }
+                }
             }
+            if (foundAny) break
         }
 
         return foundAny
@@ -252,7 +254,7 @@ class DrakorKita : MainAPI() {
                 poster = null
             }
 
-            // Strict isMovie check (DO NOT check rawTitle.contains("Movie")!)
+            // Strict isMovie check
             val isMovie = sectionName.equals("Movie", ignoreCase = true) ||
                 fullUrl.contains("media_type=movie", ignoreCase = true) ||
                 fullUrl.contains("/movie/", ignoreCase = true)
