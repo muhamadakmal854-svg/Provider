@@ -150,7 +150,7 @@ class KawanFilmProvider : MainAPI() {
                                 val epLink = ep.optString("link", "")
                                 val epSlug = ep.optString("slug", "")
                                 val epRendTitle = ep.optJSONObject("title")?.optString("rendered", epSlug) ?: epSlug
-                                val epNumMatch = Regex("episode[- _]*(\d+)", RegexOption.IGNORE_CASE).find(epSlug)
+                                val epNumMatch = Regex("""episode[- _]*(\d+)""", RegexOption.IGNORE_CASE).find(epSlug)
                                 val epNum = epNumMatch?.groupValues?.get(1)?.toIntOrNull() ?: (i + 1)
                                 if (epLink.isNotBlank()) {
                                     episodes.add(newEpisode(epLink) {
