@@ -236,7 +236,7 @@ class AnimePlay : MainAPI() {
                 this.showStatus = showStatus
             }
         }
-
+    }
 
     private fun cleanEpisodeLabel(rawLabel: String?, epNum: Int?): String {
         val fallback = epNum?.let { "Episode $it" } ?: "Episode"
@@ -551,3 +551,5 @@ class AnimePlay : MainAPI() {
         )
         return true
     }
+}
+

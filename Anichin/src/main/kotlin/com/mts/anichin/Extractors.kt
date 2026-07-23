@@ -274,12 +274,11 @@ open class StreamRuby : ExtractorApi() {
             source = this.name,
             name = this.name,
             url  = m3u8.toString(),
-            type = ExtractorLinkType.M3U8,
-            {
-                quality = Qualities.Unknown.value
-                this.referer = mainUrl
-            }
-        ))
+            type = ExtractorLinkType.M3U8
+        ) {
+            quality = Qualities.Unknown.value
+            this.referer = mainUrl
+        })
     }
 }
 
