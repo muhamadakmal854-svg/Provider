@@ -12,6 +12,7 @@ import com.lagradost.cloudstream3.extractors.JWPlayer
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
@@ -490,14 +491,10 @@ open class JWPlayer : ExtractorApi() {
         val res = app.get(url, referer = referer ?: mainUrl).text
         val m3u8 = Regex("""file:\s*"([^"]+)""").find(res)?.groupValues?.get(1) ?: return
         callback.invoke(
-            ExtractorLink(
-                name,
-                name,
-                m3u8,
-                referer ?: mainUrl,
-                Qualities.Unknown.value,
-                m3u8.contains(".m3u8")
-            )
+            newExtractorLink(name, name, m3u8, INFER_TYPE) {
+                this.referer = referer ?: mainUrl
+                this.quality = Qualities.Unknown.value
+            }
         )
     }
 }
@@ -516,14 +513,10 @@ open class Filesim : ExtractorApi() {
         val res = app.get(url, referer = referer ?: mainUrl).text
         val m3u8 = Regex("""file:\s*"([^"]+)""").find(res)?.groupValues?.get(1) ?: return
         callback.invoke(
-            ExtractorLink(
-                name,
-                name,
-                m3u8,
-                referer ?: mainUrl,
-                Qualities.Unknown.value,
-                m3u8.contains(".m3u8")
-            )
+            newExtractorLink(name, name, m3u8, INFER_TYPE) {
+                this.referer = referer ?: mainUrl
+                this.quality = Qualities.Unknown.value
+            }
         )
     }
 }
