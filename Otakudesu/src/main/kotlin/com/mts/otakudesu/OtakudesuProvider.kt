@@ -475,6 +475,58 @@ suspend fun fetchTmdbLogoUrl(
     return null
 }
 
+open class JWPlayer : ExtractorApi() {
+    override val name = "JWPlayer"
+    override val mainUrl = ""
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val res = app.get(url, referer = referer ?: mainUrl).text
+        val m3u8 = Regex("file:\s*"([^"]+)"").find(res)?.groupValues?.get(1) ?: return
+        callback.invoke(
+            ExtractorLink(
+                name,
+                name,
+                m3u8,
+                referer ?: mainUrl,
+                Qualities.Unknown.value,
+                m3u8.contains(".m3u8")
+            )
+        )
+    }
+}
+
+open class Filesim : ExtractorApi() {
+    override val name = "Filesim"
+    override var mainUrl = ""
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val res = app.get(url, referer = referer ?: mainUrl).text
+        val m3u8 = Regex("file:\s*"([^"]+)"").find(res)?.groupValues?.get(1) ?: return
+        callback.invoke(
+            ExtractorLink(
+                name,
+                name,
+                m3u8,
+                referer ?: mainUrl,
+                Qualities.Unknown.value,
+                m3u8.contains(".m3u8")
+            )
+        )
+    }
+}
+
 class Moedesu : JWPlayer() {
     override val name = "Moedesu"
     override val mainUrl = "https://desustream.me/moedesu/"
