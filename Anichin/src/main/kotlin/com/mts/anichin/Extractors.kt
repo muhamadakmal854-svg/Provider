@@ -659,4 +659,5 @@ open class Vidguardto : ExtractorApi() {
     data class SvgObject(
         val stream: String,
         val hash: String
+    )
 }
