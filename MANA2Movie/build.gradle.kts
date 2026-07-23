@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mts.mana2 movie"
+    namespace = "com.mts.mana2movie"
 
 }
 

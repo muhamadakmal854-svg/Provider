@@ -1,4 +1,4 @@
-package com.mts.mana2 movie
+package com.mts.mana2movie
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 
@@ -8,11 +8,11 @@ import android.content.Context
 
 @CloudstreamPlugin
 
-class MANA2 MoviePlugin : Plugin() {
+class MANA2MoviePlugin : Plugin() {
 
     override fun load(context: Context) {
 
-        registerMainAPI(MANA2 MovieProvider())
+        registerMainAPI(MANA2MovieProvider())
 
     }
 

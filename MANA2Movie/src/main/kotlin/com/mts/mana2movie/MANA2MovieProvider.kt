@@ -1,4 +1,4 @@
-package com.mts.mana2 movie
+package com.mts.mana2movie
 
 import com.lagradost.cloudstream3.*
 
@@ -16,13 +16,13 @@ import javax.crypto.spec.IvParameterSpec
 
 import java.security.MessageDigest
 
-class MANA2 MovieProvider : MainAPI() {
+class MANA2MovieProvider : MainAPI() {
 
 
 
     override var mainUrl        = "https://mana2.my"
 
-    override var name           = "MANA2 Movie"
+    override var name           = "MANA2Movie"
 
     override var lang           = "id"
 
