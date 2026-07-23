@@ -71,7 +71,7 @@ class RTMKlikProvider : MainAPI() {
                     url = cleanData,
                     referer = mainUrl,
                     quality = Qualities.Unknown.value,
-                    isM3u8 = true
+                    type = ExtractorLinkType.M3U8
                 )
             )
         } else {
