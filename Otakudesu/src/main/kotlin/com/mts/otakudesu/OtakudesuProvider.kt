@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.extractors.Filesim
 import com.lagradost.cloudstream3.extractors.JWPlayer
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
@@ -487,7 +488,7 @@ open class JWPlayer : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val res = app.get(url, referer = referer ?: mainUrl).text
-        val m3u8 = Regex("file:\s*"([^"]+)"").find(res)?.groupValues?.get(1) ?: return
+        val m3u8 = Regex("""file:\s*"([^"]+)""").find(res)?.groupValues?.get(1) ?: return
         callback.invoke(
             ExtractorLink(
                 name,
@@ -513,7 +514,7 @@ open class Filesim : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val res = app.get(url, referer = referer ?: mainUrl).text
-        val m3u8 = Regex("file:\s*"([^"]+)"").find(res)?.groupValues?.get(1) ?: return
+        val m3u8 = Regex("""file:\s*"([^"]+)""").find(res)?.groupValues?.get(1) ?: return
         callback.invoke(
             ExtractorLink(
                 name,
