@@ -139,11 +139,12 @@ class MTSPlaylistProvider : MainAPI() {
 
         if (!found && videoId.length >= 8) {
             try {
-                val headers = mapOf(
+                val reqHeaders = mapOf(
                     "User-Agent" to "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
-                    "Accept-Language" to "en-US,en;q=0.9"
+                    "Accept-Language" to "en-US,en;q=0.9",
+                    "Referer" to "https://www.youtube.com/"
                 )
-                val html = app.get(cleanUrl, headers = headers).text
+                val html = app.get(cleanUrl, headers = reqHeaders).text
 
                 // 1. Check for HLS Manifest M3U8 URL (Live Streams & M3U8)
                 val hlsRegex = Regex("\"hlsManifestUrl\"\\s*:\\s*\"([^\"]+)\"")
@@ -156,7 +157,10 @@ class MTSPlaylistProvider : MainAPI() {
                             name = "$name Live (M3U8)",
                             url = hlsUrl,
                             type = ExtractorLinkType.M3U8
-                        )
+                        ) {
+                            this.headers = reqHeaders
+                            this.referer = "https://www.youtube.com/"
+                        }
                     )
                     found = true
                 }
@@ -179,7 +183,10 @@ class MTSPlaylistProvider : MainAPI() {
                                         name = "$name (M3U8)",
                                         url = cleanHls,
                                         type = ExtractorLinkType.M3U8
-                                    )
+                                    ) {
+                                        this.headers = reqHeaders
+                                        this.referer = "https://www.youtube.com/"
+                                    }
                                 )
                                 found = true
                             }
@@ -200,6 +207,8 @@ class MTSPlaylistProvider : MainAPI() {
                                                 url = streamUrl,
                                                 type = linkType
                                             ) {
+                                                this.headers = reqHeaders
+                                                this.referer = "https://www.youtube.com/"
                                                 this.quality = qVal
                                             }
                                         )
