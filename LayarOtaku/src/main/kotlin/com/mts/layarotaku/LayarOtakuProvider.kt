@@ -28,7 +28,7 @@ class LayarOtakuProvider : MainAPI() {
 
     override val hasMainPage    = true
 
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.Movie, TvType.OVA)
+    override val supportedTypes = setOf(TvType.Anime)
 
     override val mainPage = mainPageOf(
 

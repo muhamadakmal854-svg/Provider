@@ -28,7 +28,7 @@ class DrakoridProvider : MainAPI() {
 
     override val hasMainPage    = true
 
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val supportedTypes = setOf(TvType.AsianDrama)
 
     override val mainPage = mainPageOf(
 
