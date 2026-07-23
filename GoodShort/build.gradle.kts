@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk GoodShort - Dramas & Mini-series"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 

@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk FreeReels - MyDramaWave Korean Dramas"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 

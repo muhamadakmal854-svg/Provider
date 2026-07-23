@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Bilibili TV Indonesia"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 

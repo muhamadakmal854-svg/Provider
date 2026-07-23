@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk DonghuaStream"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mtsflix.donghuastream"
+    namespace = "com.mts.donghuastream"
 
 }
 

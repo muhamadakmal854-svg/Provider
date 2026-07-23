@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Oppadrama - Korean and Asian Dramas"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 

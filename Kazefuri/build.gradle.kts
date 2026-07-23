@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Kazefuri"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mtsflix.kazefuri"
+    namespace = "com.mts.kazefuri"
 
 }
 

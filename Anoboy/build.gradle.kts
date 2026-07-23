@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk anoBoy"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mtsflix.anoboy"
+    namespace = "com.mts.anoboy"
 
 }
 

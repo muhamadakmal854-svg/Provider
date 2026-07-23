@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk AnimeChina - Donghua Subtitle Indonesia"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 

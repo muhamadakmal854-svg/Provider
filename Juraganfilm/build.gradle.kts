@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk JURAGANFILM : Situs Nonton Film Sub Indo Streaming Movie Online"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mtsflix.juraganfilm"
+    namespace = "com.mts.juraganfilm"
 
 }
 

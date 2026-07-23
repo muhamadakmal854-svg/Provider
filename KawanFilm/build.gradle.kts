@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk KawanFilm21"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mtsflix.kawanfilm"
+    namespace = "com.mts.kawanfilm"
 
 }
 

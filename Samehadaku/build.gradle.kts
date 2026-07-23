@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Samehadaku"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mtsflix.samehadaku"
+    namespace = "com.mts.samehadaku"
 
 }
 

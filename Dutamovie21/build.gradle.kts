@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Dutamovie21"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mtsflix.dutamovie21"
+    namespace = "com.mts.dutamovie21"
 
 }
 

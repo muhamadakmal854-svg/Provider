@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk MovieBox - Movies and TV Series"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 

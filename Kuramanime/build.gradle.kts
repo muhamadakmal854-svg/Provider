@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Kuramanime"
 
-    authors     = listOf("MTSFlix")
+    authors     = listOf("MTS")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mtsflix.kuramanime"
+    namespace = "com.mts.kuramanime"
 
 }
 
