@@ -156,13 +156,13 @@ class MTSPlaylistProvider : MainAPI() {
                             val qVal = qLabel.replace("p", "").toIntOrNull() ?: Qualities.Unknown.value
                             if (!sUrl.isNullOrBlank()) {
                                 callback.invoke(
-                                    ExtractorLink(
+                                    newExtractorLink(
                                         source = "YouTube (Invidious)",
                                         name = "$name ($qLabel)",
-                                        url = sUrl,
-                                        referer = "",
-                                        quality = qVal
-                                    )
+                                        url = sUrl
+                                    ) {
+                                        this.quality = qVal
+                                    }
                                 )
                                 found = true
                             }
