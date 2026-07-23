@@ -3,7 +3,6 @@ rootProject.name = "cloudstream-extensions"
 include(":Anichin")
 include(":Animasu")
 include(":Animexin")
-include(":Anoboy")
 include(":Cinemax21")
 include(":Donghuastream")
 include(":Donghub")
