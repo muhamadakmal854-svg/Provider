@@ -12,7 +12,7 @@ import javax.crypto.spec.SecretKeySpec
 
 class AbyssExtractor : ExtractorApi() {
     override var name = "Abyss"
-    override var mainUrl = "https://abyssplayer.com"
+    override var mainUrl = "https://sarangfilm.diy"
     override val requiresReferer = false
 
     private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
@@ -123,7 +123,7 @@ class AbyssExtractor : ExtractorApi() {
 
 class SarangStreamWishExtractor : ExtractorApi() {
     override var name = "StreamWish"
-    override var mainUrl = "https://streamwish.com"
+    override var mainUrl = "https://sarangfilm.diy"
     override val requiresReferer = false
 
     override suspend fun getUrl(

@@ -16,12 +16,12 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 
 class Smoothpre: VidHidePro() {
     override var name = "EarnVids"
-    override var mainUrl = "https://smoothpre.com"
+    override var mainUrl = "http://45.11.57.192"
 }
 
 class BuzzServer : ExtractorApi() {
     override val name = "BuzzServer"
-    override val mainUrl = "https://buzzheavier.com"
+    override val mainUrl = "http://45.11.57.192"
     override val requiresReferer = true
 
     override suspend fun getUrl(

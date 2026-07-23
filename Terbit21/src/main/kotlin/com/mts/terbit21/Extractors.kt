@@ -18,7 +18,7 @@ import javax.crypto.spec.SecretKeySpec
 
 class Sf21VidplayerLive : ExtractorApi() {
     override var name = "Sf21VidplayerLive"
-    override var mainUrl = "https://sf21.vidplayer.live"
+    override var mainUrl = "https://162.244.95.227"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -84,7 +84,7 @@ class Sf21VidplayerLive : ExtractorApi() {
 
 class Sf21RpmvidCom : ExtractorApi() {
     override var name = "Sf21RpmvidCom"
-    override var mainUrl = "https://sf21.rpmvid.com"
+    override var mainUrl = "https://162.244.95.227"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -150,22 +150,22 @@ class Sf21RpmvidCom : ExtractorApi() {
 
 class New13Savefilm21InfoCom : StreamWishExtractor() {
     override var name = "New13Savefilm21InfoCom"
-    override var mainUrl = "https://new13.savefilm21info.com"
+    override var mainUrl = "https://162.244.95.227"
 }
 
 class S3Bk21Net : StreamWishExtractor() {
     override var name = "S3Bk21Net"
-    override var mainUrl = "https://s3.bk21.net"
+    override var mainUrl = "https://162.244.95.227"
 }
 
 class FileditchfilesMe : StreamWishExtractor() {
     override var name = "FileditchfilesMe"
-    override var mainUrl = "https://fileditchfiles.me"
+    override var mainUrl = "https://162.244.95.227"
 }
 
 class EmbedpyroxXyz : ExtractorApi() {
     override var name = "EmbedpyroxXyz"
-    override var mainUrl = "https://embedpyrox.xyz"
+    override var mainUrl = "https://162.244.95.227"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -228,12 +228,12 @@ class EmbedpyroxXyz : ExtractorApi() {
 
 class MorenciusCom : StreamWishExtractor() {
     override var name = "MorenciusCom"
-    override var mainUrl = "https://morencius.com"
+    override var mainUrl = "https://162.244.95.227"
 }
 
 class AbyssplayerCom : ExtractorApi() {
     override var name = "AbyssplayerCom"
-    override var mainUrl = "https://abyssplayer.com"
+    override var mainUrl = "https://162.244.95.227"
     override val requiresReferer = true
 
     private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
@@ -335,7 +335,7 @@ class AbyssplayerCom : ExtractorApi() {
 
 class RpmPlayShare : ExtractorApi() {
     override var name = "RpmPlayShare"
-    override var mainUrl = "https://endstar.rpmplay.me"
+    override var mainUrl = "https://162.244.95.227"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -384,7 +384,7 @@ class RpmPlayShare : ExtractorApi() {
 
 class Embed4MePlay : ExtractorApi() {
     override var name = "Embed4MePlay"
-    override var mainUrl = "https://endstar.embed4me.com"
+    override var mainUrl = "https://162.244.95.227"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -436,7 +436,7 @@ class Embed4MePlay : ExtractorApi() {
 
 class GoogleVideo : ExtractorApi() {
     override var name = "GoogleVideo"
-    override var mainUrl = "https://googlevideo.com"
+    override var mainUrl = "https://162.244.95.227"
     override val requiresReferer = false
 
     override suspend fun getUrl(

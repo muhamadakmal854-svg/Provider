@@ -29,7 +29,7 @@ import java.net.URLEncoder
 import java.util.Base64
 
 class DrakorKita : MainAPI() {
-    override var mainUrl = "https://drakorindo18.kita.baby"
+    override var mainUrl = "https://drakor.kita.mobi"
     override var name = "DrakorKita"
     override val hasMainPage = true
     override var lang = "id"

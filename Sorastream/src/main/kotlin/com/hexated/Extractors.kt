@@ -13,7 +13,7 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
 
 open class Jeniusplay2 : ExtractorApi() {
     override val name = "Jeniusplay"
-    override val mainUrl = "https://jeniusplay.com"
+    override val mainUrl = "https://sorastream.top"
     override val requiresReferer = true
 
     override suspend fun getUrl(

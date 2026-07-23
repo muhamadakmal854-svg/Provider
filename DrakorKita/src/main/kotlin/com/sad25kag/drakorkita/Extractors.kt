@@ -45,7 +45,7 @@ open class P2pStreamExtractor(
  */
 class DrakorKitaStream : ExtractorApi() {
     override val name = "DrakorKitaP2P"
-    override val mainUrl = "https://drakorkita.stream"
+    override val mainUrl = "https://drakor.kita.mobi"
     override val requiresReferer = false
 
     override suspend fun getUrl(
