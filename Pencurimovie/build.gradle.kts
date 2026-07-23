@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Pencurimovie"
 
-    authors     = listOf("MTS")
+    authors     = listOf("MTSFlix")
 
     status      = 1
 

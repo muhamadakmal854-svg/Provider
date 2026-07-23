@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Dramaboxdb"
 
-    authors     = listOf("MTS")
+    authors     = listOf("MTSFlix")
 
     status      = 1
 

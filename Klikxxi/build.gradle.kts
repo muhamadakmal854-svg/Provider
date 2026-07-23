@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk KLIKXXI – Nonton Film Online Gratis Sub Indo LAYARKACA21 LK21"
 
-    authors     = listOf("MTS")
+    authors     = listOf("MTSFlix")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mts.klikxxi"
+    namespace = "com.mtsflix.klikxxi"
 
 }
 

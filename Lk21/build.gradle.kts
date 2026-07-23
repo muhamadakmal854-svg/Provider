@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Lk21"
 
-    authors     = listOf("MTS")
+    authors     = listOf("MTSFlix")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mts.lk21"
+    namespace = "com.mtsflix.lk21"
 
 }
 

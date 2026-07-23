@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk NontonDrama"
 
-    authors     = listOf("MTS")
+    authors     = listOf("MTSFlix")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mts.nontondrama"
+    namespace = "com.mtsflix.nontondrama"
 
 }
 

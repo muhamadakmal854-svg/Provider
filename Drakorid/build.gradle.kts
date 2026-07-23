@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk drakor.id – drakorid.cam nonton drama korea dan drama china gratis"
 
-    authors     = listOf("MTS")
+    authors     = listOf("MTSFlix")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mts.drakorid"
+    namespace = "com.mtsflix.drakorid"
 
 }
 

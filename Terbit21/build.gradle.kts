@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Terbit21 Nonton Dunia21 Bioskop Online Layarkaca21 INDOXXI"
 
-    authors     = listOf("MTS")
+    authors     = listOf("MTSFlix")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mts.terbit21"
+    namespace = "com.mtsflix.terbit21"
 
 }
 

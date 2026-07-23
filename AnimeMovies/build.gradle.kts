@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk AnimeMovies - Anime Movies Subtitle Indonesia"
 
-    authors     = listOf("MTS")
+    authors     = listOf("MTSFlix")
 
     status      = 1
 

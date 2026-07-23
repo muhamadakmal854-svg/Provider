@@ -6,7 +6,7 @@ cloudstream {
 
     description = "Provider untuk Animasu • Nonton Streaming & Download Anime Subtitle Indonesia"
 
-    authors     = listOf("MTS")
+    authors     = listOf("MTSFlix")
 
     status      = 1
 
@@ -18,7 +18,7 @@ cloudstream {
 
 android {
 
-    namespace = "com.mts.animasu"
+    namespace = "com.mtsflix.animasu"
 
 }
 
