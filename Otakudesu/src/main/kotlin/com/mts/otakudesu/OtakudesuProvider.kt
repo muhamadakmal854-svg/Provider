@@ -503,6 +503,4 @@ class DesustreamInfo : JWPlayer() {
 class Updesu : JWPlayer() {
     override val name = "Updesu"
     override val mainUrl = "https://desustream.info/dstream/updesu"
-
-}
 }
