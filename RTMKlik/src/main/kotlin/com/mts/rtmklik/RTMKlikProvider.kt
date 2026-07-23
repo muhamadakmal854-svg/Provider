@@ -72,16 +72,37 @@ class RTMKlikProvider : MainAPI() {
         )
 
         if (cleanData.contains(".m3u8") || cleanData.contains("m3u8")) {
+            val dashUrl = if (cleanData.contains("/HLS/")) {
+                cleanData.replace("/HLS/", "/DASH/").replace(".m3u8", ".mpd")
+            } else if (cleanData.contains("playlist.m3u8")) {
+                cleanData.replace("playlist.m3u8", "manifest.mpd")
+            } else ""
+
+            if (dashUrl.isNotBlank()) {
+                callback.invoke(
+                    newExtractorLink(
+                        source = name,
+                        name = "$name Live (DASH DRM-Free)",
+                        url = dashUrl,
+                        type = ExtractorLinkType.DASH
+                    ) {
+                        this.headers = reqHeaders
+                        this.referer = "https://rtmklik.rtm.gov.my/"
+                        this.quality = Qualities.P1080.value
+                    }
+                )
+            }
+
             callback.invoke(
                 newExtractorLink(
                     source = name,
-                    name = "$name Live (Master M3U8)",
+                    name = "$name Live (HLS Master M3U8)",
                     url = cleanData,
                     type = ExtractorLinkType.M3U8
                 ) {
                     this.headers = reqHeaders
                     this.referer = "https://rtmklik.rtm.gov.my/"
-                    this.quality = Qualities.Unknown.value
+                    this.quality = Qualities.P720.value
                 }
             )
 
@@ -90,36 +111,27 @@ class RTMKlikProvider : MainAPI() {
                 val baseDir = if (cleanData.contains("/")) cleanData.substringBeforeLast("/") + "/" else cleanData
                 val subFiles = masterText.lines().filter { it.endsWith(".m3u8") || it.contains(".m3u8?") }
 
-                if (subFiles.isNotEmpty()) {
-                    val subFile = subFiles.last()
+                subFiles.forEach { subFile ->
                     val subUrl = if (subFile.startsWith("http")) subFile else "$baseDir$subFile"
-                    val subText = app.get(subUrl, headers = reqHeaders).text
-                    val subBaseDir = if (subUrl.contains("/")) subUrl.substringBeforeLast("/") + "/" else subUrl
-
-                    val cleanLines = subText.lines().filter { line ->
-                        !line.startsWith("#EXT-X-KEY") && !line.lowercase().contains("playready")
-                    }.map { line ->
-                        if (!line.startsWith("#") && line.isNotBlank() && !line.startsWith("http")) {
-                            "$subBaseDir$line"
-                        } else {
-                            line
-                        }
-                    }
-
-                    val cleanM3u8Text = cleanLines.joinToString("\n")
-                    val b64 = android.util.Base64.encodeToString(cleanM3u8Text.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-                    val dataUri = "data:application/vnd.apple.mpegurl;base64,$b64"
+                    val label = if (subFile.contains("2500000") || subFile.contains("3000000")) "1080p"
+                                else if (subFile.contains("800000") || subFile.contains("600000")) "720p"
+                                else if (subFile.contains("400000")) "480p"
+                                else "360p"
+                    val qual = if (label == "1080p") Qualities.P1080.value
+                               else if (label == "720p") Qualities.P720.value
+                               else if (label == "480p") Qualities.P480.value
+                               else Qualities.P360.value
 
                     callback.invoke(
                         newExtractorLink(
                             source = name,
-                            name = "$name Live (DRM-Free Stream)",
-                            url = dataUri,
+                            name = "$name Live (Sub-playlist $label)",
+                            url = subUrl,
                             type = ExtractorLinkType.M3U8
                         ) {
                             this.headers = reqHeaders
                             this.referer = "https://rtmklik.rtm.gov.my/"
-                            this.quality = Qualities.P1080.value
+                            this.quality = qual
                         }
                     )
                 }
