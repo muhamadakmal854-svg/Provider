@@ -65,13 +65,8 @@ class RTMKlikProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val cleanData = java.net.URLDecoder.decode(data, "UTF-8")
-        val reqHeadersDesktop = mapOf(
+        val reqHeaders = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Referer" to "https://rtmklik.rtm.gov.my/",
-            "Origin" to "https://rtmklik.rtm.gov.my"
-        )
-        val reqHeadersMobile = mapOf(
-            "User-Agent" to "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
             "Referer" to "https://rtmklik.rtm.gov.my/",
             "Origin" to "https://rtmklik.rtm.gov.my"
         )
@@ -80,27 +75,55 @@ class RTMKlikProvider : MainAPI() {
             callback.invoke(
                 newExtractorLink(
                     source = name,
-                    name = "$name Live (Desktop UA)",
+                    name = "$name Live (Master M3U8)",
                     url = cleanData,
                     type = ExtractorLinkType.M3U8
                 ) {
-                    this.headers = reqHeadersDesktop
+                    this.headers = reqHeaders
                     this.referer = "https://rtmklik.rtm.gov.my/"
                     this.quality = Qualities.Unknown.value
                 }
             )
-            callback.invoke(
-                newExtractorLink(
-                    source = name,
-                    name = "$name Live (Mobile UA)",
-                    url = cleanData,
-                    type = ExtractorLinkType.M3U8
-                ) {
-                    this.headers = reqHeadersMobile
-                    this.referer = "https://rtmklik.rtm.gov.my/"
-                    this.quality = Qualities.Unknown.value
+
+            try {
+                val masterText = app.get(cleanData, headers = reqHeaders).text
+                val baseDir = if (cleanData.contains("/")) cleanData.substringBeforeLast("/") + "/" else cleanData
+                val subFiles = masterText.lines().filter { it.endsWith(".m3u8") || it.contains(".m3u8?") }
+
+                if (subFiles.isNotEmpty()) {
+                    val subFile = subFiles.last()
+                    val subUrl = if (subFile.startsWith("http")) subFile else "$baseDir$subFile"
+                    val subText = app.get(subUrl, headers = reqHeaders).text
+                    val subBaseDir = if (subUrl.contains("/")) subUrl.substringBeforeLast("/") + "/" else subUrl
+
+                    val cleanLines = subText.lines().filter { line ->
+                        !line.startsWith("#EXT-X-KEY") && !line.lowercase().contains("playready")
+                    }.map { line ->
+                        if (!line.startsWith("#") && line.isNotBlank() && !line.startsWith("http")) {
+                            "$subBaseDir$line"
+                        } else {
+                            line
+                        }
+                    }
+
+                    val cleanM3u8Text = cleanLines.joinToString("\n")
+                    val b64 = android.util.Base64.encodeToString(cleanM3u8Text.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                    val dataUri = "data:application/vnd.apple.mpegurl;base64,$b64"
+
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name Live (DRM-Free Stream)",
+                            url = dataUri,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.headers = reqHeaders
+                            this.referer = "https://rtmklik.rtm.gov.my/"
+                            this.quality = Qualities.P1080.value
+                        }
+                    )
                 }
-            )
+            } catch (e: Exception) {}
         } else {
             loadExtractor(cleanData, mainUrl, subtitleCallback, callback)
         }
