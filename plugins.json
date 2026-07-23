@@ -1,0 +1,938 @@
+[
+  {
+    "iconUrl": "https://anichin.moe/favicon.ico",
+    "fileHash": "6b9983f86c8f09dfc3205a08d53fb353",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 54246,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Anichin",
+    "description": "Provider untuk Anichin \u2013 Fansub Donghua Subtitle Indonesia",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Anichin.cs3",
+    "name": "Anichin"
+  },
+  {
+    "iconUrl": "https://v1.animasu.work/favicon.ico",
+    "fileHash": "b06bb173d20f4da3b0d9879517cb9ed9",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 82758,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Animasu",
+    "description": "Provider untuk Animasu \u2022 Nonton Streaming & Download Anime Subtitle Indonesia",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Animasu.cs3",
+    "name": "Animasu"
+  },
+  {
+    "iconUrl": "https://animexin.dev/favicon.ico",
+    "fileHash": "2991357051324f40ad0820df1f277fba",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 27823,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Animexin",
+    "description": "Provider untuk AnimeXin",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Animexin.cs3",
+    "name": "Animexin"
+  },
+  {
+    "iconUrl": "https://cinemax21.click/favicon.ico",
+    "fileHash": "74b08286db6192973580a549e4c2f56c",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 60361,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Cinemax21",
+    "description": "Provider untuk Cinemax21",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Cinemax21.cs3",
+    "name": "Cinemax21"
+  },
+  {
+    "iconUrl": "https://donghuastream.org/favicon.ico",
+    "fileHash": "52192253f9789951e52afebc4abf69ed",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 77584,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Donghuastream",
+    "description": "Provider untuk DonghuaStream",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Donghuastream.cs3",
+    "name": "Donghuastream"
+  },
+  {
+    "iconUrl": "https://donghub.vip/favicon.ico",
+    "fileHash": "ba9c0712026bd851b32cf5dd4ec46baa",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 75073,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Donghub",
+    "description": "Provider untuk Donghub",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Donghub.cs3",
+    "name": "Donghub"
+  },
+  {
+    "iconUrl": "https://drakorid.cam/favicon.ico",
+    "fileHash": "fb027e95b60767b254e637c7ffd85bfc",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 83480,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Drakorid",
+    "description": "Provider untuk drakor.id \u2013 drakorid.cam nonton drama korea dan drama china gratis",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Drakorid.cs3",
+    "name": "Drakorid"
+  },
+  {
+    "iconUrl": "https://austincomputerworks.org/favicon.ico",
+    "fileHash": "1ad1ca722076ec0ad51665c9353699df",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 54104,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Dutamovie21",
+    "description": "Provider untuk Dutamovie21",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Dutamovie21.cs3",
+    "name": "Dutamovie21"
+  },
+  {
+    "iconUrl": "https://taroscafe.com/favicon.ico",
+    "fileHash": "c78fc311038d8b96051e0e9b8bf9f5a7",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 56411,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Indoxxi",
+    "description": "Provider untuk INDOXXI - IDLIX",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Indoxxi.cs3",
+    "name": "Indoxxi"
+  },
+  {
+    "iconUrl": "https://tv47.juragan.film/favicon.ico",
+    "fileHash": "72da11f07546db039cbf1f958636d101",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 20047,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Juraganfilm",
+    "description": "Provider untuk JURAGANFILM : Situs Nonton Film Sub Indo Streaming Movie Online",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Juraganfilm.cs3",
+    "name": "Juraganfilm"
+  },
+  {
+    "iconUrl": "https://forumikatolik.net/favicon.ico",
+    "fileHash": "ecc5f37dc4f336f81b0ce15644a7b40d",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 55313,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Klikxxi",
+    "description": "Provider untuk KLIKXXI \u2013 Nonton Film Online Gratis Sub Indo LAYARKACA21 LK21",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Klikxxi.cs3",
+    "name": "Klikxxi"
+  },
+  {
+    "iconUrl": "https://m2.kuramanime.ing/favicon.ico",
+    "fileHash": "724ec86009498d7f7a556ba76a96fce4",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 50295,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Kuramanime",
+    "description": "Provider untuk Kuramanime",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Kuramanime.cs3",
+    "name": "Kuramanime"
+  },
+  {
+    "iconUrl": "https://new37.ngefilm.site/favicon.ico",
+    "fileHash": "52346dcd50cb7cd8824f971ef09aa632",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 53800,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Ngefilm",
+    "description": "Provider untuk NGEFILM21",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Ngefilm.cs3",
+    "name": "Ngefilm"
+  },
+  {
+    "iconUrl": "https://oploverz.ch/favicon.ico",
+    "fileHash": "2fba50e1c902d8ff72aa694d0bccb27f",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 81465,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Oploverz",
+    "description": "Provider untuk Situs Oploverz yang asli",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Oploverz.cs3",
+    "name": "Oploverz"
+  },
+  {
+    "iconUrl": "https://otakudesu.blog/favicon.ico",
+    "fileHash": "2b3d5eab5c251e549dccb7a31e7fce59",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 64906,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Otakudesu",
+    "description": "Provider untuk Otaku Desu",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Otakudesu.cs3",
+    "name": "Otakudesu"
+  },
+  {
+    "iconUrl": "https://ww11.pencurimovie.sbs/favicon.ico",
+    "fileHash": "2723636f8ca6d04a9bc36d685629fe6a",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 45966,
+    "status": 1,
+    "language": "ms",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries",
+      "AsianDrama"
+    ],
+    "version": 1,
+    "internalName": "Pencurimovie",
+    "description": "Provider untuk Pencurimovie",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Pencurimovie.cs3",
+    "name": "Pencurimovie"
+  },
+  {
+    "iconUrl": "https://v2.samehadaku.how/favicon.ico",
+    "fileHash": "0933350d7706071eff38c7425238828d",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 51318,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Samehadaku",
+    "description": "Provider untuk Samehadaku",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Samehadaku.cs3",
+    "name": "Samehadaku"
+  },
+  {
+    "iconUrl": "https://sarangfilm.diy/favicon.ico",
+    "fileHash": "2f17ea792e3d4aa938c358c82060c00f",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 34691,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Sarangfilm21",
+    "description": "Provider untuk Sarangfilm21",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Sarangfilm21.cs3",
+    "name": "Sarangfilm21"
+  },
+  {
+    "iconUrl": "https://sorastream.top/favicon.ico",
+    "fileHash": "3be6ebebf481b2ab48d61d28b72c97bc",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 182453,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Sorastream",
+    "description": "Provider untuk Sorastream",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Sorastream.cs3",
+    "name": "Sorastream"
+  },
+  {
+    "iconUrl": "https://tv11.lk21official.cc/favicon.ico",
+    "fileHash": "8d3dc58e51820e06699a221838657891",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 34763,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Lk21",
+    "description": "Provider untuk Lk21",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Lk21.cs3",
+    "name": "Lk21"
+  },
+  {
+    "iconUrl": "https://www.xml-acronym-demystifier.org/favicon.ico",
+    "fileHash": "ddee98ac9911aca5e21c2b965a2eea65",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 51003,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "LayarOtaku",
+    "description": "Provider untuk Layar Otaku",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/LayarOtaku.cs3",
+    "name": "LayarOtaku"
+  },
+  {
+    "iconUrl": "https://tv2.animebagus.com/favicon.ico",
+    "fileHash": "55f145453fcde415b5353042b90240f1",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 47930,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "AnimeBagus",
+    "description": "Provider untuk AnimeBagus - Anime Subtitle Indonesia",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/AnimeBagus.cs3",
+    "name": "AnimeBagus"
+  },
+  {
+    "iconUrl": "https://animechina.my.id/favicon.ico",
+    "fileHash": "b1e46b25b2ce68c2ee294cc558d68ead",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 26066,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "AnimeChina",
+    "description": "Provider untuk AnimeChina - Donghua Subtitle Indonesia",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/AnimeChina.cs3",
+    "name": "AnimeChina"
+  },
+  {
+    "iconUrl": "https://animemovies.org/favicon.ico",
+    "fileHash": "cc766923e65b398eba045648bc0da92a",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 43628,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "AnimeMovies",
+    "description": "Provider untuk AnimeMovies - Anime Movies Subtitle Indonesia",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/AnimeMovies.cs3",
+    "name": "AnimeMovies"
+  },
+  {
+    "iconUrl": "https://anime-play.id/favicon.ico",
+    "fileHash": "31314ba0b7cc02155b91de4ad2b93d48",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 27603,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "AnimePlay",
+    "description": "Provider untuk AnimePlay - Anime Subtitle Indonesia",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/AnimePlay.cs3",
+    "name": "AnimePlay"
+  },
+  {
+    "iconUrl": "https://www.bilibili.tv/favicon.ico",
+    "fileHash": "5b6d336efac53edee4f72175e8e2cc14",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 81504,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "BilibiliProvider",
+    "description": "Provider untuk Bilibili TV Indonesia",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/BilibiliProvider.cs3",
+    "name": "BilibiliProvider"
+  },
+  {
+    "iconUrl": "https://github.com/favicon.ico",
+    "fileHash": "1552926f82b187833dbd924ee9845746",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 35525,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Extractors",
+    "description": "Provider untuk Modular Upgraded Extractors",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Extractors.cs3",
+    "name": "Extractors"
+  },
+  {
+    "iconUrl": "https://m.mydramawave.com/favicon.ico",
+    "fileHash": "deae12b57429f995b066d2a8141caa9c",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 36172,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "FreeReels",
+    "description": "Provider untuk FreeReels - MyDramaWave Korean Dramas",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/FreeReels.cs3",
+    "name": "FreeReels"
+  },
+  {
+    "iconUrl": "https://moviebox.ph/favicon.ico",
+    "fileHash": "8c63163bc0b4f7837675a9f9d2482747",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 43584,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "MovieBox",
+    "description": "Provider untuk MovieBox - Movies and TV Series",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/MovieBox.cs3",
+    "name": "MovieBox"
+  },
+  {
+    "iconUrl": "http://45.11.57.192/favicon.ico",
+    "fileHash": "5d324addcb149e8d1310517625924565",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 21851,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Oppadrama",
+    "description": "Provider untuk Oppadrama - Korean and Asian Dramas",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Oppadrama.cs3",
+    "name": "Oppadrama"
+  },
+  {
+    "iconUrl": "https://tv4.nontondrama.my/favicon.ico",
+    "fileHash": "68ae1817e40aa03a55bd6cb7a9d6c582",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 43386,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "NontonDrama",
+    "description": "Provider untuk NontonDrama",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/NontonDrama.cs3",
+    "name": "NontonDrama"
+  },
+  {
+    "iconUrl": "https://www.goodshort.com/favicon.ico",
+    "fileHash": "22cebe0d8203d69dd48654817428e541",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 21149,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "GoodShort",
+    "description": "Provider untuk GoodShort - Dramas & Mini-series",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/GoodShort.cs3",
+    "name": "GoodShort"
+  },
+  {
+    "iconUrl": "https://www.dramaboxdb.com/favicon.ico",
+    "fileHash": "bb01b1fea1906d1016795dbef9231b53",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 16371,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Dramaboxdb",
+    "description": "Provider untuk Dramaboxdb",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Dramaboxdb.cs3",
+    "name": "Dramaboxdb"
+  },
+  {
+    "iconUrl": "https://m.mydramawave.com/favicon.ico",
+    "fileHash": "08149bc56c6452811213895ad0280b17",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 36163,
+    "status": 1,
+    "language": "en",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "MyDramaWave",
+    "description": "Provider untuk MyDramaWave",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/MyDramaWave.cs3",
+    "name": "MyDramaWave"
+  },
+  {
+    "iconUrl": "https://4khdhub.one/favicon.ico",
+    "fileHash": "246f3599fcc2bff2557d7207992a5973",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 62188,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "FourKHDHub",
+    "description": "Provider untuk 4KHDHub",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/FourKHDHub.cs3",
+    "name": "FourKHDHub"
+  },
+  {
+    "iconUrl": "https://162.244.93.196/favicon.ico",
+    "fileHash": "6154d565c66c3e2fcf58c62073bb95d0",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 19180,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "MaxMovie21",
+    "description": "Provider untuk MaxMovie21",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/MaxMovie21.cs3",
+    "name": "MaxMovie21"
+  },
+  {
+    "iconUrl": "https://drakor.kita.mobi/favicon.ico",
+    "fileHash": "22c39f2f66291f07018b1008478713e8",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 56132,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "DrakorKita",
+    "description": "Provider untuk DrakorKita",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/DrakorKita.cs3",
+    "name": "DrakorKita"
+  },
+  {
+    "iconUrl": "https://sv4.kazefuri.cloud/favicon.ico",
+    "fileHash": "e9a247e9b4a261315bdc28482cbccdaa",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 76065,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Kazefuri",
+    "description": "Provider untuk Kazefuri",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Kazefuri.cs3",
+    "name": "Kazefuri"
+  },
+  {
+    "iconUrl": "https://web.kawanfilm21.co/favicon.ico",
+    "fileHash": "e8a94f1f2807a11ae58a79588f5fcd1a",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 58681,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "KawanFilm",
+    "description": "Provider untuk KawanFilm21",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/KawanFilm.cs3",
+    "name": "KawanFilm"
+  },
+  {
+    "iconUrl": "https://162.244.95.227/favicon.ico",
+    "fileHash": "e4b1f30ff37a3f6b40d4bcb212832a6b",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 54797,
+    "status": 1,
+    "language": "ms",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "Terbit21",
+    "description": "Provider untuk Terbit21 Nonton Dunia21 Bioskop Online Layarkaca21 INDOXXI",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Terbit21.cs3",
+    "name": "Terbit21"
+  },
+  {
+    "iconUrl": "https://anoboy.xyz/favicon.ico",
+    "fileHash": "3c6166442b47f5135c68b1ae7978902e",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 43399,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Anime",
+      "TvSeries",
+      "OVA"
+    ],
+    "version": 1,
+    "internalName": "Anoboy",
+    "description": "Provider untuk anoBoy",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/Anoboy.cs3",
+    "name": "Anoboy"
+  },
+  {
+    "iconUrl": "https://rtmklik.rtm.gov.my/live/tv/tv1/favicon.ico",
+    "fileHash": "377eefad0a7f69129357457cfeca9424",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 16494,
+    "status": 1,
+    "language": "ms",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "RTMKlik",
+    "description": "Provider untuk RTM Klik",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/RTMKlik.cs3",
+    "name": "RTMKlik"
+  },
+  {
+    "iconUrl": "https://mana2.my/favicon.ico",
+    "fileHash": "873beccbcae734342d3d5db3912e4773",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 60964,
+    "status": 1,
+    "language": "id",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "MANA2Movie",
+    "description": "Provider untuk MYTV Mana",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/MANA2Movie.cs3",
+    "name": "MANA2Movie"
+  },
+  {
+    "iconUrl": "https://mana2.my/live/favicon.ico",
+    "fileHash": "c26287c46e91de214e006966b0691e0d",
+    "apiVersion": 1,
+    "repositoryUrl": "https://github.com/muhamadakmal854-svg/Provider",
+    "fileSize": 28581,
+    "status": 1,
+    "language": "ms",
+    "authors": [
+      "MTS"
+    ],
+    "tvTypes": [
+      "Movie",
+      "TvSeries"
+    ],
+    "version": 1,
+    "internalName": "MYTVLive",
+    "description": "Provider untuk MYTV Live",
+    "url": "https://muhamadakmal854-svg.github.io/Provider/MYTVLive.cs3",
+    "name": "MYTVLive"
+  }
+]
