@@ -9,7 +9,7 @@ class AnichinProvider : MainAPI() {
     companion object {
         var context: android.content.Context? = null
     }
-    override var mainUrl = "https://anichin.moe"
+    override var mainUrl = "https://anichin.cafe"
     override var name = "Anichin"
     override val hasMainPage = true
     override var lang = "id"
@@ -69,7 +69,7 @@ class AnichinProvider : MainAPI() {
         }
 
         return if (tvType == TvType.TvSeries) {
-            val episodes = document.select(".eplister li").map { ep ->
+            val episodes = document.select(".eplister li, .eplist li, ul.clstyle li").map { ep ->
                 val link = fixUrl(ep.selectFirst("a")?.attr("href").orEmpty())
                 val epTitle = ep.selectFirst(".epl-title")?.text()?.trim().orEmpty()
                 val epSub = ep.selectFirst(".epl-sub span")?.text()?.trim().orEmpty()
@@ -110,27 +110,28 @@ class AnichinProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(fixUrl(data)).document
+        val extractedEmbeds = mutableSetOf<String>()
 
-        // Load default embedded iframe in player
+        // 1. Load default embedded iframe
         val defaultIframeSrc = document.selectFirst("#pembed iframe, .player-embed iframe, #embed_holder iframe")?.attr("src")
         if (!defaultIframeSrc.isNullOrBlank()) {
             val defaultHref = if (defaultIframeSrc.startsWith("//")) "https:$defaultIframeSrc" else defaultIframeSrc
             if (defaultHref.startsWith("http")) {
-                loadExtractor(defaultHref, data, subtitleCallback, callback)
+                extractedEmbeds.add(defaultHref)
             }
         }
 
-        // Process options
-        document.select(".mobius option, select.mirror option, select option[value]").forEach { server ->
-            val base64 = server.attr("value").trim()
-            if (base64.isBlank()) return@forEach
-            if (base64.startsWith("http") || base64.startsWith("//")) {
-                val href = if (base64.startsWith("//")) "https:$base64" else base64
-                loadExtractor(href, data, subtitleCallback, callback)
+        // 2. Process select options (both raw URLs and base64 encoded IFrames)
+        document.select(".mobius option, select.mirror option, select option[value], .mob-mirror option[value]").forEach { server ->
+            val value = server.attr("value").trim()
+            if (value.isBlank()) return@forEach
+            if (value.startsWith("http") || value.startsWith("//")) {
+                val href = if (value.startsWith("//")) "https:$value" else value
+                extractedEmbeds.add(href)
                 return@forEach
             }
             try {
-                val decoded = base64Decode(base64)
+                val decoded = base64Decode(value)
                 val doc = Jsoup.parse(decoded)
                 val iframeSrc = doc.selectFirst("iframe")?.attr("src")
                     ?: doc.selectFirst("[src]")?.attr("src")
@@ -138,10 +139,35 @@ class AnichinProvider : MainAPI() {
                     val href = if (iframeSrc.startsWith("//")) "https:$iframeSrc"
                     else if (iframeSrc.startsWith("http")) iframeSrc
                     else return@forEach
-                    loadExtractor(href, data, subtitleCallback, callback)
+                    extractedEmbeds.add(href)
                 }
             } catch (_: Exception) {}
         }
+
+        // 3. Process extracted embeds
+        extractedEmbeds.forEach { href ->
+            // Check anichin.stream ID
+            val sidMatch = Regex("""(?:\?id=|/hls/)([\w\-]+)""").find(href)
+            if (sidMatch != null) {
+                val sid = sidMatch.groupValues[1]
+                val m3u8Url = "https://anichin.stream/hls/$sid.m3u8"
+                callback.invoke(
+                    newExtractorLink(
+                        name = "Anichin Stream",
+                        source = "Anichin Stream",
+                        url = m3u8Url,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "https://anichin.stream/"
+                        this.quality = Qualities.Unknown.value
+                    }
+                )
+            }
+
+            // Also load built-in extractors for StreamWish, Rumble, AbyssPlayer, etc.
+            loadExtractor(href, data, subtitleCallback, callback)
+        }
+
         return true
     }
 
