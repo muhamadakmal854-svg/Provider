@@ -2,6 +2,8 @@ package com.mts.mtsplaylist
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.extractors.YoutubeExtractor
 
 class MTSPlaylistProvider : MainAPI() {
     override var mainUrl              = "https://www.youtube.com/playlist?list=PLp-xgC9kjBlnVYEyyQFyeP1lXGDrqn1GZ"
@@ -90,13 +92,18 @@ class MTSPlaylistProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val videoId = url.substringAfter("v=").substringBefore("&").substringBefore("?")
+        val videoId = if (url.contains("v=")) {
+            url.substringAfter("v=").substringBefore("&").substringBefore("?")
+        } else if (url.contains("shorts/")) {
+            url.substringAfter("shorts/").substringBefore("?").substringBefore("/")
+        } else url
         val title = "YouTube Video ($videoId)"
-        val poster = "https://img.youtube.com/vi/$videoId/maxresdefault.jpg"
+        val poster = "https://img.youtube.com/vi/$videoId/hqdefault.jpg"
+        val cleanUrl = if (videoId.length >= 8) "https://www.youtube.com/watch?v=$videoId" else url
 
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+        return newMovieLoadResponse(title, cleanUrl, TvType.Movie, cleanUrl) {
             this.posterUrl = poster
-            this.plot = "YouTube Video: $url"
+            this.plot = "YouTube Video: $cleanUrl"
         }
     }
 
@@ -106,7 +113,65 @@ class MTSPlaylistProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        loadExtractor(data, mainUrl, subtitleCallback, callback)
+        val videoId = if (data.contains("v=")) {
+            data.substringAfter("v=").substringBefore("&").substringBefore("?")
+        } else if (data.contains("shorts/")) {
+            data.substringAfter("shorts/").substringBefore("?").substringBefore("/")
+        } else ""
+
+        val cleanUrl = if (videoId.length >= 8) "https://www.youtube.com/watch?v=$videoId" else data
+        var found = false
+
+        val cb = { link: ExtractorLink ->
+            found = true
+            callback.invoke(link)
+        }
+
+        try {
+            YoutubeExtractor().getUrl(cleanUrl, mainUrl, subtitleCallback, cb)
+        } catch (e: Exception) {}
+
+        if (!found) {
+            try {
+                loadExtractor(cleanUrl, mainUrl, subtitleCallback, cb)
+            } catch (e: Exception) {}
+        }
+
+        if (!found && videoId.length >= 8) {
+            val invidiousInstances = listOf(
+                "https://inv.tux.pizza",
+                "https://invidious.nerdvpn.de",
+                "https://invidious.drgns.space",
+                "https://vid.puffyan.us"
+            )
+            for (inv in invidiousInstances) {
+                try {
+                    val resp = app.get("$inv/api/v1/videos/$videoId", timeout = 5).text
+                    if (resp.contains("formatStreams")) {
+                        val dataMap = parseJson<Map<String, Any>>(resp)
+                        val streams = dataMap["formatStreams"] as? List<Map<String, Any>>
+                        streams?.forEach { st ->
+                            val sUrl = st["url"] as? String
+                            val qLabel = st["qualityLabel"] as? String ?: "720p"
+                            val qVal = qLabel.replace("p", "").toIntOrNull() ?: Qualities.Unknown.value
+                            if (!sUrl.isNullOrBlank()) {
+                                callback.invoke(
+                                    ExtractorLink(
+                                        source = "YouTube (Invidious)",
+                                        name = "$name ($qLabel)",
+                                        url = sUrl,
+                                        referer = "",
+                                        quality = qVal
+                                    )
+                                )
+                                found = true
+                            }
+                        }
+                        if (found) break
+                    }
+                } catch (e: Exception) {}
+            }
+        }
         return true
     }
 }
