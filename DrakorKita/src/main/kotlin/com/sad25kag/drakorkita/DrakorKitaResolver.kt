@@ -498,3 +498,5 @@ object DrakorKitaResolver {
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
+}
+
