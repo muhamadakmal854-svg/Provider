@@ -192,7 +192,7 @@ class MTSPlaylistProvider : MainAPI() {
                             }
 
                             if (!found) {
-                                val formats = (sd["formats"] as? List<Map<String, Any>>).orEmpty() + (sd["adaptiveFormats"] as? List<Map<String, Any>>).orEmpty()
+                                val formats = (sd["formats"] as? List<Map<String, Any>>).orEmpty()
                                 formats.forEach { f ->
                                     val streamUrl = (f["url"] as? String)?.replace("\\/", "/")
                                     if (!streamUrl.isNullOrBlank()) {
