@@ -17,30 +17,47 @@ class AnichinProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.Anime)
 
     override val mainPage = mainPageOf(
-        "anime/?order=update" to "Latest Update",
-        "anime/?status=ongoing&order=update" to "Series Ongoing",
-        "anime/?status=completed&order=update" to "Series Completed",
-        "anime/?status=hiatus&order=update" to "Series Drop/Hiatus",
-        "anime/?type=movie&order=update" to "Movie"
+        "page/%d/" to "Terbaru",
+        "ongoing/page/%d/" to "Ongoing",
+        "completed/page/%d/" to "Completed",
+        "schedule/" to "Jadwal Update"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("${mainUrl}/${request.data}&page=$page").document
-        val home = document.select("div.listupd > article").mapNotNull { it.toSearchResult() }
+        val url = if (request.data.contains("%d")) {
+            "${mainUrl}/${request.data.format(page)}"
+        } else {
+            "${mainUrl}/${request.data}"
+        }
+
+        val document = app.get(url).document
+        val home = document.select("div.listupd article, div.bsx, article.bs, div.bs, .listupd .bsx")
+            .mapNotNull { it.toSearchResult() }
+            .distinctBy { it.url }
+
         return newHomePageResponse(
             list = HomePageList(
                 name = request.name,
                 list = home,
                 isHorizontalImages = false
             ),
-            hasNext = true
+            hasNext = home.isNotEmpty()
         )
     }
 
-    private fun Element.toSearchResult(): SearchResponse {
-        val title = this.select("div.bsx > a").attr("title").trim()
-        val href = fixUrl(this.select("div.bsx > a").attr("href"))
-        val posterUrl = fixUrlNull(this.select("div.bsx > a img").attr("src"))
+    private fun Element.toSearchResult(): SearchResponse? {
+        val a = this.selectFirst("a") ?: return null
+        val href = fixUrlNull(a.attr("href")) ?: return null
+        var title = a.attr("title").trim()
+        if (title.isBlank()) {
+            title = this.selectFirst("div.title, div.tt, h2, h3, .entry-title")?.text()?.trim().orEmpty()
+        }
+        if (title.isBlank()) {
+            title = a.text().trim()
+        }
+        if (title.isBlank()) return null
+        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("src"))
+
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
         }
