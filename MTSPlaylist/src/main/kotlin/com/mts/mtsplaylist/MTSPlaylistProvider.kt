@@ -138,39 +138,79 @@ class MTSPlaylistProvider : MainAPI() {
         }
 
         if (!found && videoId.length >= 8) {
-            val invidiousInstances = listOf(
-                "https://inv.tux.pizza",
-                "https://invidious.nerdvpn.de",
-                "https://invidious.drgns.space",
-                "https://vid.puffyan.us"
-            )
-            for (inv in invidiousInstances) {
-                try {
-                    val resp = app.get("$inv/api/v1/videos/$videoId", timeout = 5).text
-                    if (resp.contains("formatStreams")) {
-                        val dataMap = parseJson<Map<String, Any>>(resp)
-                        val streams = dataMap["formatStreams"] as? List<Map<String, Any>>
-                        streams?.forEach { st ->
-                            val sUrl = st["url"] as? String
-                            val qLabel = st["qualityLabel"] as? String ?: "720p"
-                            val qVal = qLabel.replace("p", "").toIntOrNull() ?: Qualities.Unknown.value
-                            if (!sUrl.isNullOrBlank()) {
+            try {
+                val headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
+                    "Accept-Language" to "en-US,en;q=0.9"
+                )
+                val html = app.get(cleanUrl, headers = headers).text
+
+                // 1. Check for HLS Manifest M3U8 URL (Live Streams & M3U8)
+                val hlsRegex = Regex("\"hlsManifestUrl\"\\s*:\\s*\"([^\"]+)\"")
+                val hlsMatch = hlsRegex.find(html)
+                if (hlsMatch != null) {
+                    val hlsUrl = hlsMatch.groupValues[1].replace("\\/", "/").replace("\\u0026", "&").replace("&amp;", "&")
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name Live (M3U8)",
+                            url = hlsUrl,
+                            type = ExtractorLinkType.M3U8
+                        )
+                    )
+                    found = true
+                }
+
+                // 2. Check ytInitialPlayerResponse formats & adaptiveFormats
+                if (!found) {
+                    val sdRegex = Regex("ytInitialPlayerResponse\\s*=\\s*(\\{.+?\\});(?:var|</script>)")
+                    val sdMatch = sdRegex.find(html)
+                    if (sdMatch != null) {
+                        val jsonStr = sdMatch.groupValues[1]
+                        val dataMap = parseJson<Map<String, Any>>(jsonStr)
+                        val sd = dataMap["streamingData"] as? Map<String, Any>
+                        if (sd != null) {
+                            val hls = sd["hlsManifestUrl"] as? String
+                            if (!hls.isNullOrBlank()) {
+                                val cleanHls = hls.replace("\\/", "/").replace("\\u0026", "&").replace("&amp;", "&")
                                 callback.invoke(
                                     newExtractorLink(
-                                        source = "YouTube (Invidious)",
-                                        name = "$name ($qLabel)",
-                                        url = sUrl
-                                    ) {
-                                        this.quality = qVal
-                                    }
+                                        source = name,
+                                        name = "$name (M3U8)",
+                                        url = cleanHls,
+                                        type = ExtractorLinkType.M3U8
+                                    )
                                 )
                                 found = true
                             }
+
+                            if (!found) {
+                                val formats = (sd["formats"] as? List<Map<String, Any>>).orEmpty() + (sd["adaptiveFormats"] as? List<Map<String, Any>>).orEmpty()
+                                formats.forEach { f ->
+                                    val streamUrl = (f["url"] as? String)?.replace("\\/", "/")
+                                    if (!streamUrl.isNullOrBlank()) {
+                                        val qualityLabel = (f["qualityLabel"] as? String) ?: (f["quality"] as? String) ?: "Auto"
+                                        val qVal = qualityLabel.replace("p", "").toIntOrNull() ?: Qualities.Unknown.value
+                                        val isM3u8 = streamUrl.contains("m3u8")
+                                        val linkType = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                        callback.invoke(
+                                            newExtractorLink(
+                                                source = name,
+                                                name = "$name ($qualityLabel)",
+                                                url = streamUrl,
+                                                type = linkType
+                                            ) {
+                                                this.quality = qVal
+                                            }
+                                        )
+                                        found = true
+                                    }
+                                }
+                            }
                         }
-                        if (found) break
                     }
-                } catch (e: Exception) {}
-            }
+                }
+            } catch (e: Exception) {}
         }
         return true
     }
