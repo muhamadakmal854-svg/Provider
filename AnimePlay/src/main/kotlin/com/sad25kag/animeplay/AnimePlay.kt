@@ -236,7 +236,6 @@ class AnimePlay : MainAPI() {
                 this.showStatus = showStatus
             }
         }
-    }
 
 
     private fun cleanEpisodeLabel(rawLabel: String?, epNum: Int?): String {
@@ -552,4 +551,3 @@ class AnimePlay : MainAPI() {
         )
         return true
     }
-}

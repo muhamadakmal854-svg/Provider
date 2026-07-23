@@ -90,7 +90,6 @@ class SamehadakuProvider : MainAPI() {
 
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
-            addSub(epNum)
         }
     }
 

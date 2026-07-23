@@ -617,3 +617,5 @@ class DrakorKita : MainAPI() {
         return json.toString()
     }
 }
+
+}

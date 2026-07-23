@@ -46,6 +46,44 @@ object DrakorKitaResolver {
         }
     }
 
+    /**
+     * Validates that a URL returned by the API is actually usable (not a broken placeholder).
+     * The API returns broken URLs like:
+     * - "https://drakorkita.stream/#"        (empty P2P hash)
+     * - "https://abysscdn.com/?v=?sub=...&lang=" (empty Hydrax v param)
+     * - "https://dqt.my.id/e/.html"          (empty SB hash path)
+     */
+    private fun isValidVideoApiUrl(url: String): Boolean {
+        if (url.isBlank()) return false
+        val lower = url.lowercase()
+
+        // P2P: drakorkita.stream/#HASH - reject if hash is empty or just "#"
+        if (lower.contains("drakorkita.stream")) {
+            val fragment = url.substringAfter("#", "").trim()
+            return fragment.length > 3  // needs a real hash
+        }
+
+        // Hydrax: abysscdn.com/?v=HASH - reject if ?v= is empty or starts with "?"
+        if (lower.contains("abysscdn.com")) {
+            val vParam = url.substringAfter("?v=", "").substringBefore("&").trim()
+            return vParam.isNotBlank() && !vParam.startsWith("?")
+        }
+
+        // StreamSB: dqt.my.id/e/HASH.html - reject if HASH is empty
+        if (lower.contains("dqt.my.id/e/")) {
+            val hash = url.substringAfter("/e/", "").substringBefore(".").trim()
+            return hash.length > 3  // needs a real hash
+        }
+
+        // handal.bid stream - validate similar to dqt
+        if (lower.contains("handal.bid/e/")) {
+            val hash = url.substringAfter("/e/", "").substringBefore(".").trim()
+            return hash.length > 3
+        }
+
+        return true  // assume valid for other URLs
+    }
+
     fun extractEmbedCandidates(document: Document, mainUrl: String): List<String> {
         val candidates = linkedSetOf<String>()
 
@@ -115,10 +153,11 @@ object DrakorKitaResolver {
         val candidates = linkedSetOf<String>()
         val baseApi = payload.cApiHost.trimEnd('/')
         val candidateApiHosts = listOf(
+            baseApi,
             "$mainUrl/c_api",
+            "https://api.nonton.bid/c_api",
             "https://drakorindo18.kita.baby/c_api",
-            "https://drakor43.nicewap.sbs/c_api",
-            baseApi
+            "https://drakor43.nicewap.sbs/c_api"
         ).distinct()
 
         for (cApiHost in candidateApiHosts) {
@@ -146,95 +185,86 @@ object DrakorKitaResolver {
                     .ifBlank { tagSeed }
             }
 
-            val serverJson = if (episodeIdSeed.isNotBlank()) {
-                apiGetJson(
-                    url = "$cApiHost/server_mob.php" +
-                        "?is_mob=${payload.isMob}" +
-                        "&is_uc=${payload.isUc}" +
-                        "&episode_id=${encode(episodeIdSeed)}" +
-                        "&tag=${encode(tagSeed)}" +
-                        "&server_xid=${encode(serverXidSeed)}" +
-                        "&c=${encode(payload.c)}" +
-                        "&t=${encode(payload.t)}" +
-                        "&ver=${encode(payload.ver)}",
-                    headers = ajaxHeaders,
-                    referer = payload.detailUrl
+            if (episodeIdSeed.isNotBlank()) {
+                // Try all video API endpoints and validate responses
+                listOf(
+                    "video_sb.php" to "sb_url",
+                    "video_hydrax.php" to "hydrax_url",
+                    "video_p2p.php" to "p2p_url"
+                ).forEach { (endpoint, field) ->
+                    val json = apiGetJson(
+                        url = "$cApiHost/$endpoint" +
+                            "?is_mob=${payload.isMob}" +
+                            "&is_uc=${payload.isUc}" +
+                            "&id=${encode(episodeIdSeed)}" +
+                            "&qua=${encode(tagSeed)}" +
+                            "&server_id=${encode(serverXidSeed)}" +
+                            "&cat=${encode(tagSeed)}" +
+                            "&tag=${encode(payload.ver)}" +
+                            "&c=${encode(payload.c)}" +
+                            "&t=${encode(payload.t)}",
+                        headers = ajaxHeaders,
+                        referer = payload.detailUrl
+                    )
+                    val rawUrl = json?.optString(field).orEmpty().replace("\\/", "/")
+                    if (rawUrl.isNotBlank()) {
+                        val normalized = normalizeUrl(rawUrl, mainUrl)
+                        // Only add if URL is valid (not a broken placeholder)
+                        if (isValidVideoApiUrl(normalized)) {
+                            candidates.add(normalized)
+                        }
+                    }
+                }
+
+                // CRITICAL FIX: The ep_id from episode_mob.php IS the StreamSB file code.
+                // The API's video_sb.php always returns dqt.my.id with empty hash because
+                // dqt.my.id has expired/deleted the files. However, streamsb.net (the original
+                // StreamSB host) still serves the same file codes. Construct URLs directly.
+                val streamSbDomains = listOf(
+                    "https://streamsb.net",
+                    "https://sbembed.com",
+                    "https://dqt.my.id"
                 )
-            } else {
-                null
-            }
+                streamSbDomains.forEach { sbDomain ->
+                    candidates.add("$sbDomain/e/$episodeIdSeed.html")
+                }
 
-            val serverData = serverJson?.optJSONObject("data") ?: JSONObject()
-            val episodeId = serverData.optString("id").ifBlank { episodeIdSeed }
-            val serverId = serverData.optString("server_id").ifBlank { serverXidSeed }
-            val tag = serverData.optString("tag").ifBlank { tagSeed }
-            val quality = serverData.optString("qua").ifBlank { "web" }
-            val res = serverData.optString("res").ifBlank { "1080" }
-
-            if (episodeId.isNotBlank()) {
+                // Also try the direct video.php endpoint (sometimes works)
                 val videoJson = apiGetJson(
                     url = "$cApiHost/video.php" +
                         "?is_mob=${payload.isMob}" +
                         "&is_uc=${payload.isUc}" +
-                        "&id=${encode(episodeId)}" +
-                        "&qua=${encode(quality)}" +
-                        "&server_id=${encode(serverId)}" +
-                        "&cat=${encode(tag)}" +
+                        "&id=${encode(episodeIdSeed)}" +
+                        "&qua=${encode(tagSeed)}" +
+                        "&server_id=${encode(serverXidSeed)}" +
+                        "&cat=${encode(tagSeed)}" +
                         "&tag=${encode(payload.ver)}" +
                         "&c=${encode(payload.c)}" +
                         "&t=${encode(payload.t)}",
                     headers = ajaxHeaders,
                     referer = payload.detailUrl
                 )
-
                 videoJson?.let { json ->
                     listOf("file", "source", "video", "hls", "url", "download").forEach { field ->
                         val value = json.optString(field)
-                        if (value.isNotBlank()) extractUrlsFromText(value, mainUrl).forEach(candidates::add)
+                        if (value.isNotBlank()) {
+                            extractUrlsFromText(value, mainUrl).forEach { url ->
+                                if (isValidVideoApiUrl(url)) candidates.add(url)
+                            }
+                        }
                     }
                     json.optJSONObject("dl")?.let { dl ->
                         dl.keys().forEach { key ->
                             val value = normalizeUrl(dl.optString(key), mainUrl)
-                            if (value.isNotBlank()) candidates.add(value)
-                            extractUrlsFromText(dl.optString(key), mainUrl).forEach(candidates::add)
+                            if (value.isNotBlank() && isValidVideoApiUrl(value)) candidates.add(value)
                         }
-                    }
-                }
-
-                listOf(
-                    "1080",
-                    res,
-                    "720",
-                    "480"
-                ).distinct().forEach { wantedRes ->
-                    listOf(
-                        "video_sb.php" to "sb_url",
-                        "video_hydrax.php" to "hydrax_url",
-                        "video_p2p.php" to "p2p_url"
-                    ).forEach { (endpoint, field) ->
-                        val json = apiGetJson(
-                            url = "$cApiHost/$endpoint" +
-                                "?is_mob=${payload.isMob}" +
-                                "&is_uc=${payload.isUc}" +
-                                "&id=${encode(episodeId)}" +
-                                "&qua=${encode(quality)}" +
-                                "&res=${encode(wantedRes)}" +
-                                "&server_id=${encode(serverId)}" +
-                                "&cat=${encode(tag)}" +
-                                "&tag=${encode(payload.ver)}" +
-                                "&c=${encode(payload.c)}" +
-                                "&t=${encode(payload.t)}",
-                            headers = ajaxHeaders,
-                            referer = payload.detailUrl
-                        )
-                        json?.optString(field)
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { candidates.add(normalizeUrl(it, mainUrl)) }
                     }
                 }
             }
 
-            if (candidates.isNotEmpty()) break
+            // Break early only if we have non-StreamSB-fallback candidates
+            // Always continue for StreamSB fallback since we add those unconditionally
+            if (candidates.any { !it.contains("streamsb.net") && !it.contains("sbembed.com") }) break
         }
 
         if (candidates.isEmpty()) return false
@@ -314,7 +344,11 @@ object DrakorKitaResolver {
                                 referer = referer
                             )
                             val body = response.text
-                            if (response.isSuccessful && !body.contains("Video not found", ignoreCase = true) && !body.contains("expired or has been deleted", ignoreCase = true)) {
+                            if (response.isSuccessful &&
+                                !body.contains("Video not found", ignoreCase = true) &&
+                                !body.contains("expired or has been deleted", ignoreCase = true) &&
+                                !body.contains("File is no longer available", ignoreCase = true)
+                            ) {
                                 val doc = response.document
                                 extractSubtitles(doc, mainUrl).forEach(subtitleCallback)
                                 extractEmbedCandidates(doc, mainUrl).forEach { nested ->
@@ -445,7 +479,8 @@ object DrakorKitaResolver {
         return lower.contains("dqt.my.id") ||
             lower.contains("abysscdn") ||
             lower.contains("drakorkita.stream") ||
-            lower.contains("uyeshare")
+            lower.contains("uyeshare") ||
+            lower.contains("handal.bid")
     }
 
     private fun parseQuality(url: String): Int {
@@ -463,4 +498,3 @@ object DrakorKitaResolver {
     }
 
     private fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
-}

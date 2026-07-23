@@ -662,3 +662,5 @@ open class Vidguardto : ExtractorApi() {
         val hash: String
     )
 }
+}
+}

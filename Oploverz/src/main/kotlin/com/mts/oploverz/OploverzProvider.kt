@@ -411,7 +411,46 @@ class OploverzProvider : MainAPI() {
 
         }
 
-        // 0. Process player page tabs (e.g. ?player= or ?server= or sub-pages)
+        // 0. Process DooPlay / Muvipro AJAX player buttons ([data-post][data-nume])
+        val ajaxButtons = doc.select(".dooplay_player_option[data-post][data-nume], [data-post][data-nume], #player-option-1, #player-option-2, #player-option-3")
+        if (ajaxButtons.isNotEmpty()) {
+            val ajaxUrl = "$mainUrl/wp-admin/admin-ajax.php"
+            ajaxButtons.take(10).forEach { btn ->
+                val post = btn.attr("data-post").ifEmpty { btn.attr("data-id") }
+                val nume = btn.attr("data-nume").ifEmpty { "1" }
+                val type = btn.attr("data-type").ifEmpty { "movie" }
+                if (post.isNotBlank()) {
+                    listOf("doo_player_ajax", "dt_player_ajax", "zt_main_ajax", "action_player").forEach { act ->
+                        try {
+                            val res = app.post(
+                                ajaxUrl,
+                                data = mapOf("action" to act, "post" to post, "nume" to nume, "type" to type),
+                                headers = mapOf(
+                                    "Referer" to data,
+                                    "User-Agent" to USER_AGENT,
+                                    "X-Requested-With" to "XMLHttpRequest",
+                                    "Content-Type" to "application/x-www-form-urlencoded"
+                                )
+                            ).text
+                            if (res.isNotBlank() && res != "0" && res != "false") {
+                                if (res.trim().startsWith("{")) {
+                                    val jsonObj = org.json.JSONObject(res)
+                                    val embedUrl = jsonObj.optString("embed_url", jsonObj.optString("url", jsonObj.optString("src", "")))
+                                    if (embedUrl.startsWith("http") || embedUrl.startsWith("//")) {
+                                        targets.add(fixUrl(embedUrl))
+                                    }
+                                } else {
+                                    val ifrSrc = org.jsoup.Jsoup.parse(res).selectFirst("iframe[src]")?.attr("src") ?: ""
+                                    if (ifrSrc.isNotEmpty()) targets.add(fixUrl(ifrSrc))
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+
+        // 0b. Process player page tabs (e.g. ?player= or ?server= or sub-pages)
 
         val playerTabs = mutableListOf<String>()
 
@@ -642,31 +681,18 @@ class OploverzProvider : MainAPI() {
                             if (link.startsWith("http") || link.startsWith("//")) {
 
                                 val cleanLink = if (link.startsWith("//")) "https:$link" else link
-
+                                val label = obj.optString("label", "Server ${i + 1}").ifEmpty { "Server ${i + 1}" }
                                 val type = obj.optString("type", "").lowercase()
-
-                                val label = obj.optString("label", "Server")
-
                                 val isM3u = type.contains("hls") || type.contains("m3u8") || cleanLink.contains(".m3u8") || cleanLink.contains("/auto")
-
                                 callback(
-
                                     newExtractorLink(
-
                                         source = name,
-
                                         name = "$name - $label",
-
                                         url = cleanLink,
-
                                         type = if (isM3u) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-
                                     ) {
-
                                         this.referer = data
-
                                     }
-
                                 )
 
                             }
@@ -839,7 +865,7 @@ class OploverzProvider : MainAPI() {
 
             if (content.isNotBlank()) {
 
-                Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+""").findAll(content).forEach { match ->
+                Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_?&=/~]+""").findAll(content).forEach { match ->
 
                     val url = match.value
 
@@ -859,11 +885,11 @@ class OploverzProvider : MainAPI() {
 
         // 7. Process all collected targets (including base64 decoding & fallback routing)
 
-        targets.distinct().forEach { raw ->
+        for (raw in targets.distinct()) {
 
             val cleanedRaw = raw.trim()
 
-            if (cleanedRaw.isBlank()) return@forEach
+            if (cleanedRaw.isBlank()) continue
 
             // Attempt base64 decoding
 
@@ -1187,168 +1213,10 @@ class OploverzProvider : MainAPI() {
 
                         }
 
-                        // Smart Extractor Fallback Dispatcher
-
-                        val isStreamWish = listOf("streamwish", "wish", "hglink", "hgcloud", "gendeng", "fkupon", "desacinta", "layarotaku", "layarwibu", "nekonime", "layarecchi", "subsource", "doimg", "anchurl", "certaker", "listeamed", "bigwarp", "cloudatacdn", "push-sdk", "gradehg", "hgplus", "streamplay", "awish", "wishembed").any { cleanUrlEscaped.contains(it, true) }
-
-                        val isDood = listOf("dood", "dsvplay", "doodcdn", "vide0", "ds2play", "ds2video", "doodstream", "doodla").any { cleanUrlEscaped.contains(it, true) }
-
-                        val isVoe = cleanUrlEscaped.contains("voe.sx", true) || cleanUrlEscaped.contains("voe", true)
-
-                        val isStreamtape = cleanUrlEscaped.contains("streamtape", true)
-
-                        val isFilemoon = cleanUrlEscaped.contains("filemoon", true)
-
-                        val isMp4Upload = cleanUrlEscaped.contains("mp4upload", true)
-
-                        val isAbyss = listOf("abyssplayer.com", "abyss.to", "abysscdn.com", "iamcdn.net", "sssrr").any { cleanUrlEscaped.contains(it, true) }
-
-                        val isSeekPlayer = cleanUrlEscaped.contains("seekplayer", true)
-
-                        val isTamilEmbed = cleanUrlEscaped.contains("tamilembed", true)
-
-                        when {
-
-                            isTamilEmbed -> {
-
-                                try {
-
-                                    TamilEmbed().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-
-                                } catch (e: Exception) {
-
-                                    android.util.Log.e("FallbackExtractor", "TamilEmbed failed: ${e.message}")
-
-                                }
-
-                            }
-
-                            isSeekPlayer -> {
-
-                                try {
-
-                                    SeekplayerVip().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-
-                                } catch (e: Exception) {
-
-                                    android.util.Log.e("FallbackExtractor", "SeekplayerVip failed: ${e.message}")
-
-                                }
-
-                            }
-
-                            isAbyss -> {
-
-                                try {
-
-                                    AbyssExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-
-                                } catch (e: Exception) {
-
-                                    android.util.Log.e("FallbackExtractor", "AbyssExtractor failed: ${e.message}")
-
-                                }
-
-                            }
-
-                            isStreamWish -> {
-
-                                try {
-
-                                    com.lagradost.cloudstream3.extractors.StreamWishExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-
-                                } catch (e: Exception) {
-
-                                    android.util.Log.e("FallbackExtractor", "StreamWish extraction failed for $cleanUrlEscaped: ${e.message}")
-
-                                }
-
-                            }
-
-                            isDood -> {
-
-                                try {
-
-                                    com.lagradost.cloudstream3.extractors.DoodLaExtractor().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-
-                                } catch (e: Exception) {
-
-                                    android.util.Log.e("FallbackExtractor", "DoodLaExtractor extraction failed for $cleanUrlEscaped: ${e.message}")
-
-                                }
-
-                            }
-
-                            isVoe -> {
-
-                                try {
-
-                                    com.lagradost.cloudstream3.extractors.Voe().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-
-                                } catch (e: Exception) {
-
-                                    android.util.Log.e("FallbackExtractor", "Voe extraction failed: ${e.message}")
-
-                                }
-
-                            }
-
-                            isStreamtape -> {
-
-                                try {
-
-                                    com.lagradost.cloudstream3.extractors.StreamTape().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-
-                                } catch (e: Exception) {
-
-                                    android.util.Log.e("FallbackExtractor", "StreamTape extraction failed: ${e.message}")
-
-                                }
-
-                            }
-
-                            isFilemoon -> {
-
-                                try {
-
-                                    com.lagradost.cloudstream3.extractors.FileMoon().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-
-                                } catch (e: Exception) {
-
-                                    android.util.Log.e("FallbackExtractor", "FileMoon extraction failed: ${e.message}")
-
-                                }
-
-                            }
-
-                            isMp4Upload -> {
-
-                                try {
-
-                                    com.lagradost.cloudstream3.extractors.Mp4Upload().getUrl(cleanUrlEscaped, data, subtitleCallback, callback)
-
-                                } catch (e: Exception) {
-
-                                    android.util.Log.e("FallbackExtractor", "Mp4Upload extraction failed: ${e.message}")
-
-                                }
-
-                            }
-
-                            else -> {
-
-                                try {
-
-                                    loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
-
-                                } catch (e: Exception) {
-
-                                    android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
-
-                                }
-
-                            }
-
+                        try {
+                            loadExtractor(cleanUrlEscaped, data, subtitleCallback, callback)
+                        } catch (e: Exception) {
+                            android.util.Log.e("Extractor", "Standard loadExtractor failed for $cleanUrlEscaped: ${e.message}")
                         }
 
                     }

@@ -1,14 +1,24 @@
 version = 1
 
 cloudstream {
+
     language    = "id"
-    description = "Provider untuk Cinemax21 — Streaming Film Gratis No 1 Di Indonesia Secara Legal"
+
+    description = "Provider untuk Cinemax21"
+
     authors     = listOf("MTS")
+
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries")
-    iconUrl     = "https://cinemax21.live/favicon.ico"
+
+    tvTypes     = listOf("Anime", "TvSeries", "OVA")
+
+    iconUrl     = "https://cinemax21.click/favicon.ico"
+
 }
 
 android {
+
     namespace = "com.mts.cinemax21"
+
 }
+

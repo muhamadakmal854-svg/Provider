@@ -79,7 +79,6 @@ class OtakudesuProvider : MainAPI() {
             ?.toIntOrNull()
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
-            addSub(epNum)
         }
     }
 
@@ -391,7 +390,20 @@ class OtakudesuProvider : MainAPI() {
             null
         }
     }
+
+    private fun base64Decode(encoded: String): String {
+        return try {
+            String(java.util.Base64.getDecoder().decode(encoded.trim()), Charsets.UTF_8)
+        } catch (_: Exception) {
+            try {
+                String(android.util.Base64.decode(encoded.trim(), android.util.Base64.DEFAULT), Charsets.UTF_8)
+            } catch (_: Exception) {
+                encoded
+            }
+        }
+    }
 }
+
 
 suspend fun fetchTmdbLogoUrl(
     tmdbAPI: String,
@@ -490,4 +502,6 @@ class DesustreamInfo : JWPlayer() {
 class Updesu : JWPlayer() {
     override val name = "Updesu"
     override val mainUrl = "https://desustream.info/dstream/updesu"
+
+}
 }

@@ -4,15 +4,15 @@ cloudstream {
 
     language    = "id"
 
-    description = "DrakorKita - Nonton Drama Korea Subtitle Indonesia Gratis"
+    description = "Provider untuk DrakorKita"
 
     authors     = listOf("MTS")
 
     status      = 1
 
-    tvTypes     = listOf("AsianDrama", "TvSeries", "Movie")
+    tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://drakorindo18.kita.baby/favicon.ico"
+    iconUrl     = "https://drakor.kita.mobi/favicon.ico"
 
 }
 

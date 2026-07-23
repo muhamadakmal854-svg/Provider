@@ -1,14 +1,24 @@
 version = 1
 
 cloudstream {
-    language    = "en"
-    description = "Provider untuk Watch Full Movies and TV Shows Online Free Download With Any Subtitles"
+
+    language    = "id"
+
+    description = "Provider untuk Sorastream"
+
     authors     = listOf("MTS")
+
     status      = 1
+
     tvTypes     = listOf("Movie", "TvSeries")
-    iconUrl     = "https://sorastream.fun/favicon.ico"
+
+    iconUrl     = "https://sorastream.top/favicon.ico"
+
 }
 
 android {
-    namespace = "com.mts.sorastream"
+
+    namespace = "com.hexated"
+
 }
+

@@ -4,21 +4,21 @@ cloudstream {
 
     language    = "id"
 
-    description = "KlikXXi – Nonton & Streaming Film terbaru sub indo"
+    description = "Provider untuk KLIKXXI – Nonton Film Online Gratis Sub Indo LAYARKACA21 LK21"
 
     authors     = listOf("MTS")
 
     status      = 1
 
-    tvTypes     = listOf("Movie", "TvSeries", "Anime", "AsianDrama")
+    tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://za-ydf.org/favicon.ico"
+    iconUrl     = "https://forumikatolik.net/favicon.ico"
 
 }
 
 android {
 
-    namespace = "com.klikxxi"
+    namespace = "com.mts.klikxxi"
 
 }
 

@@ -21,13 +21,30 @@ class PencurimoviesubmalayProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
     override val mainPage = mainPageOf(
-        "movies" to "Filem Terbaru",
-        "drama" to "TV Series",
-        "country/malaysia" to "Malaysia Movies",
-        "country/indonesia" to "Indonesia Movies",
-        "country/indonesian" to "Indonesian Movies",
-        "country/india" to "India Movies",
-        "country/japan" to "Japan Movies"
+        "genre/action" to "Action",
+        "genre/adventure" to "Adventure",
+        "genre/animation" to "Animation",
+        "genre/drama" to "Drama",
+        "genre/comedy" to "Comedy",
+        "genre/crime" to "Crime",
+        "genre/fantasy" to "Fantasy",
+        "genre/horror" to "Horror",
+        "genre/romance" to "Romance",
+        "genre/science-fiction" to "Science Fiction",
+        "country/malaysia" to "Country Malaysia",
+        "country/indonesia" to "Country Indonesia",
+        "country/indonesian" to "Country Indonesian",
+        "country/india" to "Country India",
+        "country/japan" to "Country Japan",
+        "country/thailand" to "Country Thailand",
+        "country/china" to "Country China",
+        "most-viewed" to "Most Viewed",
+        "most-rating" to "Most Rating",
+        "top-imdb" to "Top IMDB",
+        "genre/subbed/malay-subbed" to "Subbed Malaysia",
+        "genre/subbed/english" to "Subbed English",
+        "genre/subbed/indonesian" to "Subbed Indonesian",
+        "genre/dubbed/malay" to "Dubbed Malay"
     )
 
     private fun Element.getImageUrl(): String {
@@ -382,7 +399,7 @@ class PencurimoviesubmalayProvider : MainAPI() {
         doc.select("script").forEach { script ->
             val content = script.data()
             if (content.isNotBlank()) {
-                Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_\?&=\/~]+""").findAll(content).forEach { match ->
+                Regex("""https?://[a-zA-Z0-9.\-_]+/[a-zA-Z0-9.\-_?&=/~]+""").findAll(content).forEach { match ->
                     val url = match.value
                     if (!url.contains("google") && !url.contains("facebook") && !url.contains("analytics")) {
                         val finalUrl = fixUrl(url)

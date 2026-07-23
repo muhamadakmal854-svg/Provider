@@ -629,3 +629,4 @@ data class NativeSubtitle(
     @JsonProperty("vtt") val vtt: String?,
     @JsonProperty("display_name") val displayName: String?
 )
+}

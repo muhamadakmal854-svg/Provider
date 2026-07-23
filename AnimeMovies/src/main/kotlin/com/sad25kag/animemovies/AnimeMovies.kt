@@ -370,7 +370,6 @@ class AnimeMovies : MainAPI() {
 
         return newAnimeSearchResponse(title.cleanSeriesTitle(), href, tvType) {
             posterUrl = poster
-            episode?.let { addSub(it) }
         }
     }
 
@@ -557,7 +556,6 @@ class AnimeMovies : MainAPI() {
             .findAll(cleaned)
             .forEach { match -> match.groupValues.getOrNull(1)?.toAbsoluteUrl()?.let { results.add(it) } }
         return results.toList()
-    }
 
     private fun Document.hasNextPage(page: Int): Boolean {
         val nextPage = page + 1
@@ -906,4 +904,3 @@ class AnimeMovies : MainAPI() {
         val label: String?,
         val referer: String?
     )
-}

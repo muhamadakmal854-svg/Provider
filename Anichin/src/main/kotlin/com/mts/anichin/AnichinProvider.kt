@@ -144,4 +144,16 @@ class AnichinProvider : MainAPI() {
         }
         return true
     }
+
+    private fun base64Decode(encoded: String): String {
+        return try {
+            String(java.util.Base64.getDecoder().decode(encoded.trim()), Charsets.UTF_8)
+        } catch (_: Exception) {
+            try {
+                String(android.util.Base64.decode(encoded.trim(), android.util.Base64.DEFAULT), Charsets.UTF_8)
+            } catch (_: Exception) {
+                encoded
+            }
+        }
+    }
 }

@@ -113,7 +113,6 @@ class AnimeBagus : MainAPI() {
 
         return newAnimeSearchResponse(title, responseUrl, tvType) {
             posterUrl = poster
-            if (episode != null && tvType != TvType.AnimeMovie && tvType != TvType.Movie) addSub(episode)
         }
     }
 

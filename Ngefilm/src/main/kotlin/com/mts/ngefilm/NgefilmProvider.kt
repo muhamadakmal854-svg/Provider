@@ -197,7 +197,7 @@ class NgefilmProvider : MainAPI() {
                 val match = m3u8Regex.find(unpackedJs)
 
                 match?.groupValues?.get(1)?.let { rawLink ->
-                    val cleanLink = rawLink.replace("\\/", "/")
+                    val cleanLink = rawLink.replace(92.toChar().toString() + "/", "/")
 
                     callback.invoke(
                         newExtractorLink(
@@ -257,7 +257,7 @@ class NgefilmProvider : MainAPI() {
                 }
 
                 if (linkM3u8 != null) {
-                    linkM3u8 = linkM3u8!!.replace("\\/", "/")
+                    linkM3u8 = linkM3u8!!.replace(92.toChar().toString() + "/", "/")
                     if (linkM3u8!!.startsWith("/")) {
                         linkM3u8 = "https://$domain$linkM3u8"
                     }
@@ -279,7 +279,7 @@ class NgefilmProvider : MainAPI() {
             } else {
                 var directM3u8 = Regex("""["']([^"']+\.m3u8[^"']*)["']""").find(doc)?.groupValues?.get(1)
                 if (directM3u8 != null) {
-                     directM3u8 = directM3u8!!.replace("\\/", "/")
+                     directM3u8 = directM3u8!!.replace(92.toChar().toString() + "/", "/")
                      if (directM3u8!!.startsWith("/")) directM3u8 = "https://$domain$directM3u8"
                      
                      callback.invoke(
@@ -346,10 +346,10 @@ class NgefilmProvider : MainAPI() {
             val encryptedRes = app.get(videoApi, headers = h).text
             val jsonStr = if (encryptedRes.trim().startsWith("{")) encryptedRes else decryptAES(encryptedRes)
             Regex(""""source"\s*:\s*"([^"]+)"""").find(jsonStr)?.groupValues?.get(1)?.let { link ->
-                callback.invoke(newExtractorLink("RPM Live", "RPM Live", link.replace("\\/", "/"), ExtractorLinkType.M3U8) { this.referer = "https://playerngefilm21.rpmlive.online/" })
+                callback.invoke(newExtractorLink("RPM Live", "RPM Live", link.replace(92.toChar().toString() + "/", "/"), ExtractorLinkType.M3U8) { this.referer = "https://playerngefilm21.rpmlive.online/" })
             }
             Regex(""""hlsVideoTiktok"\s*:\s*"([^"]+)"""").find(jsonStr)?.groupValues?.get(1)?.let { link ->
-                callback.invoke(newExtractorLink("RPM Live (Backup)", "RPM Live (Backup)", "https://playerngefilm21.rpmlive.online" + link.replace("\\/", "/"), ExtractorLinkType.M3U8) { this.referer = "https://playerngefilm21.rpmlive.online/" })
+                callback.invoke(newExtractorLink("RPM Live (Backup)", "RPM Live (Backup)", "https://playerngefilm21.rpmlive.online" + link.replace(92.toChar().toString() + "/", "/"), ExtractorLinkType.M3U8) { this.referer = "https://playerngefilm21.rpmlive.online/" })
             }
         } catch (e: Exception) {}
     }
