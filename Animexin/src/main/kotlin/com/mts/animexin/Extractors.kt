@@ -221,5 +221,3 @@ class Ds2Play : DoodLaExtractor() {
     override var name = "Ds2Play"
     override var mainUrl = "https://ds2play.com"
 }
-}
-}
