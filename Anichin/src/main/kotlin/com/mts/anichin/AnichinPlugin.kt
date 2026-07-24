@@ -28,6 +28,18 @@ class AnichinPlugin: Plugin() {
         // ── EarnVids ──────────────────────────────────────────────
         registerExtractorAPI(EarnVids())
         registerExtractorAPI(EarnVidsMorencius())
+        // ── Vidhide / Smoothpre ──────────────────────────────────
+        registerExtractorAPI(Smoothpre())
+        registerExtractorAPI(Dhtpre())
+        registerExtractorAPI(Peytonepre())
+        registerExtractorAPI(VidHidePro())
+        registerExtractorAPI(VidHideHub())
+        registerExtractorAPI(VidHidePro1())
+        registerExtractorAPI(VidHidePro2())
+        registerExtractorAPI(VidHidePro3())
+        registerExtractorAPI(VidHidePro4())
+        registerExtractorAPI(VidHidePro5())
+        registerExtractorAPI(VidHidePro6())
         // ── AbyssPlayer / New Player ──────────────────────────────
         registerExtractorAPI(AbyssPlayer())
         // ── Play4Me ────────────────────────────────────────────────
