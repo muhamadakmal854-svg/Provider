@@ -65,6 +65,48 @@ class RTMKlikProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val cleanData = java.net.URLDecoder.decode(data, "UTF-8")
+
+        // Handle MYTVLive dynamic API channels (mytvlive_api://channel-uuid)
+        if (cleanData.startsWith("mytvlive_api://")) {
+            val channelId = cleanData.removePrefix("mytvlive_api://")
+            val apiUrl = "https://co3y6iwoio.tenbytecdn.com/api/v1/public/streaming/channel-play"
+            val deviceId = "web-browser-device-12345"
+
+            try {
+                val resp = app.post(
+                    apiUrl,
+                    headers = mapOf(
+                        "Content-Type" to "application/json",
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                        "Referer" to "https://mana2.my/live"
+                    ),
+                    json = mapOf("channelId" to channelId, "deviceId" to deviceId)
+                )
+                val json = resp.parsedSafe<MYTVApiResponse>()
+                val playbackUrl = json?.data?.playbackUrl
+
+                if (!playbackUrl.isNullOrBlank()) {
+                    val reqHeaders = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                        "Referer" to "https://mana2.my/"
+                    )
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name Live HD",
+                            url = playbackUrl,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.headers = reqHeaders
+                            this.referer = "https://mana2.my/"
+                            this.quality = Qualities.P720.value
+                        }
+                    )
+                }
+            } catch (e: Exception) {}
+            return true
+        }
+
         val reqHeaders = mapOf(
             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Referer" to "https://rtmklik.rtm.gov.my/",
@@ -141,4 +183,13 @@ class RTMKlikProvider : MainAPI() {
         }
         return true
     }
+
+    data class MYTVApiData(
+        @com.fasterxml.jackson.annotation.JsonProperty("playbackUrl") val playbackUrl: String? = null
+    )
+
+    data class MYTVApiResponse(
+        @com.fasterxml.jackson.annotation.JsonProperty("success") val success: Boolean? = null,
+        @com.fasterxml.jackson.annotation.JsonProperty("data") val data: MYTVApiData? = null
+    )
 }
