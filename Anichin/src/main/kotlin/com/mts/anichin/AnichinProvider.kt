@@ -9,7 +9,7 @@ class AnichinProvider : MainAPI() {
     companion object {
         var context: android.content.Context? = null
     }
-    override var mainUrl = "https://anichin.cafe"
+    override var mainUrl = "https://anichin.moe"
     override var name = "Anichin"
     override val hasMainPage = true
     override var lang = "id"
@@ -163,6 +163,41 @@ class AnichinProvider : MainAPI() {
 
         // 3. Process extracted embeds
         extractedEmbeds.forEach { href ->
+            // Handle Dailymotion [ADS] / Anichin Player
+            if (href.contains("anichin-player.web.id") || href.contains("dailymotion.com")) {
+                val videoId = if (href.contains("url=")) href.substringAfter("url=").substringBefore("&")
+                              else if (href.contains("video=")) href.substringAfter("video=").substringBefore("&")
+                              else if (href.contains("/video/")) href.substringAfter("/video/").substringBefore("?")
+                              else ""
+                if (videoId.isNotBlank()) {
+                    val dmEmbedUrl = "https://www.dailymotion.com/embed/video/$videoId"
+                    loadExtractor(dmEmbedUrl, data, subtitleCallback, callback)
+
+                    try {
+                        val dmApiUrl = "https://www.dailymotion.com/player/metadata/video/$videoId"
+                        val apiResp = app.get(dmApiUrl, headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")).text
+                        val m3u8Match = Regex("""https?://[^\s'"<]+\.m3u8[^\s'"<]*""").find(apiResp)
+                        if (m3u8Match != null) {
+                            callback.invoke(
+                                newExtractorLink(
+                                    name = "Dailymotion [ADS]",
+                                    source = "Dailymotion",
+                                    url = m3u8Match.value,
+                                    type = ExtractorLinkType.M3U8
+                                ) {
+                                    this.headers = mapOf(
+                                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                                        "Referer" to "https://www.dailymotion.com/"
+                                    )
+                                    this.referer = "https://www.dailymotion.com/"
+                                    this.quality = Qualities.P1080.value
+                                }
+                            )
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+
             // Check anichin.stream ID
             if (href.contains("anichin.stream") || href.contains("/hls/") || href.contains("?id=")) {
                 val sidMatch = Regex("""(?:\?id=|/hls/)([\w\-]+)""").find(href)
@@ -223,7 +258,7 @@ class AnichinProvider : MainAPI() {
                 }
             }
 
-            // Also load built-in extractors for StreamWish, Rumble, AbyssPlayer, etc.
+            // Also load built-in extractors for Rumble, Vidhide/Smoothpre, MirrorPlayer, etc.
             loadExtractor(href, data, subtitleCallback, callback)
         }
 

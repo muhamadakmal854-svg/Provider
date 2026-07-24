@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Anime", "TvSeries", "OVA")
 
-    iconUrl     = "https://anichin.cafe/favicon.ico"
+    iconUrl     = "https://anichin.moe/favicon.ico"
 
 }
 
