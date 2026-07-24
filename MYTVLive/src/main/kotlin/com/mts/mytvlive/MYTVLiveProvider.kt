@@ -151,7 +151,7 @@ class MYTVLiveProvider : MainAPI() {
             val deviceId = "web-browser-device-12345"
 
             try {
-                val resp = app.post(
+                val respText = app.post(
                     apiUrl,
                     headers = mapOf(
                         "Content-Type" to "application/json",
@@ -159,20 +159,48 @@ class MYTVLiveProvider : MainAPI() {
                         "Referer" to "https://mana2.my/live"
                     ),
                     json = mapOf("channelId" to channelId, "deviceId" to deviceId)
-                )
-                val json = resp.parsedSafe<MYTVApiResponse>()
-                val playbackUrl = json?.data?.playbackUrl
+                ).text
 
-                if (!playbackUrl.isNullOrBlank()) {
-                    val reqHeaders = mapOf(
-                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                        "Referer" to "https://mana2.my/"
-                    )
+                val playbackUrl = if (respText.contains("playbackUrl\":\"")) {
+                    respText.substringAfter("playbackUrl\":\"").substringBefore("\"")
+                } else ""
+
+                val dashUrl = if (respText.contains("dash\":\"")) {
+                    respText.substringAfter("dash\":\"").substringBefore("\"")
+                } else if (playbackUrl.contains("playlist.m3u8")) {
+                    playbackUrl.replace("playlist.m3u8", "manifest.mpd")
+                } else ""
+
+                val hlsUrl = if (respText.contains("hls\":\"")) {
+                    respText.substringAfter("hls\":\"").substringBefore("\"")
+                } else playbackUrl
+
+                val reqHeaders = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Referer" to "https://mana2.my/"
+                )
+
+                if (dashUrl.isNotBlank()) {
                     callback.invoke(
                         newExtractorLink(
                             source = name,
-                            name = "$name Live HD",
-                            url = playbackUrl,
+                            name = "$name Live (DASH DRM-Free)",
+                            url = dashUrl,
+                            type = ExtractorLinkType.DASH
+                        ) {
+                            this.headers = reqHeaders
+                            this.referer = "https://mana2.my/"
+                            this.quality = Qualities.P1080.value
+                        }
+                    )
+                }
+
+                if (hlsUrl.isNotBlank()) {
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name Live (HLS Master M3U8)",
+                            url = hlsUrl,
                             type = ExtractorLinkType.M3U8
                         ) {
                             this.headers = reqHeaders
@@ -261,13 +289,4 @@ class MYTVLiveProvider : MainAPI() {
         }
         return true
     }
-
-    data class MYTVApiData(
-        @com.fasterxml.jackson.annotation.JsonProperty("playbackUrl") val playbackUrl: String? = null
-    )
-
-    data class MYTVApiResponse(
-        @com.fasterxml.jackson.annotation.JsonProperty("success") val success: Boolean? = null,
-        @com.fasterxml.jackson.annotation.JsonProperty("data") val data: MYTVApiData? = null
-    )
 }
