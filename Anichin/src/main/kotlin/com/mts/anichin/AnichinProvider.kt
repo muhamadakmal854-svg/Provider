@@ -186,10 +186,11 @@ class AnichinProvider : MainAPI() {
                     try {
                         val dmApiUrl = "https://www.dailymotion.com/player/metadata/video/$videoId"
                         val apiResp = app.get(dmApiUrl, headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")).text
-                        if (!apiResp.contains(""DM005"") && !apiResp.contains("Content rejected")) {
+                        if (!apiResp.contains("DM005") && !apiResp.contains("Content rejected")) {
                             val m3u8Match = Regex("""https?://[^\s'"<]+\.m3u8[^\s'"<]*""").find(apiResp)
                             if (m3u8Match != null) {
-                                val cleanUrl = m3u8Match.value.replace("\/", "/")
+                                val rawM3u8 = m3u8Match.value
+                                val cleanUrl = rawM3u8.replace("\/", "/")
                                 callback.invoke(
                                     newExtractorLink(
                                         name = "Dailymotion [ADS]",

@@ -20,33 +20,7 @@ class AnichinPlugin: Plugin() {
         registerExtractorAPI(Rumble())
         // ── StreamRuby ────────────────────────────────────────────
         registerExtractorAPI(StreamRuby())
-        registerExtractorAPI(svilla())
-        registerExtractorAPI(svanila())
-        // ── RPMShare ──────────────────────────────────────────────
-        registerExtractorAPI(RPMShare())
-        registerExtractorAPI(RPMShareEndstar())
-        // ── EarnVids ──────────────────────────────────────────────
-        registerExtractorAPI(EarnVids())
-        registerExtractorAPI(EarnVidsMorencius())
-        // ── Vidhide / Smoothpre ──────────────────────────────────
-        registerExtractorAPI(Smoothpre())
-        registerExtractorAPI(VidHidePro())
-        registerExtractorAPI(VidHideHub())
-        registerExtractorAPI(VidHidePro1())
-        registerExtractorAPI(VidHidePro2())
-        registerExtractorAPI(VidHidePro3())
-        registerExtractorAPI(VidHidePro4())
-        registerExtractorAPI(VidHidePro5())
-        registerExtractorAPI(VidHidePro6())
         // ── AbyssPlayer / New Player ──────────────────────────────
         registerExtractorAPI(AbyssPlayer())
-        // ── Play4Me ────────────────────────────────────────────────
-        registerExtractorAPI(Play4Me())
-        registerExtractorAPI(Play4MeEndstar())
-        // ── Vidguard ──────────────────────────────────────────────
-        registerExtractorAPI(Vidguardto())
-        registerExtractorAPI(Vidguardto1())
-        registerExtractorAPI(Vidguardto2())
-        registerExtractorAPI(Vidguardto3())
     }
 }
