@@ -20,6 +20,10 @@ class AnichinPlugin: Plugin() {
         registerExtractorAPI(Rumble())
         // ── StreamRuby ────────────────────────────────────────────
         registerExtractorAPI(StreamRuby())
+        // ── Vidhide / Smoothpre / EarnVids ────────────────────────
+        registerExtractorAPI(EarnVids())
+        registerExtractorAPI(EarnVidsMorencius())
+        registerExtractorAPI(Smoothpre())
         // ── AbyssPlayer / New Player ──────────────────────────────
         registerExtractorAPI(AbyssPlayer())
     }

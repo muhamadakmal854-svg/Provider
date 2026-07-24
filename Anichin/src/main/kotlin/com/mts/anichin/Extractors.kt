@@ -374,19 +374,23 @@ open class EarnVids : ExtractorApi() {
             "User-Agent" to USER_AGENT,
             "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         ))
-        val doc = response.document
-        val scripts = doc.select("script").joinToString(" ") { it.data() }
+        val pageText = response.text
+        val unpackedScript = if (!getPacked(pageText).isNullOrEmpty()) {
+            getAndUnpack(pageText)
+        } else {
+            ""
+        }
+        val fullContent = pageText + " " + unpackedScript
 
-        // EarnVids / morencius.com typically uses jwplayer or hls.js
         val m3u8Regex   = Regex("""["'](https?://[^"']+\.m3u8[^"']*)["']""", RegexOption.IGNORE_CASE)
         val mp4Regex    = Regex("""["'](https?://[^"']+\.mp4[^"']*)["']""", RegexOption.IGNORE_CASE)
         val fileRegex   = Regex("""file["']?\s*:\s*["'](https?://[^"']+)["']""", RegexOption.IGNORE_CASE)
         val sourceRegex = Regex("""src["']?\s*:\s*["'](https?://[^"']+)["']""", RegexOption.IGNORE_CASE)
 
-        val videoUrl = m3u8Regex.find(scripts)?.groupValues?.get(1)
-            ?: fileRegex.find(scripts)?.groupValues?.get(1)
-            ?: mp4Regex.find(scripts)?.groupValues?.get(1)
-            ?: sourceRegex.find(scripts)?.groupValues?.get(1)
+        val videoUrl = m3u8Regex.find(fullContent)?.groupValues?.get(1)
+            ?: fileRegex.find(fullContent)?.groupValues?.get(1)
+            ?: mp4Regex.find(fullContent)?.groupValues?.get(1)
+            ?: sourceRegex.find(fullContent)?.groupValues?.get(1)
 
         if (videoUrl != null) {
             val isM3u8 = videoUrl.contains(".m3u8")
@@ -410,8 +414,13 @@ open class EarnVids : ExtractorApi() {
 }
 
 class EarnVidsMorencius : EarnVids() {
-    override val name = "EarnVids"
+    override val name = "Vidhide [ADS]"
     override val mainUrl = "https://morencius.com"
+}
+
+class Smoothpre : EarnVids() {
+    override val name = "Vidhide [ADS]"
+    override val mainUrl = "https://smoothpre.com"
 }
 
 
