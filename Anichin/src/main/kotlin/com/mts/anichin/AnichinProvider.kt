@@ -166,7 +166,8 @@ class AnichinProvider : MainAPI() {
             // Handle OK.ru
             if (href.contains("ok=") || href.contains("ok.ru")) {
                 val okId = if (href.contains("ok=")) href.substringAfter("ok=").substringBefore("&")
-                           else href.substringAfter("/videoembed/").substringBefore("?").substringBefore("&")
+                           else if (href.contains("/videoembed/")) href.substringAfter("/videoembed/").substringBefore("?").substringBefore("&")
+                           else ""
                 if (okId.isNotBlank()) {
                     loadExtractor("https://ok.ru/videoembed/$okId", data, subtitleCallback, callback)
                 }

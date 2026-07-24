@@ -30,8 +30,6 @@ class AnichinPlugin: Plugin() {
         registerExtractorAPI(EarnVidsMorencius())
         // ── Vidhide / Smoothpre ──────────────────────────────────
         registerExtractorAPI(Smoothpre())
-        registerExtractorAPI(Dhtpre())
-        registerExtractorAPI(Peytonepre())
         registerExtractorAPI(VidHidePro())
         registerExtractorAPI(VidHideHub())
         registerExtractorAPI(VidHidePro1())
