@@ -190,7 +190,7 @@ class AnichinProvider : MainAPI() {
                             val m3u8Match = Regex("""https?://[^\s'"<]+\.m3u8[^\s'"<]*""").find(apiResp)
                             if (m3u8Match != null) {
                                 val rawM3u8 = m3u8Match.value
-                                val cleanUrl = rawM3u8.replace("\/", "/")
+                                val cleanUrl = rawM3u8.replace("""\/""", "/")
                                 callback.invoke(
                                     newExtractorLink(
                                         name = "Dailymotion [ADS]",
