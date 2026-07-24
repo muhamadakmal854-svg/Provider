@@ -189,8 +189,7 @@ class AnichinProvider : MainAPI() {
 
                     try {
                         val m3u8Text = app.get(m3u8Url, headers = reqHeaders).text
-                        val lines = m3u8Text.split("
-")
+                        val lines = m3u8Text.lines()
                         for (i in 0 until lines.size) {
                             val line = lines[i].trim()
                             if (line.startsWith("#EXT-X-STREAM-INF:")) {
