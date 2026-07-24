@@ -164,21 +164,64 @@ class AnichinProvider : MainAPI() {
         // 3. Process extracted embeds
         extractedEmbeds.forEach { href ->
             // Check anichin.stream ID
-            val sidMatch = Regex("""(?:\?id=|/hls/)([\w\-]+)""").find(href)
-            if (sidMatch != null) {
-                val sid = sidMatch.groupValues[1]
-                val m3u8Url = "https://anichin.stream/hls/$sid.m3u8"
-                callback.invoke(
-                    newExtractorLink(
-                        name = "Anichin Stream",
-                        source = "Anichin Stream",
-                        url = m3u8Url,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "https://anichin.stream/"
-                        this.quality = Qualities.Unknown.value
-                    }
-                )
+            if (href.contains("anichin.stream") || href.contains("/hls/") || href.contains("?id=")) {
+                val sidMatch = Regex("""(?:\?id=|/hls/)([\w\-]+)""").find(href)
+                if (sidMatch != null) {
+                    val sid = sidMatch.groupValues[1]
+                    val m3u8Url = "https://anichin.stream/hls/$sid.m3u8"
+                    val reqHeaders = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                        "Referer" to "https://anichin.stream/"
+                    )
+
+                    callback.invoke(
+                        newExtractorLink(
+                            name = "Anichin Stream (Master)",
+                            source = "Anichin Stream",
+                            url = m3u8Url,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.headers = reqHeaders
+                            this.referer = "https://anichin.stream/"
+                            this.quality = Qualities.P1080.value
+                        }
+                    )
+
+                    try {
+                        val m3u8Text = app.get(m3u8Url, headers = reqHeaders).text
+                        val lines = m3u8Text.split("
+")
+                        for (i in 0 until lines.size) {
+                            val line = lines[i].trim()
+                            if (line.startsWith("#EXT-X-STREAM-INF:")) {
+                                val label = if (line.contains("1080")) "1080p"
+                                            else if (line.contains("720")) "720p"
+                                            else if (line.contains("480")) "480p"
+                                            else "360p"
+                                val qual = if (label == "1080p") Qualities.P1080.value
+                                           else if (label == "720p") Qualities.P720.value
+                                           else if (label == "480p") Qualities.P480.value
+                                           else Qualities.P360.value
+
+                                val nextLine = if (i + 1 < lines.size) lines[i + 1].trim() else ""
+                                if (nextLine.startsWith("http")) {
+                                    callback.invoke(
+                                        newExtractorLink(
+                                            name = "Anichin Stream $label",
+                                            source = "Anichin Stream",
+                                            url = nextLine,
+                                            type = ExtractorLinkType.M3U8
+                                        ) {
+                                            this.headers = reqHeaders
+                                            this.referer = "https://anichin.stream/"
+                                            this.quality = qual
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
             }
 
             // Also load built-in extractors for StreamWish, Rumble, AbyssPlayer, etc.
