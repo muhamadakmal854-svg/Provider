@@ -323,31 +323,67 @@ class RebahinProvider : MainAPI() {
 
             ".sheader .data h1, h1.entry-title, .data h1, h1, .heading-name, .film-name"
 
-        )?.text()?.trim() ?: return null
+        )?.text()?.trim()
 
-        val poster = currentDoc.selectFirst(
+            ?: currentDoc.selectFirst("meta[property=og:title]")?.attr("content")?.trim()
 
-            ".poster img, .sheader .poster img, .film-poster img, [class*=poster] img, " +
+            ?: currentDoc.title().replace(" - REBAHIN", "").trim()
 
-            ".entry-thumbnail img, .thumb img, img.wp-post-image, .cover img"
+        if (title.isBlank()) return null
 
-        )?.let { img ->
+        val rawPoster = currentDoc.selectFirst("meta[property=og:image]")?.attr("content")
 
-            listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc", "src")
+            ?: currentDoc.selectFirst(
 
-                .map { img.attr(it) }
+                ".poster img, .sheader .poster img, .film-poster img, [class*=poster] img, " +
 
-                .firstOrNull { it.isNotBlank() && it.startsWith("http") }
+                ".entry-thumbnail img, .thumb img, img.wp-post-image, .cover img, img"
+
+            )?.let { img ->
+
+                listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc", "src")
+
+                    .map { img.attr(it) }
+
+                    .firstOrNull { it.isNotBlank() }
+
+            } ?: ""
+
+        val poster = if (rawPoster.contains("/_next/image?url=") || rawPoster.contains("/_next/image/?url=")) {
+
+            val decoded = try {
+
+                val queryStr = rawPoster.substringAfter("url=").substringBefore("&")
+
+                java.net.URLDecoder.decode(queryStr, "UTF-8")
+
+            } catch (_: Exception) { "" }
+
+            if (decoded.startsWith("http")) decoded else rawPoster
+
+        } else if (rawPoster.startsWith("//")) {
+
+            "https:$rawPoster"
+
+        } else if (rawPoster.startsWith("/")) {
+
+            "$mainUrl$rawPoster"
+
+        } else {
+
+            rawPoster
 
         }
 
-        val plot = currentDoc.selectFirst(
+        val plot = currentDoc.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
 
-            ".description p, .wp-content p, .entry-content p, [itemprop=description], " +
+            ?: currentDoc.selectFirst(
 
-            ".film-description, .synops p, .overview"
+                ".description p, .wp-content p, .entry-content p, [itemprop=description], " +
 
-        )?.text()?.trim()
+                ".film-description, .synops p, .overview"
+
+            )?.text()?.trim()
 
         val year = currentDoc.selectFirst(
 
@@ -383,7 +419,7 @@ class RebahinProvider : MainAPI() {
 
         return if (isTv) {
 
-            val eps = currentDoc.select(
+            var eps = currentDoc.select(
 
                 ".episodes-list li a, .episodios li a, #episodes .episodiotitle a, " +
 
@@ -406,6 +442,22 @@ class RebahinProvider : MainAPI() {
                 }
 
             }.filter { it.data.isNotBlank() }.distinctBy { it.data }
+
+            if (eps.isEmpty()) {
+
+                eps = listOf(
+
+                    newEpisode(targetUrl) {
+
+                        this.name = title
+
+                        this.episode = 1
+
+                    }
+
+                )
+
+            }
 
             newTvSeriesLoadResponse(title, targetUrl, TvType.TvSeries, eps) {
 
