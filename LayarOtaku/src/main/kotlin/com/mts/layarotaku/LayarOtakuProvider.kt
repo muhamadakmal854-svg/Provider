@@ -308,7 +308,7 @@ class LayarOtakuProvider : MainAPI() {
 
             var eps = currentDoc.select(
 
-                "a[href*="/season-"][href*="/episode-"], a[href^="/tv/"][href*="/episode-"], a[href^="/tv/"][href*="/season-"], " +
+                "a[href*='/season-'][href*='/episode-'], a[href^='/tv/'][href*='/episode-'], a[href^='/tv/'][href*='/season-'], " +
 
                 ".episodes-list li a, .episodios li a, #episodes .episodiotitle a, " +
 
@@ -322,11 +322,11 @@ class LayarOtakuProvider : MainAPI() {
 
                 val epHref = fixUrl(a.attr("href"))
 
-                val epMatch = Regex("""episode-(\d+)""", RegexOption.IGNORE_CASE).find(epHref)
+                val epMatch = Regex("episode-(\\d+)", RegexOption.IGNORE_CASE).find(epHref)
 
                 val epNum = epMatch?.groupValues?.get(1)?.toIntOrNull() ?: (i + 1)
 
-                val seasonMatch = Regex("""season-(\d+)""", RegexOption.IGNORE_CASE).find(epHref)
+                val seasonMatch = Regex("season-(\\d+)", RegexOption.IGNORE_CASE).find(epHref)
 
                 val seasonNum = seasonMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
 
