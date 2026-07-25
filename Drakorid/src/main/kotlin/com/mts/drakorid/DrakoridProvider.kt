@@ -172,6 +172,12 @@ class DrakoridProvider : MainAPI() {
 
             if (href.isBlank() || href == mainUrl || href.contains("javascript")) return@mapNotNull null
 
+            val junkPaths = setOf("/", "/movies", "/tv", "/genres", "/networks", "/countries", "/years")
+
+            val cleanPath = href.removePrefix(mainUrl).lowercase().removeSuffix("/")
+
+            if (junkPaths.contains(cleanPath)) return@mapNotNull null
+
             val img = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
 
             val title = it.selectFirst(
@@ -187,6 +193,10 @@ class DrakoridProvider : MainAPI() {
                     .ifEmpty { a.text().trim() }
 
             if (title.isBlank()) return@mapNotNull null
+
+            val junkTitles = setOf("rebahin", "movies", "tv series", "genres", "networks", "country", "year", "watch now", "home", "terbaru", "ongoing")
+
+            if (junkTitles.contains(title.lowercase())) return@mapNotNull null
 
             var src = img?.posterUrl() ?: ""
 

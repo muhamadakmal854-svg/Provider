@@ -193,13 +193,19 @@ class RebahinProvider : MainAPI() {
 
         )).document
 
-        return doc.select(".relative, div.relative, .no-scrollbar, div.no-scrollbar, .flex, div.flex, .gap-3, div.gap-3, .overflow-x-auto, div.overflow-x-auto, .scroll-smooth, div.scroll-smooth, .px-4, div.px-4, .snap-start, div.snap-start, .snap-x, div.snap-x, .snap-mandatory, div.snap-mandatory, .pb-2, div.pb-2, .mt-10, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, article, .post, .entry, .film-poster-ahref").mapNotNull {
+        return doc.select("a.group, .snap-start a, a[href^='/movies/'], a[href^='/tv/'], .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, article, .post, .entry, .film-poster-ahref").mapNotNull {
 
             val a = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
 
             val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
 
             if (href.isBlank() || href == mainUrl || href.contains("javascript")) return@mapNotNull null
+
+            val junkPaths = setOf("/", "/movies", "/tv", "/genres", "/networks", "/countries", "/years")
+
+            val cleanPath = href.removePrefix(mainUrl).lowercase().removeSuffix("/")
+
+            if (junkPaths.contains(cleanPath)) return@mapNotNull null
 
             val img = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
 
@@ -216,6 +222,10 @@ class RebahinProvider : MainAPI() {
                     .ifEmpty { a.text().trim() }
 
             if (title.isBlank()) return@mapNotNull null
+
+            val junkTitles = setOf("rebahin", "movies", "tv series", "genres", "networks", "country", "year", "watch now", "home", "terbaru", "ongoing")
+
+            if (junkTitles.contains(title.lowercase())) return@mapNotNull null
 
             var src = img?.posterUrl() ?: ""
 
