@@ -42,15 +42,36 @@ class RebahinProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
 
-        "" to "Terbaru",
-        "movies" to "Movies",
-        "tv" to "Tv Series",
-        "genres" to "Genres",
-        "networks" to "Networks",
-        "countries" to "Country",
-        "years" to "Year",
-        "genre/action" to "View All",
-        "ongoing" to "Ongoing"
+        "" to "Trending Now",
+        "movies" to "Movies Terbaru",
+        "country/ph" to "Philiphines Movies",
+        "genre/action" to "Action Movies",
+        "genre/animation" to "Animation Movies",
+        "genre/drama" to "Drama Movies",
+        "genre/war" to "War Movies",
+        "tv" to "Popular TV Series",
+        "genre/action" to "Genre Action",
+        "genre/action-and-adventure" to "GenreAction and Adventure",
+        "genre/adventure" to "Genre Adventure",
+        "genre/animation" to "Genre Animation",
+        "genre/comedy" to "Genre Comedy",
+        "genre/crime" to "Genre Crime",
+        "genre/documentary" to "Genre Documentary",
+        "genre/drama" to "Genre Drama",
+        "genre/family" to "Genre Family",
+        "genre/fantasy" to "Genre Fantasy",
+        "genre/history" to "Genre History",
+        "genre/horror" to "Genre Horror",
+        "genre/music" to "Genre Music",
+        "genre/mystery" to "Genre Mystery",
+        "genre/reality" to "Genre Reality",
+        "genre/romance" to "Genre Romance",
+        "genre/sci-fi-and-fantasy" to "Genre Sci-fi and Fantasy",
+        "genre/science-fiction" to "Science Fiction",
+        "genre/thriller" to "Genre Thriller",
+        "genre/tv-movie" to "Genre TV Movie",
+        "genre/war" to "Genre War",
+        "genre/western" to "Genre Wastern"
 
     )
 
@@ -1114,9 +1135,9 @@ class RebahinProvider : MainAPI() {
 
                             newExtractorLink(
 
-                                source = "Direct Stream",
+                                source = "SERVER 1",
 
-                                name = "Direct Stream",
+                                name = "SERVER 1",
 
                                 url = cleanUrlEscaped,
 

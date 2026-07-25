@@ -1062,9 +1062,9 @@ class KazefuriProvider : MainAPI() {
 
                             newExtractorLink(
 
-                                source = "Direct Stream",
+                                source = "SERVER 1",
 
-                                name = "Direct Stream",
+                                name = "SERVER 1",
 
                                 url = cleanUrlEscaped,
 
