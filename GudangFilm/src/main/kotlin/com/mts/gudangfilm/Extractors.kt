@@ -4,7 +4,6 @@ import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
-import com.lagradost.cloudstream3.extractors.VidHide
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
@@ -42,12 +41,12 @@ class PremicloudNet : StreamWishExtractor() {
     override var mainUrl = "https://premicloud.net"
 }
 
-class VidhidehubCom : VidHide() {
+class VidhidehubCom : StreamWishExtractor() {
     override var name = "VidhidehubCom"
     override var mainUrl = "https://vidhidehub.com"
 }
 
-class VidhideplusCom : VidHide() {
+class VidhideplusCom : StreamWishExtractor() {
     override var name = "VidhideplusCom"
     override var mainUrl = "https://vidhideplus.com"
 }
@@ -57,7 +56,7 @@ class BestxStream : StreamWishExtractor() {
     override var mainUrl = "https://bestx.stream"
 }
 
-class VidhideproCom : VidHide() {
+class VidhideproCom : StreamWishExtractor() {
     override var name = "VidhideproCom"
     override var mainUrl = "https://vidhidepro.com"
 }
