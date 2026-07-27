@@ -67,6 +67,7 @@ class Anoboy : MainAPI() {
         val document = app.get(pageUrl).document
         val items = document.select("div.animposx, article, .bsx, .bs, div.series, div.poster, article.has-post-thumbnail")
             .mapNotNull { it.toSearchResult() }
+            .distinctBy { it.url }
 
         return newHomePageResponse(request.name, items)
     }
@@ -88,7 +89,12 @@ class Anoboy : MainAPI() {
 
         if (title.isBlank()) return null
 
-        val posterUrl = selectFirst("img")?.fixPoster()?.let { fixUrl(it) }
+        val posterUrl = (selectFirst("div.poster img, div.thumb img, div.thumbook img, div.animeposter img, img[src*='uploads']")
+            ?: selectFirst("img"))
+            ?.fixPoster()
+            ?.let { fixUrl(it) }
+            ?.takeIf { !it.contains("Anoboych", true) && !it.contains("logo", true) }
+
         val isTv = href.contains("/serial-tv/", true) || href.contains("/series/", true) || href.contains("/tv/", true)
 
         return if (isTv) {
@@ -106,6 +112,7 @@ class Anoboy : MainAPI() {
         val document = app.get("$mainUrl/?s=$query").document
         return document.select("div.animposx, article, .bsx, .bs, div.series, div.poster, article.has-post-thumbnail")
             .mapNotNull { it.toSearchResult() }
+            .distinctBy { it.url }
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -120,9 +127,11 @@ class Anoboy : MainAPI() {
             .substringBefore("(")
             .trim()
 
-        val poster = document.selectFirst("div.poster img, figure.pull-left img, .mvic-thumb img, .poster img, .entry-content img")
-            .fixPoster()
-            ?.let { fixUrl(it) }
+        val ogPoster = document.selectFirst("meta[property=og:image]")?.attr("content")?.takeIf { it.isNotBlank() }
+        val poster = (ogPoster ?: document.selectFirst("div.poster img, div.thumb img, div.thumbook img, div.animeposter img, figure img, .entry-content img")
+            ?.fixPoster()
+            ?.let { fixUrl(it) })
+            ?.takeIf { !it.contains("Anoboych", true) && !it.contains("logo", true) }
 
         val description = document.selectFirst("div[itemprop=description] p, div.desc p.f-desc, div.entry-content p, .synops p")
             ?.text()
