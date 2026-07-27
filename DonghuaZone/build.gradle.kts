@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk Donghua Zone – Watch Donghua Anime in 4K with English & Indonesian Subtitles"
+    description = "Provider untuk Donghua Zone – Watch Donghua Anime in 4K"
 
     authors     = listOf("MTS")
 

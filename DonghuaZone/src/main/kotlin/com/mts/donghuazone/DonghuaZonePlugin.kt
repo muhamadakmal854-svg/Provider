@@ -14,6 +14,8 @@ class DonghuaZonePlugin : Plugin() {
 
         registerMainAPI(DonghuaZoneProvider())
         registerExtractorAPI(BloggerCom())
+        registerExtractorAPI(GeoDailymotionCom())
+        registerExtractorAPI(DailymotionCom())
         registerExtractorAPI(GoogleVideo())
 
     }

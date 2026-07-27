@@ -3,6 +3,7 @@ package com.mts.donghuazone
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.extractors.Dailymotion
 import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -205,6 +206,16 @@ class BloggerCom : ExtractorApi() {
             else -> Qualities.Unknown.value
         }
     }
+}
+
+class GeoDailymotionCom : Dailymotion() {
+    override var name = "GeoDailymotionCom"
+    override var mainUrl = "https://geo.dailymotion.com"
+}
+
+class DailymotionCom : Dailymotion() {
+    override var name = "DailymotionCom"
+    override var mainUrl = "https://dailymotion.com"
 }
 
 class EmbedpyroxXyz : ExtractorApi() {

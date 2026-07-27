@@ -32,7 +32,9 @@ class DonghuaZoneProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
 
-        "" to "Terbaru"
+        "" to "Latest Episode",
+        "search/label/Movie" to "Movie",
+        "search/label/Ongoing?&max-results=10" to "Ongoing"
 
     )
 
@@ -154,7 +156,7 @@ class DonghuaZoneProvider : MainAPI() {
 
         )).document
 
-        return doc.select("article, .thumbnail, div.thumbnail, .post-outer-container, article.post-outer-container, .widget, div.widget, .section, div.section, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, .post, .entry, .film-poster-ahref").mapNotNull {
+        return doc.select("article, .post-outer-container, article.post-outer-container, div.thumbnail, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, .post, .entry, .film-poster-ahref").mapNotNull {
 
             val a = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
 
