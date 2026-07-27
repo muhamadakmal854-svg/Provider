@@ -1,4 +1,4 @@
-package com.mts.cinemax21
+package com.mts.donghuaworld
 
 import com.lagradost.cloudstream3.*
 
@@ -16,13 +16,13 @@ import javax.crypto.spec.IvParameterSpec
 
 import java.security.MessageDigest
 
-class Cinemax21Provider : MainAPI() {
+class DonghuaworldProvider : MainAPI() {
 
 
 
-    override var mainUrl        = "https://cinemax21.live"
+    override var mainUrl        = "https://donghuaworld.com"
 
-    override var name           = "Cinemax21"
+    override var name           = "Donghuaworld"
 
     override var lang           = "id"
 
@@ -32,15 +32,9 @@ class Cinemax21Provider : MainAPI() {
 
     override val mainPage = mainPageOf(
 
-        "" to "All",
-        "genre/action" to "Action",
-        "genre/box-office" to "Box Office",
-        "genre/comedy" to "Comedy",
-        "genre/crime" to "Crime",
-        "genre/horror" to "Horror",
-        "genre/romance" to "Romance",
-        "genre/thriller" to "Thriller",
-        "genre/trending" to "Trending"
+        "" to "Terbaru",
+        "anime/?status=ongoing&sub=&order=latest" to "Ongoing Donghua",
+        "schedule" to "Donghua"
 
     )
 
@@ -164,7 +158,7 @@ class Cinemax21Provider : MainAPI() {
 
         )).document
 
-        return doc.select("article, div.poster, div.item, a[href*='/video/'], .gmr-item-modulepost, .gmr-item-archivepost, .gmr-item-module, .gmr-item-archive, .gmr-item, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
+        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .gmr-item-modulepost, .gmr-item-archivepost, .gmr-item-module, .gmr-item-archive, .gmr-item, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
 
             val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
 
