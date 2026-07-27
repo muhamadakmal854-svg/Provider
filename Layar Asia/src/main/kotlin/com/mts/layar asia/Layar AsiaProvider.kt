@@ -1,4 +1,4 @@
-package com.mts.rebahin
+package com.mts.layar asia
 
 import com.lagradost.cloudstream3.*
 
@@ -16,62 +16,63 @@ import javax.crypto.spec.IvParameterSpec
 
 import java.security.MessageDigest
 
-class RebahinProvider : MainAPI() {
+class Layar AsiaProvider : MainAPI() {
 
-    init {
-        val customDns = object : okhttp3.Dns {
-            override fun lookup(hostname: String): List<java.net.InetAddress> {
-                if (hostname.contains("rebahin", ignoreCase = true)) {
-                    return listOf(java.net.InetAddress.getByName("165.227.239.221"))
-                }
-                return okhttp3.Dns.SYSTEM.lookup(hostname)
-            }
-        }
-        app.baseClient = app.baseClient.newBuilder().dns(customDns).build()
-    }
 
-    override var mainUrl        = "https://165.227.239.221"
 
-    override var name           = "Rebahin"
+    override var mainUrl        = "https://server-1.layar.asia"
+
+    override var name           = "Layar Asia"
 
     override var lang           = "id"
 
     override val hasMainPage    = true
 
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
 
-        "" to "Trending Now",
-        "movies" to "Movies Terbaru",
-        "country/ph" to "Philiphines Movies",
-        "genre/action" to "Action Movies",
-        "genre/animation" to "Animation Movies",
-        "genre/drama" to "Drama Movies",
-        "genre/war" to "War Movies",
-        "tv" to "Popular TV Series",
-        "genre/action" to "Genre Action",
-        "genre/action-and-adventure" to "GenreAction and Adventure",
-        "genre/adventure" to "Genre Adventure",
-        "genre/animation" to "Genre Animation",
-        "genre/comedy" to "Genre Comedy",
-        "genre/crime" to "Genre Crime",
-        "genre/documentary" to "Genre Documentary",
-        "genre/drama" to "Genre Drama",
-        "genre/family" to "Genre Family",
-        "genre/fantasy" to "Genre Fantasy",
-        "genre/history" to "Genre History",
-        "genre/horror" to "Genre Horror",
-        "genre/music" to "Genre Music",
-        "genre/mystery" to "Genre Mystery",
-        "genre/reality" to "Genre Reality",
-        "genre/romance" to "Genre Romance",
-        "genre/sci-fi-and-fantasy" to "Genre Sci-fi and Fantasy",
-        "genre/science-fiction" to "Science Fiction",
-        "genre/thriller" to "Genre Thriller",
-        "genre/tv-movie" to "Genre TV Movie",
-        "genre/war" to "Genre War",
-        "genre/western" to "Genre Wastern"
+        "" to "Terbaru",
+        "series/?type=movie&order=latest" to "Movie",
+        "genres/anime" to "Anime",
+        "genres/donghua-terbaru" to "Donghua",
+        "genres/mature" to "18+",
+        "jadwal-rilis" to "Jadwal Rilis",
+        "bookmark" to "Bookmark",
+        "random" to "Surprise Me!",
+        "genres/comedy" to "Comedy",
+        "genres/drama" to "Drama",
+        "genres/drama-korea" to "Drama Korea",
+        "genres/life" to "Life",
+        "genres/romance" to "Romance",
+        "genres/law" to "Law",
+        "genres/mystery" to "Mystery",
+        "genres/supernatural" to "Supernatural",
+        "genres/horror" to "Horror",
+        "genres/youth" to "Youth",
+        "genres/chinese-drama" to "Chinese Drama",
+        "genres/mini-series" to "Mini Series",
+        "genres/melodrama" to "Melodrama",
+        "genres/family" to "Family",
+        "genres/historical" to "Historical",
+        "genres/war" to "War",
+        "genres/action" to "Action",
+        "genres/adventure" to "Adventure",
+        "genres/animation" to "Animation",
+        "genres/biography" to "Biography",
+        "genres/business" to "Business",
+        "genres/cooking-survival" to "Cooking Survival",
+        "genres/crime" to "Crime",
+        "genres/documentary" to "Documentary",
+        "genres/dorama" to "Dorama",
+        "genres/drama-filipina" to "Drama Filipina",
+        "genres/drama-jepang" to "Drama Jepang",
+        "genres/drama-thailand" to "Drama Thailand",
+        "genres/drama-turki" to "Drama Turki",
+        "genres/drama-bl" to "Drama-Bl",
+        "genres/fantasy" to "Fantasy",
+        "genres/film-korea" to "Film Korea",
+        "ongoing" to "Ongoing"
 
     )
 
@@ -83,23 +84,25 @@ class RebahinProvider : MainAPI() {
 
         val pageUrl = if (path.startsWith("http")) {
 
-            val separator = if (path.contains("?")) "&" else "?"
-
-            path + if (page > 1) "${separator}page=$page" else ""
+            path + if (page > 1) "page/$page/" else ""
 
         } else {
 
             if (cleanPath.isEmpty()) {
 
-                mainUrl + if (page > 1) "?page=$page" else ""
+                mainUrl + if (page > 1) "/page/$page/" else "/"
 
             } else {
 
-                val separator = if (cleanPath.contains("?")) "&" else "?"
+                val parts = cleanPath.split("?")
 
-                val pagedPath = if (page > 1) "$cleanPath${separator}page=$page" else cleanPath
+                val basePath = parts[0].removeSuffix("/")
 
-                "$mainUrl/$pagedPath"
+                val query = if (parts.size > 1) "?" + parts[1] else ""
+
+                val pagedPath = if (page > 1) "$basePath/page/$page/" else "$basePath/"
+
+                "$mainUrl/$pagedPath$query"
 
             }
 
@@ -189,87 +192,57 @@ class RebahinProvider : MainAPI() {
 
             "Referer" to mainUrl,
 
-            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 
         )).document
 
-        return doc.select("a.group, .snap-start a, a[href^='/movies/'], a[href^='/tv/'], .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, article, .post, .entry, .film-poster-ahref").mapNotNull {
+        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .gmr-item-modulepost, .gmr-item-archivepost, .gmr-item-module, .gmr-item-archive, .gmr-item, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
 
-            val a = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
+            val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
 
-            val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
+            val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
 
-            if (href.isBlank() || href == mainUrl || href.contains("javascript")) return@mapNotNull null
+            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
 
-            val junkPaths = setOf("/", "/movies", "/tv", "/genres", "/networks", "/countries", "/years")
+            val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
 
-            val cleanPath = href.removePrefix(mainUrl).lowercase().removeSuffix("/")
+                ?.text()?.trim()
 
-            if (junkPaths.contains(cleanPath)) return@mapNotNull null
-
-            val img = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
-
-            val title = it.selectFirst(
-
-                ".entry-title, h2.entry-title, h2, h3, .title, .film-name, .movie-title, .item-title"
-
-            )?.text()?.trim()
-
-                ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }
-
-                    .ifEmpty { img?.attr("title")?.trim() ?: "" }
-
-                    .ifEmpty { a.text().trim() }
+                ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }.ifEmpty { img?.attr("title")?.trim() ?: "" }.ifEmpty { a.text().trim() }
 
             if (title.isBlank()) return@mapNotNull null
 
-            val junkTitles = setOf("rebahin", "movies", "tv series", "genres", "networks", "country", "year", "watch now", "home", "terbaru", "ongoing", "banner", "banner promo", "iklan")
+            var src   = img?.posterUrl() ?: ""
 
-            val tLow = title.lowercase()
+            if (src.isEmpty()) {
 
-            if (tLow.contains("banner") || tLow.contains("iklan") || junkTitles.contains(tLow)) return@mapNotNull null
-
-            if (!href.contains("/video/") && !href.contains("/movie/") && !href.contains("/series/") && !href.contains("/film/") && !href.contains("/anime/") && !href.contains("/episode/")) return@mapNotNull null
-
-            var src = img?.posterUrl() ?: ""
-
-            // Smart type detection based on URL pattern and page metadata
-
-            val hrefLower = href.lowercase()
-
-            val typeLabel = it.selectFirst(
-
-                ".type, .label, .badge, [class*=type], [class*=label], .quality"
-
-            )?.text()?.lowercase() ?: ""
-
-            when {
-
-                hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
-
-                hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
-
-                hrefLower.contains("/film-seri/") || hrefLower.contains("/drama-serial/") ||
-
-                hrefLower.contains("/ongoing/") || hrefLower.contains("/drakor/") ||
-
-                typeLabel.contains("series") || typeLabel.contains("drama") ||
-
-                typeLabel.contains("episode") ->
-
-                    newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
-
-                hrefLower.contains("/movie") || hrefLower.contains("/film") ||
-
-                hrefLower.contains("/movies/") ->
-
-                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
-
-                else ->
-
-                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+                src = it.posterUrl()
 
             }
+
+            if (src.isEmpty()) {
+
+                var foundBg = ""
+
+                it.select("[style*=background], [style*=url]").forEach { el ->
+
+                    val url = el.posterUrl()
+
+                    if (url.isNotEmpty()) {
+
+                        foundBg = url
+
+                        return@forEach
+
+                    }
+
+                }
+
+                src = foundBg
+
+            }
+
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
 
         }.distinctBy { it.url }
 
@@ -279,7 +252,7 @@ class RebahinProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
 
-        val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
+        val doc = app.get(url, headers = mapOf("Referer" to mainUrl, "User-Agent" to USER_AGENT)).document
 
         var currentDoc = doc
 
@@ -287,7 +260,7 @@ class RebahinProvider : MainAPI() {
 
         // Parent redirection logic for episode pages
 
-        val isEpisodePage = !url.contains("/anime/") && !url.contains("/series/") && !url.contains("/tvshows/") && !url.contains("/movies/")
+        val isEpisodePage = url.contains("/eps/") || url.contains("/episode/") || (!url.contains("/anime/") && !url.contains("/series/") && !url.contains("/tvshows/") && !url.contains("/tv/"))
 
         if (isEpisodePage) {
 
@@ -295,11 +268,7 @@ class RebahinProvider : MainAPI() {
 
                 val h = href.lowercase()
 
-                (h.contains("/anime/") && !h.endsWith("/anime/") && !h.endsWith("/anime")) ||
-
-                (h.contains("/series/") && !h.endsWith("/series/") && !h.endsWith("/series")) ||
-
-                (h.contains("/tvshows/") && !h.endsWith("/tvshows/") && !h.endsWith("/tvshows"))
+                h.contains("/tv/") || h.contains("/anime/") || h.contains("/series/") || h.contains("/tvshows/")
 
             }
 
@@ -315,9 +284,9 @@ class RebahinProvider : MainAPI() {
 
                 try {
 
-                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url)).document
+                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url, "User-Agent" to USER_AGENT)).document
 
-                    val newTitle = parentDoc.selectFirst(".sheader .data h1, h1.entry-title, .data h1, h1, .heading-name, .film-name")
+                    val newTitle = parentDoc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")
 
                     if (newTitle != null) {
 
@@ -333,163 +302,77 @@ class RebahinProvider : MainAPI() {
 
         }
 
-        val title = currentDoc.selectFirst(
+        val title  = currentDoc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")?.let {
 
-            ".sheader .data h1, h1.entry-title, .data h1, h1, .heading-name, .film-name"
+            if (it.tagName() == "img") it.attr("alt").trim() else it.text().trim()
 
-        )?.text()?.trim()
+        }?.trim() ?: return null
 
-            ?: currentDoc.selectFirst("meta[property=og:title]")?.attr("content")?.trim()
+        val poster = currentDoc.selectFirst(".thumb img, .seriesthumb img, .film-poster img, .entry-thumb img, .cover img, img.wp-post-image, .poster img")
 
-            ?: currentDoc.title().replace(" - REBAHIN", "").trim()
+            ?.let { img ->
 
-        if (title.isBlank()) return null
-
-        val rawPoster = currentDoc.selectFirst("meta[property=og:image]")?.attr("content")
-
-            ?: currentDoc.selectFirst(
-
-                ".poster img, .sheader .poster img, .film-poster img, [class*=poster] img, " +
-
-                ".entry-thumbnail img, .thumb img, img.wp-post-image, .cover img, img"
-
-            )?.let { img ->
-
-                listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc", "src")
+                listOf("data-src","data-lazy-src","data-lazy","data-cfsrc","data-original","src")
 
                     .map { img.attr(it) }
 
-                    .firstOrNull { it.isNotBlank() }
-
-            } ?: ""
-
-        val poster = if (rawPoster.contains("/_next/image?url=") || rawPoster.contains("/_next/image/?url=")) {
-
-            val decoded = try {
-
-                val queryStr = rawPoster.substringAfter("url=").substringBefore("&")
-
-                java.net.URLDecoder.decode(queryStr, "UTF-8")
-
-            } catch (_: Exception) { "" }
-
-            if (decoded.startsWith("http")) decoded else rawPoster
-
-        } else if (rawPoster.startsWith("//")) {
-
-            "https:$rawPoster"
-
-        } else if (rawPoster.startsWith("/")) {
-
-            "$mainUrl$rawPoster"
-
-        } else {
-
-            rawPoster
-
-        }
-
-        val plot = currentDoc.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
-
-            ?: currentDoc.selectFirst(
-
-                ".description p, .wp-content p, .entry-content p, [itemprop=description], " +
-
-                ".film-description, .synops p, .overview"
-
-            )?.text()?.trim()
-
-        val year = currentDoc.selectFirst(
-
-            ".date, .extra .year, [itemprop=dateCreated], .film-stats span, [class*=year]"
-
-        )?.text()?.filter { it.isDigit() }?.let {
-
-            if (it.length >= 4) it.substring(0, 4).toIntOrNull() else null
-
-        }
-
-        val genres = currentDoc.select(
-
-            ".sgeneros a, .genres a, .genre a, .film-genres a, [class*=genre] a, .categories a"
-
-        ).map { it.text() }.filter { it.isNotBlank() }
-
-        val isTv = targetUrl.contains("/tvshows/") || targetUrl.contains("/series/") ||
-
-                   targetUrl.contains("/tv/") || targetUrl.contains("/season/") ||
-
-                   targetUrl.contains("/anime/") ||
-
-                   currentDoc.select(
-
-                       ".episodes-list li, .episodios li, #seasons .se-c, " +
-
-                       ".eplister li, .episodelist li, .clps li, #episodes li, " +
-
-                       "#daftarepisode li, #daftarepisode, .epcheck li"
-
-                   ).isNotEmpty()
-
-        return if (isTv) {
-
-            var eps = currentDoc.select(
-
-                "a[href*='/season-'][href*='/episode-'], a[href^='/tv/'][href*='/episode-'], a[href^='/tv/'][href*='/season-'], " +
-
-                ".episodes-list li a, .episodios li a, #episodes .episodiotitle a, " +
-
-                ".eplister ul li a, .episodelist ul li a, .ep-list li a, .clps li a, " +
-
-                "[class*=episode-list] li a, [class*=episode] a[href], " +
-
-                "#daftarepisode li a, #daftarepisode a, .epcheck li a, [id*=episode] li a, [id*=episode] a"
-
-            ).mapIndexed { i, a ->
-
-                val epHref = fixUrl(a.attr("href"))
-
-                val epMatch = Regex("episode-(\\d+)", RegexOption.IGNORE_CASE).find(epHref)
-
-                val epNum = epMatch?.groupValues?.get(1)?.toIntOrNull() ?: (i + 1)
-
-                val seasonMatch = Regex("season-(\\d+)", RegexOption.IGNORE_CASE).find(epHref)
-
-                val seasonNum = seasonMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
-
-                newEpisode(epHref) {
-
-                    this.name = a.selectFirst(".epl-title, .epl-num, span, .episode-title")
-
-                        ?.text()?.trim() ?: a.text().trim()
-
-                    this.episode = epNum
-
-                    this.season = seasonNum
-
-                }
-
-            }.filter { it.data.isNotBlank() }.distinctBy { it.data }
-
-            if (eps.isEmpty()) {
-
-                eps = listOf(
-
-                    newEpisode(targetUrl) {
-
-                        this.name = title
-
-                        this.episode = 1
-
-                    }
-
-                )
+                    .firstOrNull { it.isNotBlank() && it.startsWith("http") }
 
             }
 
-            newTvSeriesLoadResponse(title, targetUrl, TvType.TvSeries, eps) {
+        val plot   = currentDoc.selectFirst(".entry-content p, .synp .deskripsi, [itemprop=description], .film-description p")
 
-                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
+            ?.text()?.trim()
+
+        val genres = currentDoc.select(".genxed a, .genre-info a, .info-content .spe a[href*=genre], .film-genres a")
+
+            .map { it.text() }
+
+        val eps = currentDoc.select(
+
+            ".eplister ul li a, .episodelist ul li a, .clps li a, .ep-list li a, " +
+
+            "#daftarepisode li a, #daftarepisode a, .epcheck li a, [id*=episode] li a, [id*=episode] a, " +
+
+            ".gmr-listseries a, .list-table a"
+
+        ).mapNotNull { a ->
+
+            val epUrl = a.attr("href")
+
+            val epTitle = a.selectFirst(".epl-title, .epl-num, span")?.text()?.trim()
+
+                ?: a.text().trim()
+
+            if (epUrl.isNotBlank() && 
+
+                !epUrl.contains("/tv/") && 
+
+                !epUrl.contains("/series/") && 
+
+                !epUrl.contains("/anime/") && 
+
+                epUrl.substringBefore("?") != targetUrl.substringBefore("?")) {
+
+                newEpisode(epUrl) { 
+
+                    this.name = epTitle
+
+                    this.episode = epTitle.filter { it.isDigit() }.toIntOrNull()
+
+                }
+
+            } else null
+
+        }
+
+        val finalEps = eps.distinctBy { it.data }.sortedBy { it.episode ?: 0 }
+
+        return if (finalEps.isNotEmpty()) {
+
+            newTvSeriesLoadResponse(title, targetUrl, TvType.TvSeries, finalEps) {
+
+                this.posterUrl = poster; this.plot = plot; this.tags = genres
 
             }
 
@@ -497,7 +380,7 @@ class RebahinProvider : MainAPI() {
 
             newMovieLoadResponse(title, targetUrl, TvType.Movie, targetUrl) {
 
-                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
+                this.posterUrl = poster; this.plot = plot; this.tags = genres
 
             }
 

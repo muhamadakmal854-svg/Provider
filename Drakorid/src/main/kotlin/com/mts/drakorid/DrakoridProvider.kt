@@ -194,9 +194,13 @@ class DrakoridProvider : MainAPI() {
 
             if (title.isBlank()) return@mapNotNull null
 
-            val junkTitles = setOf("rebahin", "movies", "tv series", "genres", "networks", "country", "year", "watch now", "home", "terbaru", "ongoing")
+            val junkTitles = setOf("rebahin", "movies", "tv series", "genres", "networks", "country", "year", "watch now", "home", "terbaru", "ongoing", "banner", "banner promo", "iklan")
 
-            if (junkTitles.contains(title.lowercase())) return@mapNotNull null
+            val tLow = title.lowercase()
+
+            if (tLow.contains("banner") || tLow.contains("iklan") || junkTitles.contains(tLow)) return@mapNotNull null
+
+            if (!href.contains("/video/") && !href.contains("/movie/") && !href.contains("/series/") && !href.contains("/film/") && !href.contains("/anime/") && !href.contains("/episode/")) return@mapNotNull null
 
             var src = img?.posterUrl() ?: ""
 
