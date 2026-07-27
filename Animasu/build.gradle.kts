@@ -10,7 +10,7 @@ cloudstream {
 
     status      = 1
 
-    tvTypes     = listOf("Anime", "TvSeries", "OVA")
+    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
 
     iconUrl     = "https://v1.animasu.work/favicon.ico"
 

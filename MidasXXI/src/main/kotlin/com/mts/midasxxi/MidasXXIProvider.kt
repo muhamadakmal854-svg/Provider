@@ -1,4 +1,4 @@
-package com.mts.layar asia
+package com.mts.midasxxi
 
 import com.lagradost.cloudstream3.*
 
@@ -16,62 +16,43 @@ import javax.crypto.spec.IvParameterSpec
 
 import java.security.MessageDigest
 
-class Layar AsiaProvider : MainAPI() {
+class MidasXXIProvider : MainAPI() {
 
 
 
-    override var mainUrl        = "https://server-1.layar.asia"
+    override var mainUrl        = "https://unairi.ac.id"
 
-    override var name           = "Layar Asia"
+    override var name           = "MidasXXI"
 
     override var lang           = "id"
 
     override val hasMainPage    = true
 
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.OVA)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
     override val mainPage = mainPageOf(
 
         "" to "Terbaru",
-        "series/?type=movie&order=latest" to "Movie",
-        "genres/anime" to "Anime",
-        "genres/donghua-terbaru" to "Donghua",
-        "genres/mature" to "18+",
-        "jadwal-rilis" to "Jadwal Rilis",
-        "bookmark" to "Bookmark",
-        "random" to "Surprise Me!",
-        "genres/comedy" to "Comedy",
-        "genres/drama" to "Drama",
-        "genres/drama-korea" to "Drama Korea",
-        "genres/life" to "Life",
-        "genres/romance" to "Romance",
-        "genres/law" to "Law",
-        "genres/mystery" to "Mystery",
-        "genres/supernatural" to "Supernatural",
-        "genres/horror" to "Horror",
-        "genres/youth" to "Youth",
-        "genres/chinese-drama" to "Chinese Drama",
-        "genres/mini-series" to "Mini Series",
-        "genres/melodrama" to "Melodrama",
-        "genres/family" to "Family",
-        "genres/historical" to "Historical",
-        "genres/war" to "War",
-        "genres/action" to "Action",
-        "genres/adventure" to "Adventure",
-        "genres/animation" to "Animation",
-        "genres/biography" to "Biography",
-        "genres/business" to "Business",
-        "genres/cooking-survival" to "Cooking Survival",
-        "genres/crime" to "Crime",
-        "genres/documentary" to "Documentary",
-        "genres/dorama" to "Dorama",
-        "genres/drama-filipina" to "Drama Filipina",
-        "genres/drama-jepang" to "Drama Jepang",
-        "genres/drama-thailand" to "Drama Thailand",
-        "genres/drama-turki" to "Drama Turki",
-        "genres/drama-bl" to "Drama-Bl",
-        "genres/fantasy" to "Fantasy",
-        "genres/film-korea" to "Film Korea",
+        "movies" to "Movies",
+        "tvshows" to "Tv Series",
+        "genre/anime" to "Anime",
+        "country" to "All Country List",
+        "genre-list" to "Genre",
+        "release/2025" to "2025",
+        "release/2024" to "2024",
+        "release/2023" to "2023",
+        "release/2022" to "2022",
+        "genre/action" to "Action",
+        "genre/comedy" to "Comedy",
+        "genre/crime" to "Crime",
+        "genre/drama" to "Drama",
+        "genre/drama-korea" to "Drama Korea",
+        "genre/live-action" to "Live Action",
+        "genre/horror" to "Horror",
+        "genre/mystery" to "Mystery",
+        "genre/sci-fi-fantasy" to "Sci-Fi & Fantasy",
+        "genre/adventure" to "Adventure",
+        "genre/vivamax" to "Vivamax",
         "ongoing" to "Ongoing"
 
     )
@@ -188,31 +169,21 @@ class Layar AsiaProvider : MainAPI() {
 
     private suspend fun scrapeList(pageUrl: String): List<SearchResponse> {
 
-        val doc = app.get(pageUrl, headers = mapOf(
+        val doc = app.get(pageUrl, headers = mapOf("Referer" to mainUrl)).document
 
-            "Referer" to mainUrl,
+        return doc.select("article.item, .item, article, .result-item, .film-poster-ahref, div.module-item, div.ml-item, .movie-item, .post-item, .item-post, .box-item, .data-item, .g-item").mapNotNull {
 
-            "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            val a   = (if (it.tagName() == "a") it else it.selectFirst("h3 a, h2 a, .title a, a")) ?: return@mapNotNull null
 
-        )).document
+            val img = it.selectFirst(".poster img, img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
 
-        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .gmr-item-modulepost, .gmr-item-archivepost, .gmr-item-module, .gmr-item-archive, .gmr-item, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
-
-            val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
-
-            val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
-
-            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
-
-            val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
-
-                ?.text()?.trim()
+            val title = it.selectFirst(".title, .title-sm, h3, h2, .entry-title, .film-name")?.text()?.trim()
 
                 ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }.ifEmpty { img?.attr("title")?.trim() ?: "" }.ifEmpty { a.text().trim() }
 
             if (title.isBlank()) return@mapNotNull null
 
-            var src   = img?.posterUrl() ?: ""
+            var src = img?.posterUrl() ?: ""
 
             if (src.isEmpty()) {
 
@@ -242,9 +213,21 @@ class Layar AsiaProvider : MainAPI() {
 
             }
 
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+            val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
 
-        }.distinctBy { it.url }
+            
+
+            if (href.contains("/tvshows/") || href.contains("/episode/")) {
+
+                newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+
+            } else {
+
+                newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+
+            }
+
+        }
 
     }
 
@@ -252,7 +235,7 @@ class Layar AsiaProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
 
-        val doc = app.get(url, headers = mapOf("Referer" to mainUrl, "User-Agent" to USER_AGENT)).document
+        val doc    = app.get(url, headers = mapOf("Referer" to mainUrl)).document
 
         var currentDoc = doc
 
@@ -260,7 +243,7 @@ class Layar AsiaProvider : MainAPI() {
 
         // Parent redirection logic for episode pages
 
-        val isEpisodePage = url.contains("/eps/") || url.contains("/episode/") || (!url.contains("/anime/") && !url.contains("/series/") && !url.contains("/tvshows/") && !url.contains("/tv/"))
+        val isEpisodePage = !url.contains("/tvshows/") && !url.contains("/movies/") && !url.contains("/series/")
 
         if (isEpisodePage) {
 
@@ -268,7 +251,11 @@ class Layar AsiaProvider : MainAPI() {
 
                 val h = href.lowercase()
 
-                h.contains("/tv/") || h.contains("/anime/") || h.contains("/series/") || h.contains("/tvshows/")
+                (h.contains("/tvshows/") && !h.endsWith("/tvshows/") && !h.endsWith("/tvshows")) ||
+
+                (h.contains("/series/") && !h.endsWith("/series/") && !h.endsWith("/series")) ||
+
+                (h.contains("/anime/") && !h.endsWith("/anime/") && !h.endsWith("/anime"))
 
             }
 
@@ -284,9 +271,9 @@ class Layar AsiaProvider : MainAPI() {
 
                 try {
 
-                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url, "User-Agent" to USER_AGENT)).document
+                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url)).document
 
-                    val newTitle = parentDoc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")
+                    val newTitle = parentDoc.selectFirst(".sheader .data h1, h1.entry-title, .data h1")
 
                     if (newTitle != null) {
 
@@ -302,77 +289,45 @@ class Layar AsiaProvider : MainAPI() {
 
         }
 
-        val title  = currentDoc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")?.let {
+        val title  = currentDoc.selectFirst(".sheader .data h1, h1.entry-title, .data h1")?.text()?.trim() ?: return null
 
-            if (it.tagName() == "img") it.attr("alt").trim() else it.text().trim()
+        val poster = currentDoc.selectFirst(".poster img, .sheader .poster img")?.let { img ->
 
-        }?.trim() ?: return null
+            listOf("data-src","data-lazy-src","data-lazy","data-cfsrc","src")
 
-        val poster = currentDoc.selectFirst(".thumb img, .seriesthumb img, .film-poster img, .entry-thumb img, .cover img, img.wp-post-image, .poster img")
-
-            ?.let { img ->
-
-                listOf("data-src","data-lazy-src","data-lazy","data-cfsrc","data-original","src")
-
-                    .map { img.attr(it) }
-
-                    .firstOrNull { it.isNotBlank() && it.startsWith("http") }
-
-            }
-
-        val plot   = currentDoc.selectFirst(".entry-content p, .synp .deskripsi, [itemprop=description], .film-description p")
-
-            ?.text()?.trim()
-
-        val genres = currentDoc.select(".genxed a, .genre-info a, .info-content .spe a[href*=genre], .film-genres a")
-
-            .map { it.text() }
-
-        val eps = currentDoc.select(
-
-            ".eplister ul li a, .episodelist ul li a, .clps li a, .ep-list li a, " +
-
-            "#daftarepisode li a, #daftarepisode a, .epcheck li a, [id*=episode] li a, [id*=episode] a, " +
-
-            ".gmr-listseries a, .list-table a"
-
-        ).mapNotNull { a ->
-
-            val epUrl = a.attr("href")
-
-            val epTitle = a.selectFirst(".epl-title, .epl-num, span")?.text()?.trim()
-
-                ?: a.text().trim()
-
-            if (epUrl.isNotBlank() && 
-
-                !epUrl.contains("/tv/") && 
-
-                !epUrl.contains("/series/") && 
-
-                !epUrl.contains("/anime/") && 
-
-                epUrl.substringBefore("?") != targetUrl.substringBefore("?")) {
-
-                newEpisode(epUrl) { 
-
-                    this.name = epTitle
-
-                    this.episode = epTitle.filter { it.isDigit() }.toIntOrNull()
-
-                }
-
-            } else null
+                .map { img.attr(it) }.firstOrNull { it.isNotBlank() && it.startsWith("http") }
 
         }
 
-        val finalEps = eps.distinctBy { it.data }.sortedBy { it.episode ?: 0 }
+        val plot   = currentDoc.selectFirst(".wp-content p, .description p")?.text()?.trim()
 
-        return if (finalEps.isNotEmpty()) {
+        val year   = currentDoc.selectFirst(".date, [itemprop=dateCreated]")?.text()
 
-            newTvSeriesLoadResponse(title, targetUrl, TvType.TvSeries, finalEps) {
+            ?.filter { it.isDigit() }?.let {
 
-                this.posterUrl = poster; this.plot = plot; this.tags = genres
+                if (it.length >= 4) it.substring(0, 4).toIntOrNull() else null
+
+            }
+
+        val genres = currentDoc.select(".sgeneros a").map { it.text() }
+
+        val isTv   = targetUrl.contains("/tvshows/") || targetUrl.contains("/series/") || targetUrl.contains("/anime/")
+
+        return if (isTv) {
+
+            val eps = currentDoc.select("#episodes .episodiotitle a").mapIndexed { i, a ->
+
+                newEpisode(fixUrl(a.attr("href"))) {
+
+                    this.name = a.text().trim(); this.episode = i + 1
+
+                }
+
+            }
+
+            newTvSeriesLoadResponse(title, targetUrl, TvType.TvSeries, eps) {
+
+                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
 
             }
 
@@ -380,7 +335,7 @@ class Layar AsiaProvider : MainAPI() {
 
             newMovieLoadResponse(title, targetUrl, TvType.Movie, targetUrl) {
 
-                this.posterUrl = poster; this.plot = plot; this.tags = genres
+                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
 
             }
 

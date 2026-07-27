@@ -1,4 +1,4 @@
-package com.mts.layar asia
+package com.mts.midasxxi
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.USER_AGENT
@@ -16,29 +16,9 @@ import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-class LayarasiaUpnsLive : StreamWishExtractor() {
-    override var name = "LayarasiaUpnsLive"
-    override var mainUrl = "https://layarasia.upns.live"
-}
-
-class MirroredTo : StreamWishExtractor() {
-    override var name = "MirroredTo"
-    override var mainUrl = "https://mirrored.to"
-}
-
-class PlayerVimeoCom : StreamWishExtractor() {
-    override var name = "PlayerVimeoCom"
-    override var mainUrl = "https://player.vimeo.com"
-}
-
-class CdnAmpprojectOrg : StreamWishExtractor() {
-    override var name = "CdnAmpprojectOrg"
-    override var mainUrl = "https://cdn.ampproject.org"
-}
-
-class D32J6O160Xr4GfCloudfrontNet : StreamWishExtractor() {
-    override var name = "D32J6O160Xr4GfCloudfrontNet"
-    override var mainUrl = "https://d32j6o160xr4gf.cloudfront.net"
+class PlaycinematicCom : StreamWishExtractor() {
+    override var name = "PlaycinematicCom"
+    override var mainUrl = "https://playcinematic.com"
 }
 
 class EmbedpyroxXyz : ExtractorApi() {

@@ -10,7 +10,7 @@ cloudstream {
 
     status      = 1
 
-    tvTypes     = listOf("Anime", "TvSeries", "OVA")
+    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
 
     iconUrl     = "https://cinemax21.live/favicon.ico"
 
