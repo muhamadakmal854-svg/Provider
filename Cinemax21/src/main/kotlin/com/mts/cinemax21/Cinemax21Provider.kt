@@ -20,7 +20,7 @@ class Cinemax21Provider : MainAPI() {
 
 
 
-    override var mainUrl        = "https://cinemax21.click"
+    override var mainUrl        = "https://cinemax21.live"
 
     override var name           = "Cinemax21"
 
@@ -156,7 +156,7 @@ class Cinemax21Provider : MainAPI() {
 
         )).document
 
-        return doc.select(".gmr-item-modulepost, .gmr-item-archivepost, .gmr-item-module, .gmr-item-archive, .gmr-item, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
+        return doc.select("article, div.poster, div.item, a[href*='/video/'], .gmr-item-modulepost, .gmr-item-archivepost, .gmr-item-module, .gmr-item-archive, .gmr-item, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
 
             val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
 

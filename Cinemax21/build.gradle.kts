@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Anime", "TvSeries", "OVA")
 
-    iconUrl     = "https://cinemax21.click/favicon.ico"
+    iconUrl     = "https://cinemax21.live/favicon.ico"
 
 }
 
