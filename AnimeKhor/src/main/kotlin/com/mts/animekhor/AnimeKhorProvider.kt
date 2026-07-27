@@ -1,4 +1,4 @@
-package com.mts.animasu
+package com.mts.animekhor
 
 import com.lagradost.cloudstream3.*
 
@@ -16,13 +16,13 @@ import javax.crypto.spec.IvParameterSpec
 
 import java.security.MessageDigest
 
-class AnimasuProvider : MainAPI() {
+class AnimeKhorProvider : MainAPI() {
 
 
 
-    override var mainUrl        = "https://v1.animasu.work"
+    override var mainUrl        = "https://animekhor.org"
 
-    override var name           = "Animasu"
+    override var name           = "AnimeKhor"
 
     override var lang           = "id"
 
@@ -33,11 +33,9 @@ class AnimasuProvider : MainAPI() {
     override val mainPage = mainPageOf(
 
         "" to "Terbaru",
-        "pencarian/?urutan=baru" to "Daftar Anime",
-        "anime-sedang-tayang-terbaru" to "Ongoing",
-        "selesai-tayang" to "Completed",
-        "anime-movie" to "Movie",
-        "genre/isekai" to "Kumpulan Anime Genre Isekai"
+        "comic-series" to "Anime",
+        "donghua-series" to "Donghua",
+        "ongoing" to "Ongoing"
 
     )
 
@@ -161,7 +159,7 @@ class AnimasuProvider : MainAPI() {
 
         )).document
 
-        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, .gmr-item-modulepost, .gmr-item-archivepost, .gmr-item-module, .gmr-item-archive, .gmr-item, article.bs, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
+        return doc.select(".listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, article, .gmr-item-modulepost, .gmr-item-archivepost, .gmr-item-module, .gmr-item-archive, .gmr-item, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
 
             val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
 

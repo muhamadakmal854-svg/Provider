@@ -28,7 +28,7 @@ class OploverzProvider : MainAPI() {
 
     override val hasMainPage    = true
 
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Anime, TvType.OVA)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.OVA)
 
     override val mainPage = mainPageOf(
 
