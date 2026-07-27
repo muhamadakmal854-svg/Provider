@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Anime", "TvSeries", "OVA")
 
-    iconUrl     = "https://anoboy.xyz/favicon.ico"
+    iconUrl     = "https://anoboy.si/favicon.ico"
 
 }
 

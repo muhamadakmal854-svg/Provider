@@ -12,7 +12,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 class Anoboy : MainAPI() {
-    override var mainUrl = "https://ww1.anoboy.boo"
+    override var mainUrl = "https://anoboy.si"
     override var name = "AnoBoy"
     override val hasMainPage = true
     override var lang = "id"
@@ -43,38 +43,50 @@ class Anoboy : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "" to "New Update",
-        "category/anime" to "Latest Added",
-        "category/live-action-movie" to "Live Action",
-        "category/anime-movie" to "Movie",
-        "category/donghua" to "Donghua"
+        "series/?page=2&status=ongoing&type=&order=" to "Ongoing",
+        "series/?status=completed" to "Completed",
+        "series/?status=&type=&order=update" to "Latest Update",
+        "series/?order=latest" to "Latest Added",
+        "series/?status=&type=&order=popular" to "Popular"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val pageUrl = if (page == 1) {
-            "$mainUrl/${request.data.replace("page/%d/", "")}"
+            "$mainUrl/${request.data}"
         } else {
-            "$mainUrl/${request.data.format(page)}"
-        }.replace("//", "/").replace(":/", "://")
+            val rawData = request.data
+            if (rawData.contains("page=")) {
+                rawData.replace(Regex("""page=\d+"""), "page=$page")
+            } else if (rawData.contains("?")) {
+                "$rawData&page=$page"
+            } else {
+                "$rawData?page=$page"
+            }
+        }.replace("//series", "/series")
 
         val document = app.get(pageUrl).document
-        val items = document.select("article.has-post-thumbnail, article.item, article.item-infinite, div.poster")
+        val items = document.select("div.animposx, article, .bsx, .bs, div.series, div.poster, article.has-post-thumbnail")
             .mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(request.name, items)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val linkElement = selectFirst("a[href][title]") ?: selectFirst("a[href]") ?: return null
+        val linkElement = selectFirst("a[href]") ?: return null
         val href = fixUrl(linkElement.attr("href"))
-        val title = (linkElement.attr("title").ifBlank { selectFirst("h2, h3, .entry-title")?.text() ?: text() })
+        if (href.isBlank() || href == "$mainUrl/" || href == "$mainUrl") return null
+
+        val title = (selectFirst(".title, .entry-title, h2, h3")?.text()
+            ?: linkElement.attr("title").ifBlank { selectFirst("img")?.attr("alt") ?: linkElement.text() })
             .removePrefix("Permalink to: ")
+            .removePrefix("Nonton ")
+            .substringBefore("Subtitle")
             .substringBefore("Season")
             .substringBefore("Episode")
             .substringBefore("(")
             .trim()
 
-        if (title.isBlank() || href.isBlank()) return null
+        if (title.isBlank()) return null
 
         val posterUrl = selectFirst("img")?.fixPoster()?.let { fixUrl(it) }
         val isTv = href.contains("/serial-tv/", true) || href.contains("/series/", true) || href.contains("/tv/", true)
@@ -92,7 +104,7 @@ class Anoboy : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/?s=$query").document
-        return document.select("article.has-post-thumbnail, article.item, article.item-infinite, div.poster")
+        return document.select("div.animposx, article, .bsx, .bs, div.series, div.poster, article.has-post-thumbnail")
             .mapNotNull { it.toSearchResult() }
     }
 
@@ -101,12 +113,14 @@ class Anoboy : MainAPI() {
 
         val rawTitle = document.selectFirst("h1.entry-title, h1, div.mvic-desc h3")?.text()?.trim().orEmpty()
         val title = rawTitle
+            .removePrefix("Nonton ")
+            .replace("Subtitle Indonesia Anoboy", "", true)
             .substringBefore("Season")
             .substringBefore("Episode")
             .substringBefore("(")
             .trim()
 
-        val poster = document.selectFirst("figure.pull-left img, .mvic-thumb img, .poster img, .entry-content img")
+        val poster = document.selectFirst("div.poster img, figure.pull-left img, .mvic-thumb img, .poster img, .entry-content img")
             .fixPoster()
             ?.let { fixUrl(it) }
 
@@ -114,7 +128,7 @@ class Anoboy : MainAPI() {
             ?.text()
             ?.trim()
 
-        val tags = document.select("strong:contains(Genre) ~ a, .gmr-moviedata strong:contains(Genre) ~ a, a[rel=tag]").map { it.text() }.filter { it.isNotBlank() }
+        val tags = document.select("strong:contains(Genre) ~ a, .gmr-moviedata strong:contains(Genre) ~ a, a[rel=tag], .genrefull a").map { it.text() }.filter { it.isNotBlank() }
 
         val year = document.selectFirst("div.gmr-moviedata strong:contains(Year:) ~ a, .date, [itemprop=dateCreated]")
             ?.text()
@@ -131,12 +145,30 @@ class Anoboy : MainAPI() {
             .map { it.text() }
             .filter { it.isNotBlank() }
 
-        val seasonBlocks = document.select("div.gmr-season-block")
         val allEpisodes = mutableListOf<Episode>()
+        val epElements = document.select("div.eplister li a, .eplister a, .episodelist li a, div.eplister a, a[href*='-episode-']")
 
+        if (epElements.isNotEmpty()) {
+            val eps = epElements.mapIndexedNotNull { index, epLink ->
+                val hrefEp = epLink.attr("href").takeIf { it.isNotBlank() }?.let { fixUrl(it) } ?: return@mapIndexedNotNull null
+                val epText = epLink.text().trim()
+                val episodeNum = Regex("""episode-(\d+)""", RegexOption.IGNORE_CASE).find(hrefEp)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                    ?: Regex("""E(p|ps)?(\d+)""", RegexOption.IGNORE_CASE).find(epText)?.groupValues?.getOrNull(2)?.toIntOrNull()
+                    ?: (index + 1)
+
+                newEpisode(hrefEp) {
+                    this.name = if (epText.isNotBlank()) epText else "Episode $episodeNum"
+                    this.season = 1
+                    this.episode = episodeNum
+                }
+            }
+            allEpisodes.addAll(eps)
+        }
+
+        val seasonBlocks = document.select("div.gmr-season-block")
         seasonBlocks.forEach { block ->
             val seasonTitle = block.selectFirst("h3.season-title")?.text()?.trim()
-            val seasonNumber = Regex("(\\d+)").find(seasonTitle ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
+            val seasonNumber = Regex("""(\d+)""").find(seasonTitle ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 1
 
             val eps = block.select("div.gmr-season-episodes a")
                 .filter { a ->
@@ -146,7 +178,7 @@ class Anoboy : MainAPI() {
                 .mapIndexedNotNull { index, epLink ->
                     val hrefEp = epLink.attr("href").takeIf { it.isNotBlank() }?.let { fixUrl(it) } ?: return@mapIndexedNotNull null
                     val name = epLink.text().trim()
-                    val episodeNum = Regex("E(p|ps)?(\\d+)", RegexOption.IGNORE_CASE).find(name)?.groupValues?.getOrNull(2)?.toIntOrNull() ?: (index + 1)
+                    val episodeNum = Regex("""E(p|ps)?(\d+)""", RegexOption.IGNORE_CASE).find(name)?.groupValues?.getOrNull(2)?.toIntOrNull() ?: (index + 1)
 
                     newEpisode(hrefEp) {
                         this.name = name
@@ -160,7 +192,7 @@ class Anoboy : MainAPI() {
         val isTv = allEpisodes.isNotEmpty() || url.contains("/serial-tv/", true) || url.contains("/series/", true)
 
         return if (isTv) {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, allEpisodes.sortedWith(compareBy({ it.season }, { it.episode }))) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, allEpisodes.distinctBy { it.data }.sortedWith(compareBy({ it.season }, { it.episode }))) {
                 this.posterUrl = poster
                 this.plot = description
                 this.tags = tags
@@ -255,6 +287,20 @@ class Anoboy : MainAPI() {
             doc.select("div.download a.udl[href], div.download a[href], div.dlbox li span.e a[href]")
                 .forEach { queueUrl(it.attr("href"), baseUrl) }
 
+            val mirrorOptions = doc.select("select.mirror option[value], select[name=mirror] option[value], select[name*=server] option[value]")
+            for (opt in mirrorOptions) {
+                val b64 = opt.attr("value").trim()
+                if (b64.length > 20) {
+                    try {
+                        val decodedHtml = base64Decode(b64.replace("\\s".toRegex(), ""))
+                        Jsoup.parse(decodedHtml).selectFirst("iframe")?.getIframeAttr()?.let { iframe ->
+                            queueUrl(iframe, baseUrl)
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+
             val bloggerRegex = Regex("""https?://(?:www\.)?blogger\.com/video\.g\?[^"'<\s]+""", RegexOption.IGNORE_CASE)
             val batchRegex = Regex("""/uploads/(?:adsbatch[^"'\s]+|yupbatch[^"'\s]+|acbatch[^"'\s]+|stream/embed\.php\?[^"'\s]+)""", RegexOption.IGNORE_CASE)
             val yourUploadRegex = Regex("""https?://(?:www\.)?yourupload\.com/(?:embed|watch)/[^"'<\s]+""", RegexOption.IGNORE_CASE)
@@ -276,7 +322,8 @@ class Anoboy : MainAPI() {
             val lower = url.lowercase()
             if (lower.contains("blogger.com/video.g")) return false
             if (lower.endsWith(".mp4") || lower.endsWith(".m3u8")) return false
-            return lower.contains("anoboy.boo") ||
+            return lower.contains("anoboy.si") ||
+                lower.contains("anoboy.boo") ||
                 lower.contains("/uploads/") ||
                 lower.contains("adsbatch") ||
                 lower.contains("yupbatch")
