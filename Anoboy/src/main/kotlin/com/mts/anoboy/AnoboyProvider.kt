@@ -43,7 +43,7 @@ class Anoboy : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "series/?page=2&status=ongoing&type=&order=" to "Ongoing",
+        "series/?status=ongoing" to "Ongoing",
         "series/?status=completed" to "Completed",
         "series/?status=&type=&order=update" to "Latest Update",
         "series/?order=latest" to "Latest Added",
@@ -69,7 +69,7 @@ class Anoboy : MainAPI() {
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
 
-        return newHomePageResponse(request.name, items)
+        return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
