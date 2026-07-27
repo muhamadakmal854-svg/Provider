@@ -1,4 +1,4 @@
-package com.mts.cinemax21
+package com.mts.kissasian
 
 import com.lagradost.cloudstream3.*
 
@@ -16,31 +16,29 @@ import javax.crypto.spec.IvParameterSpec
 
 import java.security.MessageDigest
 
-class Cinemax21Provider : MainAPI() {
+class KissasianProvider : MainAPI() {
 
 
 
-    override var mainUrl        = "https://cinemax21.live"
+    override var mainUrl        = "https://kissasiantv.my"
 
-    override var name           = "Cinemax21"
+    override var name           = "Kissasian"
 
     override var lang           = "id"
 
     override val hasMainPage    = true
 
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime, TvType.OVA)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.AsianDrama)
 
     override val mainPage = mainPageOf(
 
-        "" to "All",
-        "genre/action" to "Action",
-        "genre/box-office" to "Box Office",
-        "genre/comedy" to "Comedy",
-        "genre/crime" to "Crime",
-        "genre/horror" to "Horror",
-        "genre/romance" to "Romance",
-        "genre/thriller" to "Thriller",
-        "genre/trending" to "Trending"
+        "" to "Terbaru",
+        "ongoing-popular-drama" to "Ongoing Series",
+        "movies-list" to "Movies List",
+        "drama-list" to "Drama List",
+        "korean-drama-list" to "Korean Drama",
+        "chinese-drama-list" to "Chinese Drama",
+        "kshow-list" to "Kshow List"
 
     )
 
@@ -160,57 +158,83 @@ class Cinemax21Provider : MainAPI() {
 
             "Referer" to mainUrl,
 
-            "Accept"  to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 
         )).document
 
-        return doc.select("article, div.card, .card, div.poster, div.item, a[href*='/video/'], .gmr-item-modulepost, .gmr-item-archivepost, .gmr-item-module, .gmr-item-archive, .gmr-item, .listupd .bsx, .listupd .bs, .bsx, .bs, article.bs, .animpost, article.animpost, .animepost, article.animepost, article.item, .film-poster, .item-anime, .epbox, .out-thumb, .milist, .post-item, .hentry").mapNotNull {
+        return doc.select(".switch-block, .list-episode-item, .tab-content, div.tab-content, .block, div.block, .tab-container, div.tab-container, .block-tab, div.block-tab, .selected, div.selected, li.selected, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, article, .post, .entry, .film-poster-ahref").mapNotNull {
 
-            val a     = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
+            val a = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
 
-            val href  = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
+            val href = a.attr("href").let { h -> if (h.startsWith("http")) h else "$mainUrl$h" }
 
-            val img   = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
+            if (href.isBlank() || href == mainUrl || href.contains("javascript")) return@mapNotNull null
 
-            val title = it.selectFirst(".tt, .ttl, h2, .bigor .tt, .mdl-animepost .info .name, .film-name, h3")
+            val junkPaths = setOf("/", "/movies", "/tv", "/genres", "/networks", "/countries", "/years")
 
-                ?.text()?.trim()
+            val cleanPath = href.removePrefix(mainUrl).lowercase().removeSuffix("/")
 
-                ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }.ifEmpty { img?.attr("title")?.trim() ?: "" }.ifEmpty { a.text().trim() }
+            if (junkPaths.contains(cleanPath)) return@mapNotNull null
+
+            val img = it.selectFirst("img") ?: it.selectFirst("[data-src], [data-lazy-src], [data-original]")
+
+            val title = it.selectFirst(
+
+                ".entry-title, h2.entry-title, h2, h3, .title, .film-name, .movie-title, .item-title"
+
+            )?.text()?.trim()
+
+                ?: a.attr("title").trim().ifEmpty { img?.attr("alt")?.trim() ?: "" }
+
+                    .ifEmpty { img?.attr("title")?.trim() ?: "" }
+
+                    .ifEmpty { a.text().trim() }
 
             if (title.isBlank()) return@mapNotNull null
 
-            var src   = img?.posterUrl() ?: ""
+            val junkTitles = setOf("rebahin", "movies", "tv series", "genres", "networks", "country", "year", "watch now", "home", "terbaru", "ongoing")
 
-            if (src.isEmpty()) {
+            if (junkTitles.contains(title.lowercase())) return@mapNotNull null
 
-                src = it.posterUrl()
+            var src = img?.posterUrl() ?: ""
+
+            // Smart type detection based on URL pattern and page metadata
+
+            val hrefLower = href.lowercase()
+
+            val typeLabel = it.selectFirst(
+
+                ".type, .label, .badge, [class*=type], [class*=label], .quality"
+
+            )?.text()?.lowercase() ?: ""
+
+            when {
+
+                hrefLower.contains("/tvshows/") || hrefLower.contains("/series/") ||
+
+                hrefLower.contains("/episode/") || hrefLower.contains("/tv/") ||
+
+                hrefLower.contains("/film-seri/") || hrefLower.contains("/drama-serial/") ||
+
+                hrefLower.contains("/ongoing/") || hrefLower.contains("/drakor/") ||
+
+                typeLabel.contains("series") || typeLabel.contains("drama") ||
+
+                typeLabel.contains("episode") ->
+
+                    newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
+
+                hrefLower.contains("/movie") || hrefLower.contains("/film") ||
+
+                hrefLower.contains("/movies/") ->
+
+                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
+
+                else ->
+
+                    newMovieSearchResponse(title, href, TvType.Movie) { posterUrl = src }
 
             }
-
-            if (src.isEmpty()) {
-
-                var foundBg = ""
-
-                it.select("[style*=background], [style*=url]").forEach { el ->
-
-                    val url = el.posterUrl()
-
-                    if (url.isNotEmpty()) {
-
-                        foundBg = url
-
-                        return@forEach
-
-                    }
-
-                }
-
-                src = foundBg
-
-            }
-
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { posterUrl = src }
 
         }.distinctBy { it.url }
 
@@ -220,7 +244,7 @@ class Cinemax21Provider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
 
-        val doc = app.get(url, headers = mapOf("Referer" to mainUrl, "User-Agent" to USER_AGENT)).document
+        val doc = app.get(url, headers = mapOf("Referer" to mainUrl)).document
 
         var currentDoc = doc
 
@@ -228,7 +252,7 @@ class Cinemax21Provider : MainAPI() {
 
         // Parent redirection logic for episode pages
 
-        val isEpisodePage = url.contains("/eps/") || url.contains("/episode/") || (!url.contains("/anime/") && !url.contains("/series/") && !url.contains("/tvshows/") && !url.contains("/tv/"))
+        val isEpisodePage = !url.contains("/anime/") && !url.contains("/series/") && !url.contains("/tvshows/") && !url.contains("/movies/")
 
         if (isEpisodePage) {
 
@@ -236,7 +260,11 @@ class Cinemax21Provider : MainAPI() {
 
                 val h = href.lowercase()
 
-                h.contains("/tv/") || h.contains("/anime/") || h.contains("/series/") || h.contains("/tvshows/")
+                (h.contains("/anime/") && !h.endsWith("/anime/") && !h.endsWith("/anime")) ||
+
+                (h.contains("/series/") && !h.endsWith("/series/") && !h.endsWith("/series")) ||
+
+                (h.contains("/tvshows/") && !h.endsWith("/tvshows/") && !h.endsWith("/tvshows"))
 
             }
 
@@ -252,9 +280,9 @@ class Cinemax21Provider : MainAPI() {
 
                 try {
 
-                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url, "User-Agent" to USER_AGENT)).document
+                    val parentDoc = app.get(resolved, headers = mapOf("Referer" to url)).document
 
-                    val newTitle = parentDoc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")
+                    val newTitle = parentDoc.selectFirst(".sheader .data h1, h1.entry-title, .data h1, h1, .heading-name, .film-name")
 
                     if (newTitle != null) {
 
@@ -270,77 +298,163 @@ class Cinemax21Provider : MainAPI() {
 
         }
 
-        val title  = currentDoc.selectFirst("h1.entry-title, .thumb img, .film-poster img, .animposx .entry-title")?.let {
+        val title = currentDoc.selectFirst(
 
-            if (it.tagName() == "img") it.attr("alt").trim() else it.text().trim()
+            ".sheader .data h1, h1.entry-title, .data h1, h1, .heading-name, .film-name"
 
-        }?.trim() ?: return null
+        )?.text()?.trim()
 
-        val poster = currentDoc.selectFirst(".thumb img, .seriesthumb img, .film-poster img, .entry-thumb img, .cover img, img.wp-post-image, .poster img")
+            ?: currentDoc.selectFirst("meta[property=og:title]")?.attr("content")?.trim()
 
-            ?.let { img ->
+            ?: currentDoc.title().replace(" - REBAHIN", "").trim()
 
-                listOf("data-src","data-lazy-src","data-lazy","data-cfsrc","data-original","src")
+        if (title.isBlank()) return null
+
+        val rawPoster = currentDoc.selectFirst("meta[property=og:image]")?.attr("content")
+
+            ?: currentDoc.selectFirst(
+
+                ".poster img, .sheader .poster img, .film-poster img, [class*=poster] img, " +
+
+                ".entry-thumbnail img, .thumb img, img.wp-post-image, .cover img, img"
+
+            )?.let { img ->
+
+                listOf("data-src", "data-lazy-src", "data-lazy", "data-cfsrc", "src")
 
                     .map { img.attr(it) }
 
-                    .firstOrNull { it.isNotBlank() && it.startsWith("http") }
+                    .firstOrNull { it.isNotBlank() }
 
-            }
+            } ?: ""
 
-        val plot   = currentDoc.selectFirst(".entry-content p, .synp .deskripsi, [itemprop=description], .film-description p")
+        val poster = if (rawPoster.contains("/_next/image?url=") || rawPoster.contains("/_next/image/?url=")) {
 
-            ?.text()?.trim()
+            val decoded = try {
 
-        val genres = currentDoc.select(".genxed a, .genre-info a, .info-content .spe a[href*=genre], .film-genres a")
+                val queryStr = rawPoster.substringAfter("url=").substringBefore("&")
 
-            .map { it.text() }
+                java.net.URLDecoder.decode(queryStr, "UTF-8")
 
-        val eps = currentDoc.select(
+            } catch (_: Exception) { "" }
 
-            ".eplister ul li a, .episodelist ul li a, .clps li a, .ep-list li a, " +
+            if (decoded.startsWith("http")) decoded else rawPoster
 
-            "#daftarepisode li a, #daftarepisode a, .epcheck li a, [id*=episode] li a, [id*=episode] a, " +
+        } else if (rawPoster.startsWith("//")) {
 
-            ".gmr-listseries a, .list-table a"
+            "https:$rawPoster"
 
-        ).mapNotNull { a ->
+        } else if (rawPoster.startsWith("/")) {
 
-            val epUrl = a.attr("href")
+            "$mainUrl$rawPoster"
 
-            val epTitle = a.selectFirst(".epl-title, .epl-num, span")?.text()?.trim()
+        } else {
 
-                ?: a.text().trim()
-
-            if (epUrl.isNotBlank() && 
-
-                !epUrl.contains("/tv/") && 
-
-                !epUrl.contains("/series/") && 
-
-                !epUrl.contains("/anime/") && 
-
-                epUrl.substringBefore("?") != targetUrl.substringBefore("?")) {
-
-                newEpisode(epUrl) { 
-
-                    this.name = epTitle
-
-                    this.episode = epTitle.filter { it.isDigit() }.toIntOrNull()
-
-                }
-
-            } else null
+            rawPoster
 
         }
 
-        val finalEps = eps.distinctBy { it.data }.sortedBy { it.episode ?: 0 }
+        val plot = currentDoc.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
 
-        return if (finalEps.isNotEmpty()) {
+            ?: currentDoc.selectFirst(
 
-            newTvSeriesLoadResponse(title, targetUrl, TvType.TvSeries, finalEps) {
+                ".description p, .wp-content p, .entry-content p, [itemprop=description], " +
 
-                this.posterUrl = poster; this.plot = plot; this.tags = genres
+                ".film-description, .synops p, .overview"
+
+            )?.text()?.trim()
+
+        val year = currentDoc.selectFirst(
+
+            ".date, .extra .year, [itemprop=dateCreated], .film-stats span, [class*=year]"
+
+        )?.text()?.filter { it.isDigit() }?.let {
+
+            if (it.length >= 4) it.substring(0, 4).toIntOrNull() else null
+
+        }
+
+        val genres = currentDoc.select(
+
+            ".sgeneros a, .genres a, .genre a, .film-genres a, [class*=genre] a, .categories a"
+
+        ).map { it.text() }.filter { it.isNotBlank() }
+
+        val isTv = targetUrl.contains("/tvshows/") || targetUrl.contains("/series/") ||
+
+                   targetUrl.contains("/tv/") || targetUrl.contains("/season/") ||
+
+                   targetUrl.contains("/anime/") ||
+
+                   currentDoc.select(
+
+                       ".episodes-list li, .episodios li, #seasons .se-c, " +
+
+                       ".eplister li, .episodelist li, .clps li, #episodes li, " +
+
+                       "#daftarepisode li, #daftarepisode, .epcheck li"
+
+                   ).isNotEmpty()
+
+        return if (isTv) {
+
+            var eps = currentDoc.select(
+
+                "a[href*='/season-'][href*='/episode-'], a[href^='/tv/'][href*='/episode-'], a[href^='/tv/'][href*='/season-'], " +
+
+                ".episodes-list li a, .episodios li a, #episodes .episodiotitle a, " +
+
+                ".eplister ul li a, .episodelist ul li a, .ep-list li a, .clps li a, " +
+
+                "[class*=episode-list] li a, [class*=episode] a[href], " +
+
+                "#daftarepisode li a, #daftarepisode a, .epcheck li a, [id*=episode] li a, [id*=episode] a"
+
+            ).mapIndexed { i, a ->
+
+                val epHref = fixUrl(a.attr("href"))
+
+                val epMatch = Regex("episode-(\\d+)", RegexOption.IGNORE_CASE).find(epHref)
+
+                val epNum = epMatch?.groupValues?.get(1)?.toIntOrNull() ?: (i + 1)
+
+                val seasonMatch = Regex("season-(\\d+)", RegexOption.IGNORE_CASE).find(epHref)
+
+                val seasonNum = seasonMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
+
+                newEpisode(epHref) {
+
+                    this.name = a.selectFirst(".epl-title, .epl-num, span, .episode-title")
+
+                        ?.text()?.trim() ?: a.text().trim()
+
+                    this.episode = epNum
+
+                    this.season = seasonNum
+
+                }
+
+            }.filter { it.data.isNotBlank() }.distinctBy { it.data }
+
+            if (eps.isEmpty()) {
+
+                eps = listOf(
+
+                    newEpisode(targetUrl) {
+
+                        this.name = title
+
+                        this.episode = 1
+
+                    }
+
+                )
+
+            }
+
+            newTvSeriesLoadResponse(title, targetUrl, TvType.TvSeries, eps) {
+
+                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
 
             }
 
@@ -348,7 +462,7 @@ class Cinemax21Provider : MainAPI() {
 
             newMovieLoadResponse(title, targetUrl, TvType.Movie, targetUrl) {
 
-                this.posterUrl = poster; this.plot = plot; this.tags = genres
+                this.posterUrl = poster; this.plot = plot; this.year = year; this.tags = genres
 
             }
 
