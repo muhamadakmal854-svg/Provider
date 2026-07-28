@@ -3,7 +3,9 @@ package com.maxmovie21
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -11,16 +13,6 @@ import org.jsoup.nodes.Element
 /**
  * MaxMovie21 — Muvipro WordPress theme
  * URL: https://162.244.93.196/
- *
- * Player mechanism:
- *   - The page exposes `#muvipro_player_content_id` with a `data-id` holding the WP post_id.
- *   - Tab buttons have href="#p1", "#p2" etc.
- *   - Content is loaded via AJAX:
- *     POST /wp-admin/admin-ajax.php
- *       action=muvipro_player_content
- *       tab=p1
- *       post_id=<id>
- *   - Response is raw HTML containing the iframe embed URL.
  */
 class MaxMovie21 : MainAPI() {
     override var mainUrl              = "https://162.244.93.196"
@@ -34,20 +26,16 @@ class MaxMovie21 : MainAPI() {
     private val ajaxUrl get()         = "$mainUrl/wp-admin/admin-ajax.php"
 
     override val mainPage = mainPageOf(
-        ""                             to "Film Terbaru",
-        "21lap"                        to "21 Lap",
-        "21ptx"                        to "21 PTX",
-        "21-sub-indo"                  to "21 Sub Indo",
-        "21barat"                      to "21 Barat",
-        "21ptx/21-ptx-sub-indo"        to "21 PTX Sub Indo",
-        "21ptx/zkor21"                 to "Z Kor 21",
+        "comedy"   to "COMEDY",
+        "action"   to "BEST ACTION",
+        "special"  to "SPECIAL",
+        ""         to "FILM TERBARU"
     )
 
     // ─── Helpers ──────────────────────────────────────────────────────────
 
     /** Extract the clean movie-card items from a listing page */
     private fun Element.toSearchResult(): SearchResponse? {
-        // Card anchor: <a href="..." title="..."> … <img …> …
         val href   = attr("abs:href").takeIf { it.isNotBlank() } ?: return null
         val title  = attr("title")
             .ifBlank { selectFirst("h1,h2,h3,.entry-title")?.text() }
@@ -97,7 +85,6 @@ class MaxMovie21 : MainAPI() {
         return results
     }
 
-
     override suspend fun load(url: String): LoadResponse {
         val doc     = app.get(url, headers = mapOf("User-Agent" to UA)).document
         val title   = doc.selectFirst("h1.entry-title, h1.page-title, h1")?.text()?.trim().orEmpty()
@@ -128,7 +115,6 @@ class MaxMovie21 : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // data = JSON: {"postId":"12345","tabs":["p1","p2",...]}
         val parsed  = tryParseJson<PlayerData>(data) ?: return false
         val postId  = parsed.postId
         val tabs    = parsed.tabs.ifEmpty { listOf("p1") }
@@ -155,14 +141,14 @@ class MaxMovie21 : MainAPI() {
                     return@amap
                 }
 
-                // Parse the returned HTML fragment for iframes / embed URLs
                 val fragment = org.jsoup.Jsoup.parseBodyFragment(html)
+                val embedUrls = mutableListOf<String>()
 
                 // 1. iframe src
                 fragment.select("iframe[src]").forEach { iframe ->
                     val src = iframe.attr("abs:src").ifBlank { iframe.attr("src") }
                     if (src.isNotBlank() && src.startsWith("http")) {
-                        loadExtractor(src, mainUrl, subtitleCallback, callback)
+                        embedUrls.add(src)
                     }
                 }
 
@@ -170,7 +156,7 @@ class MaxMovie21 : MainAPI() {
                 fragment.select("[data-src]").forEach { el ->
                     val src = el.attr("data-src")
                     if (src.isNotBlank() && src.startsWith("http")) {
-                        loadExtractor(src, mainUrl, subtitleCallback, callback)
+                        embedUrls.add(src)
                     }
                 }
 
@@ -178,7 +164,7 @@ class MaxMovie21 : MainAPI() {
                 fragment.select("source[src], video[src]").forEach { el ->
                     val src = el.attr("src")
                     if (src.isNotBlank()) {
-                        loadExtractor(src, mainUrl, subtitleCallback, callback)
+                        embedUrls.add(src)
                     }
                 }
 
@@ -186,8 +172,17 @@ class MaxMovie21 : MainAPI() {
                 val embedRegex = Regex("""(https?://[^\s"'<>]+(?:embed|play|stream|player|watch|iframe)[^\s"'<>]*)""", RegexOption.IGNORE_CASE)
                 embedRegex.findAll(html).forEach { m ->
                     val src = m.groupValues[1]
-                    if (src.contains("youtube.com") || src.contains("youtu.be")) return@forEach
-                    loadExtractor(src, mainUrl, subtitleCallback, callback)
+                    if (!src.contains("youtube.com") && !src.contains("youtu.be")) {
+                        embedUrls.add(src)
+                    }
+                }
+
+                embedUrls.distinct().forEach { src ->
+                    if (src.contains("asiastream")) {
+                        AsiaStream().getUrl(src, mainUrl, subtitleCallback, callback)
+                    } else {
+                        loadExtractor(src, mainUrl, subtitleCallback, callback)
+                    }
                 }
 
             } catch (e: Exception) {
@@ -200,17 +195,14 @@ class MaxMovie21 : MainAPI() {
     // ─── Internal helpers ─────────────────────────────────────────────────
 
     private fun extractPostId(doc: Document): String {
-        // Method 1: from script JSON
         doc.select("script").forEach { script ->
             val txt = script.data()
             val m   = Regex(""""post_id"\s*:\s*"?(\d+)"?""").find(txt)
             if (m != null) return m.groupValues[1]
         }
-        // Method 2: from body class "postid-XXXXX"
         val bodyClass = doc.body()?.className() ?: ""
         val m = Regex("""postid-(\d+)""").find(bodyClass)
         if (m != null) return m.groupValues[1]
-        // Method 3: from #muvipro_player_content_id data-id
         val dataId = doc.select("#muvipro_player_content_id").attr("data-id")
         if (dataId.isNotBlank()) return dataId
 
@@ -223,12 +215,36 @@ class MaxMovie21 : MainAPI() {
 
     private fun String.encodeUrl(): String = java.net.URLEncoder.encode(this, "UTF-8")
 
-
-
     data class PlayerData(
         val postId: String,
         val tabs: List<String>
     )
+
+    class AsiaStream : ExtractorApi() {
+        override var name = "AsiaStream"
+        override var mainUrl = "https://162.244.93.196"
+        override val requiresReferer = true
+
+        override suspend fun getUrl(
+            url: String,
+            referer: String?,
+            subtitleCallback: (SubtitleFile) -> Unit,
+            callback: (ExtractorLink) -> Unit
+        ) {
+            val res = app.get(url, headers = mapOf("Referer" to (referer ?: mainUrl))).text
+            val match = Regex("""m3u8\\?/(\d+)\\?/([a-f0-9]+)\\?/""").find(res)
+            if (match != null) {
+                val (uid, md5) = match.destructured
+                val m3u8Url = "$mainUrl/m3u8/$uid/$md5/master.txt?s=1&cache=1"
+                M3u8Helper.generateM3u8(
+                    name,
+                    m3u8Url,
+                    url,
+                    headers = mapOf("Referer" to url)
+                ).forEach(callback)
+            }
+        }
+    }
 
     companion object {
         private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
