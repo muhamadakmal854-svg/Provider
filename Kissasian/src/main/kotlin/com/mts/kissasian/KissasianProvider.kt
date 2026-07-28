@@ -34,10 +34,11 @@ class KissasianProvider : MainAPI() {
 
         "" to "Terbaru",
         "ongoing-popular-drama" to "Ongoing Series",
-        "movies-list" to "Movies List",
-        "drama-list" to "Drama List",
+        "most-popular-drama" to "Most Popular Drama",
         "korean-drama-list" to "Korean Drama",
         "chinese-drama-list" to "Chinese Drama",
+        "thailand-drama-list" to "Thailand Drama",
+        "movies-list" to "Movies List",
         "kshow-list" to "Kshow List"
 
     )
@@ -162,7 +163,7 @@ class KissasianProvider : MainAPI() {
 
         )).document
 
-        return doc.select(".switch-block, .list-episode-item, .tab-content, div.tab-content, .block, div.block, .tab-container, div.tab-container, .block-tab, div.block-tab, .selected, div.selected, li.selected, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, article, .post, .entry, .film-poster-ahref").mapNotNull {
+        return doc.select(".block ul li, article, .list-episode-item-2 li, .card, div.card, article.item, .item, .movie-item, .post-item, div.module-item, div.ml-item, .box-item, .post, .entry, .film-poster-ahref").mapNotNull {
 
             val a = (if (it.tagName() == "a") it else it.selectFirst("a")) ?: return@mapNotNull null
 
