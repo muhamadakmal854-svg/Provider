@@ -23,16 +23,16 @@ class HdStream4u : VidHidePro() {
 }
 
 class Hubstream : VidStack() {
-    override var mainUrl = "https://4khdhub.one"
+    override var mainUrl = "https://hubstream.*"
 }
 
 class Hubstreamdad : Hblinks() {
-    override var mainUrl = "https://4khdhub.one"
+    override var mainUrl = "https://hblinks.*"
 }
 
 open class Hblinks : ExtractorApi() {
     override val name         = "Hblinks"
-    override val mainUrl      = "https://4khdhub.one"
+    override val mainUrl      = "https://hblinks.*"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -65,7 +65,7 @@ open class Hblinks : ExtractorApi() {
 
 class Hubcdnn : ExtractorApi() {
     override val name            = "Hubcdn"
-    override val mainUrl         = "https://4khdhub.one"
+    override val mainUrl         = "https://hubcdn.*"
     override val requiresReferer = true
 
     override suspend fun getUrl(
@@ -107,12 +107,12 @@ class Hubcdnn : ExtractorApi() {
 
 
 class PixelDrainDev : PixelDrain() {
-    override var mainUrl = "https://4khdhub.one"
+    override var mainUrl = "https://pixeldrain.dev"
 }
 
 class Hubdrive : ExtractorApi() {
     override val name            = "Hubdrive"
-    override val mainUrl         = "https://4khdhub.one"
+    override val mainUrl         = "https://hubdrive.space"
     override val requiresReferer = false
 
     override suspend fun getUrl(
@@ -236,7 +236,7 @@ class HubCloud : ExtractorApi() {
 
 class HUBCDN : ExtractorApi() {
     override val name            = "HUBCDN"
-    override val mainUrl         = "https://4khdhub.one"
+    override val mainUrl         = "https://hubcdn.*"
     override val requiresReferer = false
 
     override suspend fun getUrl(

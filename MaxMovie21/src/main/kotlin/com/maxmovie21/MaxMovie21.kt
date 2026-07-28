@@ -13,6 +13,11 @@ import org.jsoup.nodes.Element
 /**
  * MaxMovie21 — Muvipro WordPress theme
  * URL: https://162.244.93.196/
+ *
+ * Player mechanism:
+ *   - POST /wp-admin/admin-ajax.php?action=muvipro_player_content&tab=p1&post_id=<id>
+ *   - Returns HTML with iframe pointing to watch.asiastream.cc/watch?v=XXXXX
+ *   - AsiaStream player uses sniff(slug, uid, md5) JS call to build m3u8 URL
  */
 class MaxMovie21 : MainAPI() {
     override var mainUrl              = "https://162.244.93.196"
@@ -34,7 +39,6 @@ class MaxMovie21 : MainAPI() {
 
     // ─── Helpers ──────────────────────────────────────────────────────────
 
-    /** Extract the clean movie-card items from a listing page */
     private fun Element.toSearchResult(): SearchResponse? {
         val href   = attr("abs:href").takeIf { it.isNotBlank() } ?: return null
         val title  = attr("title")
@@ -42,15 +46,13 @@ class MaxMovie21 : MainAPI() {
             ?.trim()
         if (title.isNullOrBlank()) return null
 
-        // Skip non-content links
         if (href.contains("/category/") || href.contains("/tag/") ||
             href.contains("/page/")     || href.contains("/quality/") ||
             href.contains("whatsapp")   || href.contains("t.me")     ||
             href.contains("youtube.com")) return null
 
         val poster = selectFirst("img")?.let {
-            it.attr("data-src")
-                .ifBlank { it.attr("src") }
+            it.attr("data-src").ifBlank { it.attr("src") }
         }?.let { fixUrl(it) }
 
         return newMovieSearchResponse(title, href, TvType.Movie) {
@@ -76,13 +78,10 @@ class MaxMovie21 : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=${query.encodeUrl()}"
-
         val doc     = app.get(url, headers = mapOf("User-Agent" to UA)).document
-        val results = doc.select("article a[href][title]")
+        return doc.select("article a[href][title]")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
-
-        return results
     }
 
     override suspend fun load(url: String): LoadResponse {
@@ -92,15 +91,11 @@ class MaxMovie21 : MainAPI() {
             ?: doc.selectFirst(".gmr-movie-on img, .thumb img")?.attr("src")
         val plot    = doc.selectFirst(".entry-content p, .synopsis, .gmr-movie-content")?.text()?.trim()
         val tags    = doc.select(".gmr-tags a, .entry-categories a, .genre a").map { it.text() }
-
-        // Determine post_id (needed for AJAX player)
         val postId  = extractPostId(doc)
-
-        // Discover all player tab names (p1, p2, …) from the tab list
-        val tabs = doc.select("ul.muvipro-player-tabs > li > a[href^='#']")
+        val tabs    = doc.select("ul.muvipro-player-tabs > li > a[href^='#']")
             .map { it.attr("href").removePrefix("#") }
             .filter { it.isNotBlank() }
-            .ifEmpty { listOf("p1") }   // fallback
+            .ifEmpty { listOf("p1") }
 
         return newMovieLoadResponse(title, url, TvType.Movie, buildData(postId, tabs)) {
             this.posterUrl = poster?.let { fixUrl(it) }
@@ -124,9 +119,9 @@ class MaxMovie21 : MainAPI() {
                 val html = app.post(
                     ajaxUrl,
                     headers = mapOf(
-                        "User-Agent"   to UA,
-                        "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-                        "Referer"      to mainUrl,
+                        "User-Agent"       to UA,
+                        "Content-Type"     to "application/x-www-form-urlencoded; charset=UTF-8",
+                        "Referer"          to mainUrl,
                         "X-Requested-With" to "XMLHttpRequest",
                     ),
                     data = mapOf(
@@ -137,54 +132,40 @@ class MaxMovie21 : MainAPI() {
                 ).text
 
                 if (html.isBlank()) {
-                    Log.e("MaxMovie21", "Empty AJAX response for tab=$tab postId=$postId")
+                    Log.e("MaxMovie21", "Empty AJAX response tab=$tab postId=$postId")
                     return@amap
                 }
 
                 val fragment = org.jsoup.Jsoup.parseBodyFragment(html)
                 val embedUrls = mutableListOf<String>()
 
-                // 1. iframe src
+                // 1. iframe src (primary — asiastream embed)
                 fragment.select("iframe[src]").forEach { iframe ->
-                    val src = iframe.attr("abs:src").ifBlank { iframe.attr("src") }
+                    val src = iframe.attr("src").trim()
                     if (src.isNotBlank() && src.startsWith("http")) {
                         embedUrls.add(src)
+                        Log.d("MaxMovie21", "iframe src: $src")
                     }
                 }
-
-                // 2. data-src (lazy iframes)
+                // 2. data-src lazy iframes
                 fragment.select("[data-src]").forEach { el ->
-                    val src = el.attr("data-src")
-                    if (src.isNotBlank() && src.startsWith("http")) {
-                        embedUrls.add(src)
-                    }
+                    val src = el.attr("data-src").trim()
+                    if (src.isNotBlank() && src.startsWith("http")) embedUrls.add(src)
                 }
-
-                // 3. direct MP4 / M3U8 links in <source> or <video>
+                // 3. <source> or <video>
                 fragment.select("source[src], video[src]").forEach { el ->
                     val src = el.attr("src")
-                    if (src.isNotBlank()) {
-                        embedUrls.add(src)
-                    }
-                }
-
-                // 4. Regex fallback for embed URLs inside script/href
-                val embedRegex = Regex("""(https?://[^\s"'<>]+(?:embed|play|stream|player|watch|iframe)[^\s"'<>]*)""", RegexOption.IGNORE_CASE)
-                embedRegex.findAll(html).forEach { m ->
-                    val src = m.groupValues[1]
-                    if (!src.contains("youtube.com") && !src.contains("youtu.be")) {
-                        embedUrls.add(src)
-                    }
+                    if (src.isNotBlank()) embedUrls.add(src)
                 }
 
                 embedUrls.distinct().forEach { src ->
-                    if (src.contains("asiastream")) {
-                        AsiaStream().getUrl(src, mainUrl, subtitleCallback, callback)
-                    } else {
-                        loadExtractor(src, mainUrl, subtitleCallback, callback)
+                    when {
+                        src.contains("asiastream") ->
+                            AsiaStream().getUrl(src, mainUrl, subtitleCallback, callback)
+                        else ->
+                            loadExtractor(src, mainUrl, subtitleCallback, callback)
                     }
                 }
-
             } catch (e: Exception) {
                 Log.e("MaxMovie21", "loadLinks tab=$tab error: ${e.message}")
             }
@@ -192,61 +173,92 @@ class MaxMovie21 : MainAPI() {
         return true
     }
 
-    // ─── Internal helpers ─────────────────────────────────────────────────
-
     private fun extractPostId(doc: Document): String {
-        doc.select("script").forEach { script ->
-            val txt = script.data()
-            val m   = Regex(""""post_id"\s*:\s*"?(\d+)"?""").find(txt)
-            if (m != null) return m.groupValues[1]
-        }
+        // Most reliable: data-id on player wrapper
+        doc.selectFirst("#muvipro_player_content_id")?.attr("data-id")
+            ?.takeIf { it.isNotBlank() }?.let { return it }
+        // Body class postid-XXXXX
         val bodyClass = doc.body()?.className() ?: ""
-        val m = Regex("""postid-(\d+)""").find(bodyClass)
-        if (m != null) return m.groupValues[1]
-        val dataId = doc.select("#muvipro_player_content_id").attr("data-id")
-        if (dataId.isNotBlank()) return dataId
-
+        Regex("""postid-(\d+)""").find(bodyClass)?.let { return it.groupValues[1] }
+        // Script JSON
+        doc.select("script").forEach { script ->
+            Regex(""""post_id"\s*:\s*"?(\d+)"?""").find(script.data())
+                ?.let { return it.groupValues[1] }
+        }
         return ""
     }
 
-    private fun buildData(postId: String, tabs: List<String>): String {
-        return """{"postId":"$postId","tabs":${tabs.joinToString(",", "[", "]") { "\"$it\"" }}}"""
-    }
+    private fun buildData(postId: String, tabs: List<String>): String =
+        """{"postId":"$postId","tabs":${tabs.joinToString(",", "[", "]") { "\"$it\"" }}}"""
 
     private fun String.encodeUrl(): String = java.net.URLEncoder.encode(this, "UTF-8")
 
-    data class PlayerData(
-        val postId: String,
-        val tabs: List<String>
-    )
-
-    class AsiaStream : ExtractorApi() {
-        override var name = "AsiaStream"
-        override var mainUrl = "https://162.244.93.196"
-        override val requiresReferer = true
-
-        override suspend fun getUrl(
-            url: String,
-            referer: String?,
-            subtitleCallback: (SubtitleFile) -> Unit,
-            callback: (ExtractorLink) -> Unit
-        ) {
-            val res = app.get(url, headers = mapOf("Referer" to (referer ?: mainUrl))).text
-            val match = Regex("""m3u8\\?/(\d+)\\?/([a-f0-9]+)\\?/""").find(res)
-            if (match != null) {
-                val (uid, md5) = match.destructured
-                val m3u8Url = "$mainUrl/m3u8/$uid/$md5/master.txt?s=1&cache=1"
-                M3u8Helper.generateM3u8(
-                    name,
-                    m3u8Url,
-                    url,
-                    headers = mapOf("Referer" to url)
-                ).forEach(callback)
-            }
-        }
-    }
+    data class PlayerData(val postId: String, val tabs: List<String>)
 
     companion object {
-        private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    }
+}
+
+/**
+ * AsiaStream extractor — watch.asiastream.cc
+ *
+ * Extracts m3u8 by parsing the sniff(slug, uid, md5, ...) JS call.
+ * M3U8: https://watch.asiastream.cc/m3u8/{uid}/{md5}/master.txt?s=1&cache=1
+ *
+ * NOTE: mainUrl intentionally set to the embed domain (not provider domain)
+ * so m3u8 URLs are built correctly.
+ */
+class AsiaStream : ExtractorApi() {
+    override var name            = "AsiaStream"
+    override var mainUrl         = "https://watch.asiastream.cc"
+    override val requiresReferer = true
+
+    private val asiaStreamBase   = "https://watch.asiastream.cc"
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val res = app.get(
+                url,
+                headers = mapOf(
+                    "User-Agent" to MaxMovie21.UA,
+                    "Referer"    to (referer ?: asiaStreamBase)
+                )
+            ).text
+
+            // Parse sniff("SLUG","UID","MD5",...) call
+            val sniffMatch = Regex("""sniff\s*\(\s*"[^"]+"\s*,\s*"(\d+)"\s*,\s*"([a-f0-9]+)"""").find(res)
+            if (sniffMatch != null) {
+                val (uid, md5) = sniffMatch.destructured
+                val m3u8Url = "$asiaStreamBase/m3u8/$uid/$md5/master.txt?s=1&cache=1"
+                Log.d("AsiaStream", "m3u8: $m3u8Url")
+                M3u8Helper.generateM3u8(
+                    name, m3u8Url, url,
+                    headers = mapOf("Referer" to url)
+                ).forEach(callback)
+                return
+            }
+
+            // Fallback: direct match in page source
+            val m3u8Match = Regex("""m3u8/(\d+)/([a-f0-9]+)/master\.txt""").find(res)
+            if (m3u8Match != null) {
+                val (uid, md5) = m3u8Match.destructured
+                val m3u8Url = "$asiaStreamBase/m3u8/$uid/$md5/master.txt?s=1&cache=1"
+                Log.d("AsiaStream", "Fallback m3u8: $m3u8Url")
+                M3u8Helper.generateM3u8(
+                    name, m3u8Url, url,
+                    headers = mapOf("Referer" to url)
+                ).forEach(callback)
+            } else {
+                Log.e("AsiaStream", "Cannot extract m3u8 from: $url")
+            }
+        } catch (e: Exception) {
+            Log.e("AsiaStream", "Error: ${e.message}")
+        }
     }
 }

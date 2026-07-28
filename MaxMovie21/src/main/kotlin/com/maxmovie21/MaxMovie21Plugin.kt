@@ -8,5 +8,6 @@ import com.lagradost.cloudstream3.plugins.Plugin
 class MaxMovie21Plugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(MaxMovie21())
+        registerExtractorAPI(AsiaStream())
     }
 }

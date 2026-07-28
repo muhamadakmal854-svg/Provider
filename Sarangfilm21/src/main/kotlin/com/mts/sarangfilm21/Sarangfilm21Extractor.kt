@@ -123,7 +123,7 @@ class AbyssExtractor : ExtractorApi() {
 
 class SarangStreamWishExtractor : ExtractorApi() {
     override var name = "StreamWish"
-    override var mainUrl = "https://sarangfilm.diy"
+    override var mainUrl = "https://streamwish.com"
     override val requiresReferer = false
 
     override suspend fun getUrl(

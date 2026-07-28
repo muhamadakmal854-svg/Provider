@@ -21,7 +21,7 @@ class Smoothpre: VidHidePro() {
 
 class BuzzServer : ExtractorApi() {
     override val name = "BuzzServer"
-    override val mainUrl = "http://45.11.57.192"
+    override val mainUrl = "https://buzzheavier.com"
     override val requiresReferer = true
 
     override suspend fun getUrl(
