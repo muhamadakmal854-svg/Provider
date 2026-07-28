@@ -109,13 +109,14 @@ class Kissasian : MainAPI() {
         val tags = doc.select(".genres a, .genre a, .categories a").map { it.text() }.filter { it.isNotBlank() }
 
         // Check episode list
-        val epLinks = doc.select("ul.list-episode-item-2 li a, ul.all-episode li a, .list-episode-item a, a[href*='-ep-']")
+        val epLinks = doc.select("ul.list-episode-item-2 li a, ul.all-episode li a, .list-episode-item a, a[href*='-ep-'], a[href*='hd-korean-movie']")
             .mapNotNull { a ->
                 val href = a.attr("abs:href").ifBlank { a.attr("href") }
                 if (href.isBlank()) return@mapNotNull null
                 val epText = a.selectFirst(".epl-num, span")?.text() ?: a.text()
                 val epNum = Regex("""ep[a-z]*\s*(\d+)""", RegexOption.IGNORE_CASE).find(epText)?.groupValues?.get(1)?.toIntOrNull()
                     ?: Regex("""-ep-(\d+)""", RegexOption.IGNORE_CASE).find(href)?.groupValues?.get(1)?.toIntOrNull()
+                    ?: 1
                 
                 newEpisode(href) {
                     this.name = epText.trim()
@@ -132,8 +133,7 @@ class Kissasian : MainAPI() {
                 this.tags = tags
             }
         } else {
-            // Check if this is directly an episode page
-            val isEpisodePage = url.contains("-ep-")
+            val isEpisodePage = url.contains("-ep-") || url.contains("hd-korean-movie")
             if (isEpisodePage) {
                 val eps = listOf(newEpisode(url) {
                     this.name = title
@@ -198,15 +198,14 @@ class Kissasian : MainAPI() {
                 }
             }
 
-            // 3. Process final video embeds
-            finalVideoEmbeds.distinct().forEach { videoUrl ->
-                when {
-                    videoUrl.contains("vidmoly") -> {
-                        extractVidmoly(videoUrl, data, callback)
-                    }
-                    else -> {
-                        loadExtractor(videoUrl, data, subtitleCallback, callback)
-                    }
+            // 3. Process final video embeds — PRIORITIZE Vidmoly first as primary working server
+            val sortedEmbeds = finalVideoEmbeds.distinct().sortedByDescending { it.contains("vidmoly") }
+
+            sortedEmbeds.forEach { videoUrl ->
+                if (videoUrl.contains("vidmoly")) {
+                    extractVidmoly(videoUrl, data, callback)
+                } else {
+                    loadExtractor(videoUrl, data, subtitleCallback, callback)
                 }
             }
             return true
