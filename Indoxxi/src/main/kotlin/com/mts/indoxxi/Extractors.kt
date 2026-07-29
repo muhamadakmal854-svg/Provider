@@ -323,7 +323,7 @@ class PlaycinematicCom : ExtractorApi() {
     ) {
         val cleanUrl = url.replace(92.toChar().toString(), "")
         val id = cleanUrl.substringAfter("/video/").substringBefore("/").substringBefore("?")
-        val streamUrl = if (id.isNotBlank()) "$mainUrl/stream/$id" else null
+        val streamUrl = if (id.isNotBlank()) "$mainUrl/stream/$id#.mp4" else null
 
         if (streamUrl != null) {
             callback(
@@ -335,7 +335,7 @@ class PlaycinematicCom : ExtractorApi() {
                 ) {
                     this.referer = cleanUrl
                     this.headers = mapOf("User-Agent" to USER_AGENT, "Referer" to cleanUrl)
-                    this.quality = Qualities.P1080.value
+                    this.quality = Qualities.P720.value
                 }
             )
         }
