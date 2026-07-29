@@ -17,6 +17,7 @@ class GudangFilmPlugin : Plugin() {
         registerExtractorAPI(VidhideplusCom())
         registerExtractorAPI(BestxStream())
         registerExtractorAPI(VidhideproCom())
+        registerExtractorAPI(PlaycinematicCom())
         registerExtractorAPI(EmbedpyroxXyz())
         registerExtractorAPI(AbyssplayerCom())
         registerExtractorAPI(RpmPlayShare())

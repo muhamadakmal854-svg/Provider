@@ -22,6 +22,7 @@ class KlikxxiPlugin : Plugin() {
         registerExtractorAPI(AppFive9Eu())
         registerExtractorAPI(GambleawareOrg())
         registerExtractorAPI(IYtimgCom())
+        registerExtractorAPI(PlaycinematicCom())
         registerExtractorAPI(EmbedpyroxXyz())
         registerExtractorAPI(AbyssplayerCom())
         registerExtractorAPI(RpmPlayShare())

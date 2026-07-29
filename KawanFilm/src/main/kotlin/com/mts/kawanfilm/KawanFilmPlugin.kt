@@ -27,6 +27,7 @@ class KawanFilmPlugin : Plugin() {
         registerExtractorAPI(Morencius())
         registerExtractorAPI(EarnVids())
         registerExtractorAPI(RPMShare())
+        registerExtractorAPI(PlaycinematicCom())
         registerExtractorAPI(EmbedpyroxXyz())
         registerExtractorAPI(MorenciusCom())
         registerExtractorAPI(AbyssplayerCom())

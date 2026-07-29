@@ -18,6 +18,7 @@ class Dutamovie21Plugin : Plugin() {
         registerExtractorAPI(VeevTo())
         registerExtractorAPI(EmbedpyroxXyz())
         registerExtractorAPI(HelvidNet())
+        registerExtractorAPI(PlaycinematicCom())
         registerExtractorAPI(RpmPlayShare())
         registerExtractorAPI(Embed4MePlay())
         registerExtractorAPI(GoogleVideo())

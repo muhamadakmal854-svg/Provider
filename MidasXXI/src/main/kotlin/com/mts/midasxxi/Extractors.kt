@@ -16,9 +16,36 @@ import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-class PlaycinematicCom : StreamWishExtractor() {
+class PlaycinematicCom : ExtractorApi() {
     override var name = "PlaycinematicCom"
     override var mainUrl = "https://playcinematic.com"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.replace(92.toChar().toString(), "")
+        val id = cleanUrl.substringAfter("/video/").substringBefore("/").substringBefore("?")
+        val streamUrl = if (id.isNotBlank()) "$mainUrl/stream/$id" else null
+
+        if (streamUrl != null) {
+            callback(
+                newExtractorLink(
+                    source = name,
+                    name = name,
+                    url = streamUrl,
+                    type = ExtractorLinkType.VIDEO
+                ) {
+                    this.referer = cleanUrl
+                    this.headers = mapOf("User-Agent" to USER_AGENT, "Referer" to cleanUrl)
+                    this.quality = Qualities.P1080.value
+                }
+            )
+        }
+    }
 }
 
 class EmbedpyroxXyz : ExtractorApi() {
