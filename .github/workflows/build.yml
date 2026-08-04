@@ -1,0 +1,70 @@
+name: Build
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths-ignore:
+      - '*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v5
+        with:
+          path: "src"
+
+      - name: Checkout Builds Branch
+        uses: actions/checkout@v5
+        with:
+          ref: "builds"
+          path: "builds"
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: adopt
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3.2.2
+
+      - name: Build Plugins
+        working-directory: ${{ github.workspace }}/src
+        run: |
+          chmod +x gradlew
+          ./gradlew make makePluginsJson
+          cp **/build/*.cs3 ${{ github.workspace }}/builds/
+
+      - name: Update plugins.json size & hash
+        working-directory: ${{ github.workspace }}/builds
+        run: |
+          echo "aW1wb3J0IGpzb24sIG9zLCBoYXNobGliLCBnbG9iCm5ld19wbHVnaW5zID0gW10KZm9yIHBhdGggaW4gWycuLi9zcmMvYnVpbGQvcGx1Z2lucy5qc29uJ10gKyBnbG9iLmdsb2IoJy4uL3NyYy8qKi9idWlsZC9wbHVnaW5zLmpzb24nKToKICAgIGlmIG9zLnBhdGguZXhpc3RzKHBhdGgpOgogICAgICAgIHRyeToKICAgICAgICAgICAgbmV3X3BsdWdpbnMgPSBqc29uLmxvYWQob3BlbihwYXRoKSkKICAgICAgICAgICAgaWYgbmV3X3BsdWdpbnM6IGJyZWFrCiAgICAgICAgZXhjZXB0OiBwYXNzCmV4aXN0aW5nX3BsdWdpbnMgPSBbXQppZiBvcy5wYXRoLmV4aXN0cygncGx1Z2lucy5qc29uJyk6CiAgICB0cnk6IGV4aXN0aW5nX3BsdWdpbnMgPSBqc29uLmxvYWQob3BlbigncGx1Z2lucy5qc29uJykpCiAgICBleGNlcHQ6IHBhc3MKbWVyZ2VkID0ge3BbJ25hbWUnXTogcCBmb3IgcCBpbiBleGlzdGluZ19wbHVnaW5zfQpmb3IgcCBpbiBuZXdfcGx1Z2luczoKICAgIG1lcmdlZFtwWyduYW1lJ11dID0gcApyZXBvID0gb3MuZW52aXJvbi5nZXQoJ0dJVEhVQl9SRVBPU0lUT1JZJywgJ211aGFtYWRha21hbDg1NC1zdmcvUHJvdmlkZXInKQp1c2VyLCByZXBvX25hbWUgPSByZXBvLnNwbGl0KCcvJykKZmluYWxfbGlzdCA9IFtdCmZvciBuYW1lLCBwIGluIG1lcmdlZC5pdGVtcygpOgogICAgZm4gPSBwLmdldCgndXJsJywgJycpLnNwbGl0KCcvJylbLTFdCiAgICBpZiBub3QgZm46IGZuID0gZiJ7cC5nZXQoJ2ludGVybmFsTmFtZScsIG5hbWUpfS5jczMiCiAgICBwWyd1cmwnXSA9IGYnaHR0cHM6Ly97dXNlci5sb3dlcigpfS5naXRodWIuaW8ve3JlcG9fbmFtZX0ve2ZufScKICAgIGlmIG9zLnBhdGguZXhpc3RzKGZuKToKICAgICAgICBkYXRhID0gb3BlbihmbiwgJ3JiJykucmVhZCgpCiAgICAgICAgcFsnZmlsZVNpemUnXSA9IGxlbihkYXRhKQogICAgICAgIHBbJ2ZpbGVIYXNoJ10gPSBoYXNobGliLm1kNShkYXRhKS5oZXhkaWdlc3QoKQogICAgICAgIGZpbmFsX2xpc3QuYXBwZW5kKHApCmpzb24uZHVtcChmaW5hbF9saXN0LCBvcGVuKCdwbHVnaW5zLmpzb24nLCAndycpLCBpbmRlbnQ9MikKcHJpbnQoZidwbHVnaW5zLmpzb24gdXBkYXRlZDoge2xlbihmaW5hbF9saXN0KX0gYWN0aXZlIHBsdWdpbnMuJykK" | base64 -d | python3
+          cat plugins.json
+
+      - name: Push builds
+        working-directory: ${{ github.workspace }}/builds
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          
+          if git diff --staged --quiet; then
+            echo "do not error if nothing to commit."
+            exit 0
+          fi
+          
+          git commit --amend -m "Build ${{ github.sha }}"
+          git push --force
