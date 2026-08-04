@@ -75,45 +75,50 @@ class AnichinProvider : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(fixUrl(url)).document
+        val cleanUrl = fixUrl(url)
+        val document = app.get(cleanUrl).document
         val title = document.selectFirst("h1.entry-title")?.text()?.trim().toString()
-        var poster = document.select("div.ime > img").attr("src")
-        val description = document.selectFirst("div.entry-content")?.text()?.trim()
-        val type = document.selectFirst(".spe")?.text().orEmpty()
-        val tvType = if (type.contains("Movie", true)) TvType.Movie else TvType.TvSeries
-        if (poster.isEmpty()) {
-            poster = document.selectFirst("meta[property=og:image]")?.attr("content").orEmpty()
+        val poster = document.selectFirst("img.wp-post-image, div.ime > img, .thumb img")
+            ?.attr("src")?.takeIf { it.isNotBlank() }
+            ?: document.selectFirst("meta[property=og:image]")?.attr("content").orEmpty()
+        val description = document.selectFirst("div.entry-content, .synopse p")?.text()?.trim()
+        val episodeList = document.select(".eplister li, .eplist li, ul.clstyle li")
+        val hasPlayer = document.selectFirst("#pembed, .player-embed") != null
+
+        // Direct episode page: has player but no episode list -> play directly as Movie
+        if (episodeList.isEmpty() && hasPlayer) {
+            return newMovieLoadResponse(title, cleanUrl, TvType.Anime, cleanUrl) {
+                this.posterUrl = fixUrlNull(poster)
+                this.plot = description
+            }
         }
 
-        return if (tvType == TvType.TvSeries) {
-            val episodes = document.select(".eplister li, .eplist li, ul.clstyle li").map { ep ->
+        val isMovie = document.selectFirst(".spe")?.text().orEmpty().contains("Movie", true)
+        return if (isMovie) {
+            val movieHref = document.selectFirst(".eplister li > a")?.attr("href")?.let { fixUrl(it) } ?: cleanUrl
+            newMovieLoadResponse(title, movieHref, TvType.Movie, movieHref) {
+                this.posterUrl = fixUrlNull(poster)
+                this.plot = description
+            }
+        } else {
+            val episodes = episodeList.map { ep ->
                 val link = fixUrl(ep.selectFirst("a")?.attr("href").orEmpty())
                 val epTitle = ep.selectFirst(".epl-title")?.text()?.trim().orEmpty()
                 val epSub = ep.selectFirst(".epl-sub span")?.text()?.trim().orEmpty()
                 val epDate = ep.selectFirst(".epl-date")?.text()?.trim().orEmpty()
-
                 val cleanTitle = epTitle
-                    .replace(Regex("Episode\\s*\\d+\\s*Subtitle Indonesia", RegexOption.IGNORE_CASE), "")
-                    .replace("Subtitle Indonesia", "")
+                    .replace(Regex("Subtitle\s*Indonesia", RegexOption.IGNORE_CASE), "")
                     .trim()
-
-                val name = "-- $cleanTitle $epSub Indonesia".trim()
+                val epName = if (cleanTitle.isNotBlank()) "$cleanTitle $epSub".trim() else "Episode"
                 val desc = if (epDate.isNotEmpty()) "Rilis: $epDate" else null
-
                 newEpisode(link) {
-                    this.name = name
+                    this.name = epName
                     this.posterUrl = fixUrlNull(poster)
                     this.description = desc
                 }
             }.reversed()
 
-            newTvSeriesLoadResponse(title, url, TvType.Anime, episodes) {
-                this.posterUrl = fixUrlNull(poster)
-                this.plot = description
-            }
-        } else {
-            val movieHref = document.selectFirst(".eplister li > a")?.attr("href")?.let { fixUrl(it) } ?: url
-            newMovieLoadResponse(title, movieHref, TvType.Movie, movieHref) {
+            newTvSeriesLoadResponse(title, cleanUrl, TvType.Anime, episodes) {
                 this.posterUrl = fixUrlNull(poster)
                 this.plot = description
             }
@@ -127,156 +132,68 @@ class AnichinProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(fixUrl(data)).document
-        val extractedEmbeds = mutableSetOf<String>()
+        val streamUrls = mutableSetOf<String>()
 
-        // 1. Load default embedded iframe
+        // 1. Default iframe — may be relative /stream/... path
         val defaultIframeSrc = document.selectFirst("#pembed iframe, .player-embed iframe, #embed_holder iframe")?.attr("src")
         if (!defaultIframeSrc.isNullOrBlank()) {
-            val defaultHref = if (defaultIframeSrc.startsWith("//")) "https:$defaultIframeSrc" else defaultIframeSrc
-            if (defaultHref.startsWith("http")) {
-                extractedEmbeds.add(defaultHref)
+            val abs = when {
+                defaultIframeSrc.startsWith("http") -> defaultIframeSrc
+                defaultIframeSrc.startsWith("//")   -> "https:$defaultIframeSrc"
+                defaultIframeSrc.startsWith("/")    -> "$mainUrl$defaultIframeSrc"
+                else -> null
             }
+            if (abs != null) streamUrls.add(abs)
         }
 
-        // 2. Process select options (both raw URLs and base64 encoded IFrames)
-        document.select(".mobius option, select.mirror option, select option[value], .mob-mirror option[value]").forEach { server ->
-            val value = server.attr("value").trim()
+        // 2. Mirror select options (base64 encoded or direct URLs)
+        document.select(".mobius option, select.mirror option, select option[value], .mob-mirror option[value]").forEach { opt ->
+            val value = opt.attr("value").trim()
             if (value.isBlank()) return@forEach
-            if (value.startsWith("http") || value.startsWith("//")) {
-                val href = if (value.startsWith("//")) "https:$value" else value
-                extractedEmbeds.add(href)
-                return@forEach
+            when {
+                value.startsWith("http") -> streamUrls.add(value)
+                value.startsWith("//")   -> streamUrls.add("https:$value")
+                else -> try {
+                    val decoded = base64Decode(value)
+                    val sub = Jsoup.parse(decoded)
+                    val src = sub.selectFirst("iframe[src], [src]")?.attr("src") ?: return@forEach
+                    val abs = when {
+                        src.startsWith("http") -> src
+                        src.startsWith("//")   -> "https:$src"
+                        src.startsWith("/")    -> "$mainUrl$src"
+                        else -> return@forEach
+                    }
+                    streamUrls.add(abs)
+                } catch (_: Exception) {}
             }
-            try {
-                val decoded = base64Decode(value)
-                val doc = Jsoup.parse(decoded)
-                val iframeSrc = doc.selectFirst("iframe")?.attr("src")
-                    ?: doc.selectFirst("[src]")?.attr("src")
-                if (!iframeSrc.isNullOrBlank()) {
-                    val href = if (iframeSrc.startsWith("//")) "https:$iframeSrc"
-                    else if (iframeSrc.startsWith("http")) iframeSrc
-                    else return@forEach
-                    extractedEmbeds.add(href)
-                }
-            } catch (_: Exception) {}
         }
 
-        // 3. Process extracted embeds
-        extractedEmbeds.forEach { href ->
-            // Handle OK.ru
-            if (href.contains("ok=") || href.contains("ok.ru")) {
-                val okId = if (href.contains("ok=")) href.substringAfter("ok=").substringBefore("&")
-                           else if (href.contains("/videoembed/")) href.substringAfter("/videoembed/").substringBefore("?").substringBefore("&")
-                           else ""
-                if (okId.isNotBlank()) {
-                    loadExtractor("https://ok.ru/videoembed/$okId", data, subtitleCallback, callback)
-                }
+        // 3. Resolve each URL — /stream/ URLs need Referer to avoid 403
+        streamUrls.forEach { streamUrl ->
+            if (streamUrl.contains("anichin.moe/stream/")) {
+                // Fetch the stream wrapper page with the episode page as Referer
+                try {
+                    val streamDoc = app.get(
+                        streamUrl,
+                        referer = data,
+                        headers = mapOf(
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+                        )
+                    ).document
+                    val embedSrc = streamDoc.selectFirst("iframe[src]")?.attr("src") ?: return@forEach
+                    val embedUrl = when {
+                        embedSrc.startsWith("http") -> embedSrc
+                        embedSrc.startsWith("//")   -> "https:$embedSrc"
+                        else -> return@forEach
+                    }
+                    loadExtractor(embedUrl, streamUrl, subtitleCallback, callback)
+                } catch (_: Exception) {}
+            } else {
+                loadExtractor(streamUrl, data, subtitleCallback, callback)
             }
-
-            // Handle Dailymotion [ADS] / Anichin Player
-            if (href.contains("anichin-player.web.id") || href.contains("dailymotion.com")) {
-                val videoId = if (href.contains("url=")) href.substringAfter("url=").substringBefore("&")
-                              else if (href.contains("video=")) href.substringAfter("video=").substringBefore("&")
-                              else if (href.contains("/video/")) href.substringAfter("/video/").substringBefore("?")
-                              else ""
-                if (videoId.isNotBlank()) {
-                    val dmEmbedUrl = "https://www.dailymotion.com/embed/video/$videoId"
-                    loadExtractor(dmEmbedUrl, data, subtitleCallback, callback)
-
-                    try {
-                        val dmApiUrl = "https://www.dailymotion.com/player/metadata/video/$videoId"
-                        val apiResp = app.get(dmApiUrl, headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")).text
-                        if (!apiResp.contains("DM005") && !apiResp.contains("Content rejected")) {
-                            val m3u8Match = Regex("""https?://[^\s'"<]+\.m3u8[^\s'"<]*""").find(apiResp)
-                            if (m3u8Match != null) {
-                                val rawM3u8 = m3u8Match.value
-                                val cleanUrl = rawM3u8.replace("""\/""", "/")
-                                callback.invoke(
-                                    newExtractorLink(
-                                        name = "Dailymotion [ADS]",
-                                        source = "Dailymotion",
-                                        url = cleanUrl,
-                                        type = ExtractorLinkType.M3U8
-                                    ) {
-                                        this.headers = mapOf(
-                                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-                                            "Referer" to "https://www.dailymotion.com/"
-                                        )
-                                        this.referer = "https://www.dailymotion.com/"
-                                        this.quality = Qualities.P1080.value
-                                    }
-                                )
-                            }
-                        }
-                    } catch (_: Exception) {}
-                }
-            }
-
-            // Check anichin.stream ID
-            if (href.contains("anichin.stream") || href.contains("/hls/") || href.contains("?id=")) {
-                val sidMatch = Regex("""(?:\?id=|/hls/)([\w\-]+)""").find(href)
-                if (sidMatch != null) {
-                    val sid = sidMatch.groupValues[1]
-                    val m3u8Url = "https://anichin.stream/hls/$sid.m3u8"
-                    val reqHeaders = mapOf(
-                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                        "Referer" to "https://anichin.stream/"
-                    )
-
-                    callback.invoke(
-                        newExtractorLink(
-                            name = "Anichin Stream (Master)",
-                            source = "Anichin Stream",
-                            url = m3u8Url,
-                            type = ExtractorLinkType.M3U8
-                        ) {
-                            this.headers = reqHeaders
-                            this.referer = "https://anichin.stream/"
-                            this.quality = Qualities.P1080.value
-                        }
-                    )
-
-                    try {
-                        val m3u8Text = app.get(m3u8Url, headers = reqHeaders).text
-                        val lines = m3u8Text.lines()
-                        for (i in 0 until lines.size) {
-                            val line = lines[i].trim()
-                            if (line.startsWith("#EXT-X-STREAM-INF:")) {
-                                val label = if (line.contains("1080")) "1080p"
-                                            else if (line.contains("720")) "720p"
-                                            else if (line.contains("480")) "480p"
-                                            else "360p"
-                                val qual = if (label == "1080p") Qualities.P1080.value
-                                           else if (label == "720p") Qualities.P720.value
-                                           else if (label == "480p") Qualities.P480.value
-                                           else Qualities.P360.value
-
-                                val nextLine = if (i + 1 < lines.size) lines[i + 1].trim() else ""
-                                if (nextLine.startsWith("http")) {
-                                    callback.invoke(
-                                        newExtractorLink(
-                                            name = "Anichin Stream $label",
-                                            source = "Anichin Stream",
-                                            url = nextLine,
-                                            type = ExtractorLinkType.M3U8
-                                        ) {
-                                            this.headers = reqHeaders
-                                            this.referer = "https://anichin.stream/"
-                                            this.quality = qual
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    } catch (_: Exception) {}
-                }
-            }
-
-            // Also load built-in extractors for Rumble, Vidhide/Smoothpre/Morencius, StreamRuby, AbyssPlayer, etc.
-            loadExtractor(href, data, subtitleCallback, callback)
         }
 
-        return true
+        return streamUrls.isNotEmpty()
     }
 
     private fun base64Decode(encoded: String): String {

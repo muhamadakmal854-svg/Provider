@@ -36,11 +36,12 @@ class Geodailymotion : Dailymotion() {
     override val mainUrl = "https://geo.dailymotion.com"
 }
 
-// Anichin uses a wrapper: anichin-player.web.id/index.php?url=<videoId>
-// This wrapper embeds geo.dailymotion.com, we resolve the video ID from the URL param
-class AnichinPlayerWrapper : Dailymotion() {
+// Anichin uses a wrapper: anichin-player.web.id/index.php?ok=<okruVideoId>
+// The "ok" query param contains an OK.ru video ID
+class AnichinPlayerWrapper : ExtractorApi() {
     override val name    = "AnichinPlayer"
     override val mainUrl = "https://anichin-player.web.id"
+    override val requiresReferer = false
 
     override suspend fun getUrl(
         url: String,
@@ -48,12 +49,17 @@ class AnichinPlayerWrapper : Dailymotion() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        // Extract video ID from ?url= param
-        val videoId = url.substringAfter("?url=", "").substringBefore("&")
-        if (videoId.isBlank()) return
-        // Delegate to parent Dailymotion with proper embed URL
-        val embedUrl = "https://www.dailymotion.com/embed/video/$videoId"
-        super.getUrl(embedUrl, referer ?: mainUrl, subtitleCallback, callback)
+        // ?ok= param is an OK.ru video ID (primary format)
+        val okId = url.substringAfter("?ok=", "").substringBefore("&").trim()
+        if (okId.isNotBlank()) {
+            loadExtractor("https://ok.ru/videoembed/$okId", referer ?: mainUrl, subtitleCallback, callback)
+            return
+        }
+        // ?url= param is a Dailymotion video ID (fallback format)
+        val dmId = url.substringAfter("?url=", "").substringBefore("&").trim()
+        if (dmId.isNotBlank()) {
+            loadExtractor("https://www.dailymotion.com/embed/video/$dmId", referer ?: mainUrl, subtitleCallback, callback)
+        }
     }
 }
 
