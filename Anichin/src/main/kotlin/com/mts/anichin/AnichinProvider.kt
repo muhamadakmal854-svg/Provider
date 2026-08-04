@@ -107,7 +107,7 @@ class AnichinProvider : MainAPI() {
                 val epSub = ep.selectFirst(".epl-sub span")?.text()?.trim().orEmpty()
                 val epDate = ep.selectFirst(".epl-date")?.text()?.trim().orEmpty()
                 val cleanTitle = epTitle
-                    .replace(Regex("Subtitle\s*Indonesia", RegexOption.IGNORE_CASE), "")
+                    .replace(Regex("""Subtitle\s*Indonesia""", RegexOption.IGNORE_CASE), "")
                     .trim()
                 val epName = if (cleanTitle.isNotBlank()) "$cleanTitle $epSub".trim() else "Episode"
                 val desc = if (epDate.isNotEmpty()) "Rilis: $epDate" else null
