@@ -24,7 +24,8 @@ class AnichinPlugin: Plugin() {
         registerExtractorAPI(EarnVids())
         registerExtractorAPI(EarnVidsMorencius())
         registerExtractorAPI(Smoothpre())
-        // ── AbyssPlayer / New Player ──────────────────────────────
-        registerExtractorAPI(AbyssPlayer())
+        // ── RPM Share & DTube ─────────────────────────────────────
+        registerExtractorAPI(AnichinRpmVid())
+        registerExtractorAPI(DTubePlayer())
     }
 }

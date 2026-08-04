@@ -17,10 +17,13 @@ class AnichinProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.Anime)
 
     override val mainPage = mainPageOf(
-        "page/%d/" to "Terbaru",
-        "ongoing/page/%d/" to "Ongoing",
-        "completed/page/%d/" to "Completed",
-        "schedule/" to "Jadwal Update"
+        "page/%d/" to "Rilisan Terbaru",
+        "anime/page/%d/?status=ongoing" to "Ongoing",
+        "anime/page/%d/?status=completed" to "Completed",
+        "anime/page/%d/?type=movie" to "Movie",
+        "drop/page/%d/" to "Dropped Project",
+        "anime/page/%d/?status=hiatus" to "Hiatus",
+        "anime/page/%d/?order=popular" to "Rekomendasi"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {

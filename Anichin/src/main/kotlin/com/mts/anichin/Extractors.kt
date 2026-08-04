@@ -676,3 +676,58 @@ open class Vidguardto : ExtractorApi() {
         val hash: String
     )
 }
+
+// =============================================================================
+// RPM SHARE / RPMVID
+// =============================================================================
+class AnichinRpmVid : ExtractorApi() {
+    override val name = "RPM Share"
+    override val mainUrl = "https://anichin.rpmvid.com"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val res = app.get(url, referer = referer ?: mainUrl).text
+        val m3u8Match = Regex("""https?://[^\s'"<]+\.m3u8[^\s'"<]*""").find(res)
+        if (m3u8Match != null) {
+            val videoUrl = m3u8Match.value.replace("""\/""", "/")
+            generateM3u8(this.name, videoUrl, referer ?: mainUrl).forEach(callback)
+        }
+    }
+}
+
+// =============================================================================
+// DTUBE
+// =============================================================================
+class DTubePlayer : ExtractorApi() {
+    override val name = "DTube"
+    override val mainUrl = "https://play.d.tube"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val res = app.get(url, referer = referer ?: mainUrl).text
+        val m3u8Match = Regex("""https?://[^\s'"<]+\.m3u8[^\s'"<]*""").find(res)
+            ?: Regex("""https?://[^\s'"<]+\.mp4[^\s'"<]*""").find(res)
+        if (m3u8Match != null) {
+            val videoUrl = m3u8Match.value.replace("""\/""", "/")
+            if (videoUrl.contains(".m3u8")) {
+                generateM3u8(this.name, videoUrl, referer ?: mainUrl).forEach(callback)
+            } else {
+                callback.invoke(
+                    newExtractorLink(this.name, this.name, videoUrl, ExtractorLinkType.VIDEO) {
+                        this.referer = referer ?: mainUrl
+                    }
+                )
+            }
+        }
+    }
+}
