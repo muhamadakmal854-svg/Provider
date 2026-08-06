@@ -89,10 +89,12 @@ class ManseenDramaProvider : MainAPI() {
             if (play.isBlank()) continue
 
             val dataPayload = "$videoId||$title||$cover||$play"
+            val epNum = Regex("""(?i)(?:ep|episode|part|pt|eps|\be)\s*[\.\:\-]?\s*(\d+)""").find(title)?.groupValues?.get(1)?.toIntOrNull() ?: 1
 
             results.add(
-                newMovieSearchResponse(title, dataPayload, TvType.AsianDrama) {
+                newAnimeSearchResponse(title, dataPayload, TvType.AsianDrama) {
                     this.posterUrl = cover
+                    this.sub(epNum)
                 }
             )
         }
@@ -108,9 +110,19 @@ class ManseenDramaProvider : MainAPI() {
         val parts = url.split("||")
         val title = if (parts.size > 1 && parts[1].isNotBlank()) parts[1] else "TikTok Short Film"
         val poster = if (parts.size > 2 && parts[2].isNotBlank()) parts[2] else ""
-        val playUrl = if (parts.size > 3) parts[3] else ""
+        val playUrl = if (parts.size > 3 && parts[3].isNotBlank()) parts[3] else if (url.startsWith("http")) url else ""
 
-        return newMovieLoadResponse(title, url, TvType.AsianDrama, url) {
+        val epNum = Regex("""(?i)(?:ep|episode|part|pt|eps|\be)\s*[\.\:\-]?\s*(\d+)""").find(title)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+
+        val episodesList = listOf(
+            newEpisode(playUrl) {
+                this.name = if (epNum > 1) "Episode $epNum" else "Episode 1"
+                this.episode = epNum
+                this.posterUrl = poster
+            }
+        )
+
+        return newTvSeriesLoadResponse(title, url, TvType.AsianDrama, episodesList) {
             this.posterUrl = poster
             this.plot = "TikTok Short Film China - @manseenddrama"
         }
