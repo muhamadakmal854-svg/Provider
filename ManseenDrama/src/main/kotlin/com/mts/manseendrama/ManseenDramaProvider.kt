@@ -94,7 +94,7 @@ class ManseenDramaProvider : MainAPI() {
             results.add(
                 newAnimeSearchResponse(title, dataPayload, TvType.AsianDrama) {
                     this.posterUrl = cover
-                    this.sub(epNum)
+                    this.addSub(epNum)
                 }
             )
         }
