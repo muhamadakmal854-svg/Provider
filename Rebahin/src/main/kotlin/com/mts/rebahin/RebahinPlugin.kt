@@ -13,7 +13,6 @@ class RebahinPlugin : Plugin() {
     override fun load(context: Context) {
 
         registerMainAPI(RebahinProvider())
-        registerExtractorAPI(DramaquBcdnNet())
 
     }
 
