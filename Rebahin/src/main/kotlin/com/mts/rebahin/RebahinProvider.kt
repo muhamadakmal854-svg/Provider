@@ -41,10 +41,10 @@ class RebahinProvider : MainAPI() {
 
     private fun parseRebahinItems(html: String): List<SearchResponse> {
         val items = mutableListOf<SearchResponse>()
-        val cleanHtml = html.replace(chr(92).toString() + chr(34).toString(), chr(34).toString()).replace(chr(92).toString() + chr(47).toString(), chr(47).toString())
+        val cleanHtml = html.replace(""""""", '"'.toString()).replace("""\/""", "/")
 
         // 1. Next.js JSON RSC Payload Parser
-        val itemRegex = Regex(""""id"\s*:\s*"([^"]+)".*?"type"\s*:\s*"([^"]+)".*?"title"\s*:\s*"([^"]+)"""")
+        val itemRegex = Regex("""id"\s*:\s*"([^"]+)".*?"type"\s*:\s*"([^"]+)".*?"title"\s*:\s*"([^"]+)""")
         itemRegex.findAll(cleanHtml).forEach { match ->
             val id = match.groupValues[1]
             val type = match.groupValues[2]
@@ -55,7 +55,7 @@ class RebahinProvider : MainAPI() {
                 val itemUrl = if (isTv) "$mainUrl/tv/$id" else "$mainUrl/movies/$id"
 
                 // Find poster for this ID
-                val posterRegex = Regex(""""id"\s*:\s*"{id}".*?"posterPath"\s*:\s*"([^"]+)"""")
+                val posterRegex = Regex("""id"\s*:\s*"$id".*?"posterPath"\s*:\s*"([^"]+)""")
                 var poster = posterRegex.find(cleanHtml)?.groupValues?.get(1)
                 if (poster != null && poster.startsWith("/")) {
                     poster = "https://image.tmdb.org/t/p/w500$poster"
@@ -113,26 +113,26 @@ class RebahinProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val res = app.get(url, referer = "$mainUrl/").text
-        val cleanHtml = res.replace(chr(92).toString() + chr(34).toString(), chr(34).toString()).replace(chr(92).toString() + chr(47).toString(), chr(47).toString())
+        val cleanHtml = res.replace(""""""", '"'.toString()).replace("""\/""", "/")
 
-        val title = Regex(""""title"\s*:\s*"([^"]+)"""").find(cleanHtml)?.groupValues?.get(1)
+        val title = Regex("""title"\s*:\s*"([^"]+)""").find(cleanHtml)?.groupValues?.get(1)
             ?: Regex("""<h1[^>]*>([^<]+)</h1>""").find(cleanHtml)?.groupValues?.get(1)?.trim()
             ?: "Rebahin"
 
-        val poster = Regex(""""posterUrl"\s*:\s*"([^"]+)"""").find(cleanHtml)?.groupValues?.get(1)
-            ?: Regex(""""posterPath"\s*:\s*"([^"]+)"""").find(cleanHtml)?.groupValues?.get(1)?.let {
+        val poster = Regex("""posterUrl"\s*:\s*"([^"]+)""").find(cleanHtml)?.groupValues?.get(1)
+            ?: Regex("""posterPath"\s*:\s*"([^"]+)""").find(cleanHtml)?.groupValues?.get(1)?.let {
                 if (it.startsWith("/")) "https://image.tmdb.org/t/p/w500$it" else it
             }
 
-        val plot = Regex(""""overview"\s*:\s*"([^"]+)"""").find(cleanHtml)?.groupValues?.get(1)
+        val plot = Regex("""overview"\s*:\s*"([^"]+)""").find(cleanHtml)?.groupValues?.get(1)
 
-        val year = Regex(""""releaseYear"\s*:\s*(\d+)""").find(cleanHtml)?.groupValues?.get(1)?.toIntOrNull()
+        val year = Regex("""releaseYear"\s*:\s*(\d+)""").find(cleanHtml)?.groupValues?.get(1)?.toIntOrNull()
 
         val isTv = url.contains("/tv/") || cleanHtml.contains("episodes")
 
         if (isTv) {
             val episodes = mutableListOf<Episode>()
-            val epRegex = Regex(""""episodeNumber"\s*:\s*(\d+).*?"seasonNumber"\s*:\s*(\d+).*?"name"\s*:\s*"([^"]+)"""")
+            val epRegex = Regex("""episodeNumber"\s*:\s*(\d+).*?"seasonNumber"\s*:\s*(\d+).*?"name"\s*:\s*"([^"]+)""")
 
             epRegex.findAll(cleanHtml).forEach { match ->
                 val epNum = match.groupValues[1].toIntOrNull() ?: 1
@@ -170,10 +170,10 @@ class RebahinProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val res = app.get(data, referer = "$mainUrl/").text
-        val cleanHtml = res.replace(chr(92).toString() + chr(34).toString(), chr(34).toString()).replace(chr(92).toString() + chr(47).toString(), chr(47).toString())
+        val cleanHtml = res.replace(""""""", '"'.toString()).replace("""\/""", "/")
 
         // Extract playbackUrl from RSC payload
-        val regex = Regex(""""playbackUrl"\s*:\s*"([^"]+)"""")
+        val regex = Regex("""playbackUrl"\s*:\s*"([^"]+)""")
         val playbackUrl = regex.find(cleanHtml)?.groupValues?.get(1)
 
         if (playbackUrl != null) {
