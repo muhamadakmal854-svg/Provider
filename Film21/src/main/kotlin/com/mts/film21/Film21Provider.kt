@@ -225,6 +225,22 @@ class Film21Provider : MainAPI() {
                 val fixedSrc = fixUrl(embedUrl)
                 if (fixedSrc.isBlank() || fixedSrc.contains("youtube.com") || fixedSrc.contains("youtu.be")) return
 
+                val b64Matches = Regex("""aHR0c[A-Za-z0-9+/=]+""").findAll(fixedSrc)
+                b64Matches.forEach { match ->
+                    try {
+                        val decoded = String(android.util.Base64.decode(match.value.trim(), android.util.Base64.DEFAULT), Charsets.UTF_8)
+                        if (decoded.contains(".m3u8")) {
+                            callback.invoke(
+                                newExtractorLink(name, name, decoded, ExtractorLinkType.M3U8) {
+                                    this.referer = "$fixedSrc/"
+                                    this.quality = Qualities.P1080.value
+                                }
+                            )
+                            found = true
+                        }
+                    } catch (_: Exception) {}
+                }
+
                 val success = loadExtractor(fixedSrc, refererUrl, subtitleCallback, callback)
                 if (success) {
                     found = true

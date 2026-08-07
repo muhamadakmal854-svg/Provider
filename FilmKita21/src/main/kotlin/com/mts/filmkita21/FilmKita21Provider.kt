@@ -1,4 +1,4 @@
-package com.mts.kawanfilm
+package com.mts.filmkita21
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -6,21 +6,24 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import android.util.Log
 
-class KawanFilmProvider : MainAPI() {
-    override var mainUrl = "https://web.kawanfilm21.co"
-    override var name = "KawanFilm"
+class FilmKita21Provider : MainAPI() {
+    override var mainUrl = "https://s12.iix.llc"
+    override var name = "FilmKita21"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "tv/" to "Serial TV",
-        "category/box-office/" to "Box Office",
-        "country/usa/" to "Hollywood",
-        "country/india/" to "Bollywood",
-        "country/korea/" to "Drama Korea",
-        "country/china/" to "Mandarin"
+        "" to "Movies Terbaru",
+        "category/tv-series/" to "TV Series",
+        "best-rating/" to "Best Rating",
+        "category/action/" to "Action",
+        "category/drama/" to "Drama",
+        "category/horror/" to "Horror",
+        "category/comedy/" to "Comedy",
+        "category/science-fiction/" to "Science Fiction",
+        "year/2026/" to "Tahun 2026"
     )
 
     override suspend fun getMainPage(
@@ -164,7 +167,7 @@ class KawanFilmProvider : MainAPI() {
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e("KawanFilmProvider", "REST episode fetch error: ${e.message}")
+                    Log.e("FilmKita21Provider", "REST episode fetch error: ${e.message}")
                 }
             }
 
@@ -328,7 +331,7 @@ class KawanFilmProvider : MainAPI() {
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e("KawanFilmProvider", "Server tab error [$tabUrl]: ${e.message}")
+                    Log.e("FilmKita21Provider", "Server tab error [$tabUrl]: ${e.message}")
                 }
             }
 
@@ -355,7 +358,7 @@ class KawanFilmProvider : MainAPI() {
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.e("KawanFilmProvider", "AJAX tab error: ${e.message}")
+                            Log.e("FilmKita21Provider", "AJAX tab error: ${e.message}")
                         }
                     }
                 }
@@ -396,7 +399,7 @@ class KawanFilmProvider : MainAPI() {
             }
 
         } catch (e: Exception) {
-            Log.e("KawanFilmProvider", "loadLinks error: ${e.message}")
+            Log.e("FilmKita21Provider", "loadLinks error: ${e.message}")
         }
         return found
     }
