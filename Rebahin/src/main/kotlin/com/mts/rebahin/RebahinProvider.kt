@@ -29,36 +29,19 @@ class RebahinProvider : MainAPI() {
         "$mainUrl/tv" to "TV Series",
         "$mainUrl/genre/action" to "Action",
         "$mainUrl/genre/horror" to "Horror",
-        "$mainUrl/country/kr" to "Korea Drama"
+        "$mainUrl/genre/drama" to "Drama"
     )
 
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
-        val baseUrl = request.data.trimEnd('/')
-        val url = if (page <= 1) {
-            baseUrl
-        } else {
-            "$baseUrl?page=$page"
-        }
-
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val url = if (page == 1) request.data else "${request.data}?page=$page"
         val res = app.get(url, referer = "$mainUrl/").text
         val items = parseRebahinItems(res)
-
-        return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = items,
-                isHorizontalImages = false
-            ),
-            hasNext = items.isNotEmpty()
-        )
+        return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
 
     private fun parseRebahinItems(html: String): List<SearchResponse> {
         val items = mutableListOf<SearchResponse>()
-        val cleanHtml = html.replace("\"", """).replace("\/", "/")
+        val cleanHtml = html.replace(chr(92).toString() + chr(34).toString(), chr(34).toString()).replace(chr(92).toString() + chr(47).toString(), chr(47).toString())
 
         // 1. Next.js JSON RSC Payload Parser
         val itemRegex = Regex(""""id"\s*:\s*"([^"]+)".*?"type"\s*:\s*"([^"]+)".*?"title"\s*:\s*"([^"]+)"""")
@@ -130,7 +113,7 @@ class RebahinProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val res = app.get(url, referer = "$mainUrl/").text
-        val cleanHtml = res.replace("\"", """).replace("\/", "/")
+        val cleanHtml = res.replace(chr(92).toString() + chr(34).toString(), chr(34).toString()).replace(chr(92).toString() + chr(47).toString(), chr(47).toString())
 
         val title = Regex(""""title"\s*:\s*"([^"]+)"""").find(cleanHtml)?.groupValues?.get(1)
             ?: Regex("""<h1[^>]*>([^<]+)</h1>""").find(cleanHtml)?.groupValues?.get(1)?.trim()
@@ -187,47 +170,28 @@ class RebahinProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val res = app.get(data, referer = "$mainUrl/").text
-        val cleanHtml = res.replace("\"", """).replace("\/", "/")
-        val playbackUrls = mutableListOf<String>()
+        val cleanHtml = res.replace(chr(92).toString() + chr(34).toString(), chr(34).toString()).replace(chr(92).toString() + chr(47).toString(), chr(47).toString())
 
+        // Extract playbackUrl from RSC payload
         val regex = Regex(""""playbackUrl"\s*:\s*"([^"]+)"""")
-        regex.findAll(cleanHtml).forEach { match ->
-            val link = match.groupValues[1]
-            if (link.isNotBlank() && link.startsWith("http")) {
-                playbackUrls.add(link)
-            }
+        val playbackUrl = regex.find(cleanHtml)?.groupValues?.get(1)
+
+        if (playbackUrl != null) {
+            val target = if (playbackUrl.startsWith("http")) playbackUrl else "$mainUrl$playbackUrl"
+            loadExtractor(target, data, subtitleCallback, callback)
+            return true
         }
 
+        // Fallback: search for any m3u8 or mp4 in page
         val mediaRegex = Regex("""https?://[^\s"'<>]+\.(?:m3u8|mp4)[^\s"'<>]*""")
-        mediaRegex.findAll(cleanHtml).forEach { match ->
-            val link = match.value
-            if (link.isNotBlank() && !link.contains("advertisement") && !link.contains("logo")) {
-                playbackUrls.add(link)
-            }
-        }
-
-        var foundLinks = false
-
-        for (link in playbackUrls.distinct()) {
-            val isM3u8 = link.contains(".m3u8", ignoreCase = true)
+        mediaRegex.findAll(cleanHtml).forEach { m ->
             callback.invoke(
-                newExtractorLink(
-                    this.name,
-                    this.name,
-                    link,
-                    if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                ) {
+                newExtractorLink(this.name, this.name, m.value, ExtractorLinkType.VIDEO) {
                     this.referer = "$mainUrl/"
-                    this.quality = Qualities.P1080.value
-                    this.headers = mapOf(
-                        "User-Agent" to USER_AGENT,
-                        "Referer" to "$mainUrl/"
-                    )
                 }
             )
-            foundLinks = true
         }
 
-        return foundLinks
+        return true
     }
 }
