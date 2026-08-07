@@ -225,7 +225,7 @@ class KlikxxiProvider : MainAPI() {
                 val fixedSrc = fixUrl(embedUrl)
                 if (fixedSrc.isBlank() || fixedSrc.contains("youtube.com") || fixedSrc.contains("youtu.be")) return
 
-                fun scanB64(textToScan: String) {
+                suspend fun scanB64(textToScan: String) {
                     Regex("""aHR0c[A-Za-z0-9+/=]+""").findAll(textToScan).forEach { match ->
                         try {
                             val decoded = String(android.util.Base64.decode(match.value.trim(), android.util.Base64.DEFAULT), Charsets.UTF_8)
