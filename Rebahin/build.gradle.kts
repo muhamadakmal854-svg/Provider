@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk REBAHIN"
+    description = "Provider untuk REBAHIN - Streaming Dan Download Film Sub Indo Terbaru"
 
     authors     = listOf("MTS")
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://165.227.239.221/favicon.ico"
+    iconUrl     = "https://165.232.44.215/favicon.ico"
 
 }
 
