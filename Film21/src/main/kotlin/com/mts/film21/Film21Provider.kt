@@ -1,4 +1,4 @@
-package com.mts.gudangfilm
+package com.mts.film21
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
@@ -6,52 +6,21 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import android.util.Log
 
-class GudangFilmProvider : MainAPI() {
-    override var mainUrl = "https://www.huazai6.com"
-    override var name = "GudangFilm"
+class Film21Provider : MainAPI() {
+    override var mainUrl = "http://178.128.91.191"
+    override var name = "Film21"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "" to "Terbaru",
-        "tv/" to "Tv Series",
-        "country/korea/" to "Korea",
-        "country/japan/" to "Japan",
-        "country/hong-kong/" to "Hong Kong",
-        "country/italy/" to "Italy",
-        "country/usa/" to "Usa",
-        "country/germany/" to "Germany",
-        "country/france/" to "France",
-        "country/china/" to "China",
-        "genre/semi-jepang/" to "18+",
+        "" to "Film Terbaru",
         "genre/action/" to "Action",
         "genre/horror/" to "Horror",
-        "genre/adventure/" to "Adventure",
-        "genre/comedy/" to "Comedy",
-        "genre/crime/" to "Crime",
         "genre/drama/" to "Drama",
-        "genre/fantasy/" to "Fantasy",
-        "genre/mystery/" to "Mystery",
-        "genre/romance/" to "Romance",
-        "genre/science-fiction/" to "Science Fiction",
-        "genre/thriller/" to "Thriller",
-        "genre/uncategory/" to "Uncategory",
-        "genre/history/" to "History",
-        "genre/war/" to "War",
-        "genre/tv-movie/" to "Tv Movie",
-        "genre/animation/" to "Animation",
-        "genre/family/" to "Family",
-        "genre/music/" to "Music",
-        "year/2026/" to "2026",
-        "year/2025/" to "2025",
-        "year/2024/" to "2024",
-        "year/2023/" to "2023",
-        "year/2022/" to "2022",
-        "year/2021/" to "2021",
-        "year/2020/" to "2020",
-        "ongoing/" to "Ongoing"
+        "country/korea/" to "Korea",
+        "year/2026/" to "Tahun 2026"
     )
 
     override suspend fun getMainPage(
@@ -195,7 +164,7 @@ class GudangFilmProvider : MainAPI() {
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e("GudangFilmProvider", "REST episode fetch error: ${e.message}")
+                    Log.e("Film21Provider", "REST episode fetch error: ${e.message}")
                 }
             }
 
@@ -344,7 +313,7 @@ class GudangFilmProvider : MainAPI() {
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e("GudangFilmProvider", "Server tab error [$tabUrl]: ${e.message}")
+                    Log.e("Film21Provider", "Server tab error [$tabUrl]: ${e.message}")
                 }
             }
 
@@ -371,7 +340,7 @@ class GudangFilmProvider : MainAPI() {
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.e("GudangFilmProvider", "AJAX tab error: ${e.message}")
+                            Log.e("Film21Provider", "AJAX tab error: ${e.message}")
                         }
                     }
                 }
@@ -412,7 +381,7 @@ class GudangFilmProvider : MainAPI() {
             }
 
         } catch (e: Exception) {
-            Log.e("GudangFilmProvider", "loadLinks error: ${e.message}")
+            Log.e("Film21Provider", "loadLinks error: ${e.message}")
         }
         return found
     }

@@ -345,10 +345,10 @@ class NgefilmProvider : MainAPI() {
             val videoApi = "https://playerngefilm21.rpmlive.online/api/v1/video?id=$id&w=1920&h=1080&r=$domain"
             val encryptedRes = app.get(videoApi, headers = h).text
             val jsonStr = if (encryptedRes.trim().startsWith("{")) encryptedRes else decryptAES(encryptedRes)
-            Regex(""""source"\s*:\s*"([^"]+)"""").find(jsonStr)?.groupValues?.get(1)?.let { link ->
+            Regex("""source"\s*:\s*"([^"]+)"{T}).find(jsonStr)?.groupValues?.get(1)?.let { link ->
                 callback.invoke(newExtractorLink("RPM Live", "RPM Live", link.replace(92.toChar().toString() + "/", "/"), ExtractorLinkType.M3U8) { this.referer = "https://playerngefilm21.rpmlive.online/" })
             }
-            Regex(""""hlsVideoTiktok"\s*:\s*"([^"]+)"""").find(jsonStr)?.groupValues?.get(1)?.let { link ->
+            Regex("""hlsVideoTiktok"\s*:\s*"([^"]+)"{T}).find(jsonStr)?.groupValues?.get(1)?.let { link ->
                 callback.invoke(newExtractorLink("RPM Live (Backup)", "RPM Live (Backup)", "https://playerngefilm21.rpmlive.online" + link.replace(92.toChar().toString() + "/", "/"), ExtractorLinkType.M3U8) { this.referer = "https://playerngefilm21.rpmlive.online/" })
             }
         } catch (e: Exception) {}

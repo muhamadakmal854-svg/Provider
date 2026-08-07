@@ -39,7 +39,7 @@ open class DailymotionAnimexin : ExtractorApi() {
         val id = getVideoId(embedUrl) ?: return
         val metaDataUrl = "$baseUrl/player/metadata/video/$id"
         val response = app.get(metaDataUrl, referer = embedUrl).text
-        val qualityUrlRegex = Regex(""""url"\s*:\s*"([^"]+)"""")
+        val qualityUrlRegex = Regex("""url"\s*:\s*"([^"]+)"{T})
         qualityUrlRegex.findAll(response).map { it.groupValues[1] }
             .filter { it.contains(".m3u8") }
             .forEach { videoUrl ->
@@ -100,7 +100,7 @@ open class OkRuAnimexin : ExtractorApi() {
             .replace(Regex("\\\\u([0-9A-Fa-f]{4})")) { m ->
                 Integer.parseInt(m.groupValues[1], 16).toChar().toString()
             }
-        val videosStr = Regex(""""videos":(\[[^]]*])""").find(videoReq)?.groupValues?.get(1)
+        val videosStr = Regex("""videos":(\[[^]]*])""").find(videoReq)?.groupValues?.get(1)
             ?: return
         val qualityMap = mapOf(
             "MOBILE" to Qualities.P144, "LOWEST" to Qualities.P240,
@@ -108,7 +108,7 @@ open class OkRuAnimexin : ExtractorApi() {
             "HD" to Qualities.P720, "FULL" to Qualities.P1080,
             "QUAD" to Qualities.P1440, "ULTRA" to Qualities.P2160
         )
-        Regex(""""name":"([^"]+)","url":"([^"]+)"""").findAll(videosStr).forEach { m ->
+        Regex("""name":"([^"]+)","url":"([^"]+)"{T}).findAll(videosStr).forEach { m ->
             val qname = m.groupValues[1].uppercase()
             val vurl = m.groupValues[2].let { if (it.startsWith("//")) "https:$it" else it }
             val quality = qualityMap.entries.firstOrNull { qname.contains(it.key) }?.value
@@ -145,7 +145,7 @@ class RumbleAnimexin : ExtractorApi() {
             ?: return
 
         val processedUrls = mutableSetOf<String>()
-        Regex(""""url":"(.*?)"""").findAll(scriptData).forEach { match ->
+        Regex("""url":"(.*?)""").findAll(scriptData).forEach { match ->
             val rawUrl = match.groupValues[1].replace("\\/", "/")
             if (rawUrl.isBlank() || !rawUrl.contains("rumble.com")) return@forEach
             if (!rawUrl.endsWith(".m3u8")) return@forEach

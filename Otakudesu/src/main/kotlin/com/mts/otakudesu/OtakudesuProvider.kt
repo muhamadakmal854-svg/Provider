@@ -245,10 +245,10 @@ class OtakudesuProvider : MainAPI() {
                     ?: document.select("script:containsData(admin-ajax)").lastOrNull()?.data()
                     ?: ""
 
-                val nonceAction = Regex("""data:\{action:"([^"]+)"""").find(scriptData)?.groupValues?.getOrNull(1)
-                    ?: Regex("""action:\s*"([a-f0-9]{32})"""").find(scriptData)?.groupValues?.getOrNull(1)
-                val embedAction = Regex("""nonce:[^,]+,action:"([^"]+)"""").find(scriptData)?.groupValues?.getOrNull(1)
-                    ?: Regex("""nonce[^,]*,\s*action:\s*"([a-f0-9]{32})"""").find(scriptData)?.groupValues?.getOrNull(1)
+                val nonceAction = Regex("""data:\{action:"([^"]+)"{T}).find(scriptData)?.groupValues?.getOrNull(1)
+                    ?: Regex("""action:\s*"([a-f0-9]{32})""").find(scriptData)?.groupValues?.getOrNull(1)
+                val embedAction = Regex("""nonce:[^,]+,action:"([^"]+)"{T}).find(scriptData)?.groupValues?.getOrNull(1)
+                    ?: Regex("""nonce[^,]*,\s*action:\s*"([a-f0-9]{32})""").find(scriptData)?.groupValues?.getOrNull(1)
 
                 if (nonceAction != null && embedAction != null) {
                     val nonceResp = app.post("$mainUrl/wp-admin/admin-ajax.php", data = mapOf("action" to nonceAction))
@@ -489,7 +489,7 @@ open class JWPlayer : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val res = app.get(url, referer = referer ?: mainUrl).text
-        val m3u8 = Regex("""file:\s*"([^"]+)""").find(res)?.groupValues?.get(1) ?: return
+        val m3u8 = Regex("""file:\s*"([^"]+)"{T}).find(res)?.groupValues?.get(1) ?: return
         callback.invoke(
             newExtractorLink(name, name, m3u8, INFER_TYPE) {
                 this.referer = referer ?: mainUrl
@@ -511,7 +511,7 @@ open class Filesim : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val res = app.get(url, referer = referer ?: mainUrl).text
-        val m3u8 = Regex("""file:\s*"([^"]+)""").find(res)?.groupValues?.get(1) ?: return
+        val m3u8 = Regex("""file:\s*"([^"]+)"{T}).find(res)?.groupValues?.get(1) ?: return
         callback.invoke(
             newExtractorLink(name, name, m3u8, INFER_TYPE) {
                 this.referer = referer ?: mainUrl

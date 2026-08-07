@@ -221,14 +221,69 @@ class KawanFilmProvider : MainAPI() {
                 ).firstOrNull { it.isNotBlank() && !it.equals("about:blank", true) && !it.startsWith("javascript", true) }
             }
 
+            suspend fun processEmbedUrl(embedUrl: String, refererUrl: String) {
+                val fixedSrc = fixUrl(embedUrl)
+                if (fixedSrc.isBlank() || fixedSrc.contains("youtube.com") || fixedSrc.contains("youtu.be")) return
+
+                val success = loadExtractor(fixedSrc, refererUrl, subtitleCallback, callback)
+                if (success) {
+                    found = true
+                    return
+                }
+
+                try {
+                    val embedHtml = app.get(fixedSrc, referer = refererUrl, timeout = 15).text
+                    val unpacked = getPacked(embedHtml)?.let { getAndUnpack(embedHtml) } ?: embedHtml
+                    val contentToScan = embedHtml + "
+" + unpacked
+
+                    val m3u8Regex = Regex("""https?://[^\s"'<>]+\.m3u8[^\s"'<>]*""")
+                    m3u8Regex.findAll(contentToScan).forEach { match ->
+                        val link = match.value
+                        if (link.isNotBlank() && !link.contains("advertisement") && !link.contains("logo")) {
+                            callback.invoke(
+                                newExtractorLink(
+                                    name,
+                                    name,
+                                    link,
+                                    ExtractorLinkType.M3U8
+                                ) {
+                                    this.referer = "$fixedSrc/"
+                                    this.quality = Qualities.P1080.value
+                                }
+                            )
+                            found = true
+                        }
+                    }
+
+                    val mp4Regex = Regex("""https?://[^\s"'<>]+\.mp4[^\s"'<>]*""")
+                    mp4Regex.findAll(contentToScan).forEach { match ->
+                        val link = match.value
+                        if (link.isNotBlank() && !link.contains("advertisement") && !link.contains("logo")) {
+                            callback.invoke(
+                                newExtractorLink(
+                                    name,
+                                    name,
+                                    link,
+                                    ExtractorLinkType.VIDEO
+                                ) {
+                                    this.referer = "$fixedSrc/"
+                                    this.quality = Qualities.P1080.value
+                                }
+                            )
+                            found = true
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(name, "Custom embed extraction failed [$fixedSrc]: ${e.message}")
+                }
+            }
+
             // 1. All direct iframes on the page
             doc.select("iframe").forEach { iframe ->
                 val src = iframe.getIframeSrc()
                 if (!src.isNullOrBlank()) {
-                    val fixedSrc = fixUrl(src)
-                    if (!fixedSrc.contains("youtube.com") && !fixedSrc.contains("youtu.be")) {
-                        if (loadExtractor(fixedSrc, data, subtitleCallback, callback)) found = true
-                    }
+                    processEmbedUrl(src, data)
                 }
             }
 

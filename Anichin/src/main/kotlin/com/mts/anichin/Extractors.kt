@@ -81,8 +81,8 @@ open class Dailymotion : ExtractorApi() {
         val id = getVideoId(embedUrl) ?: return
         val metaDataUrl = "$baseUrl/player/metadata/video/$id"
         val response = app.get(metaDataUrl, referer = embedUrl).text
-        val qualityUrlRegex = Regex(""""url"\s*:\s*"([^"]+)"""")
-        val subtitlesRegex = Regex(""""subtitles"\s*:\s*\{[^}]*"data"\s*:\s*(\[[^\]]*\])""")
+        val qualityUrlRegex = Regex("""url"\s*:\s*"([^"]+)"{T})
+        val subtitlesRegex = Regex("""subtitles"\s*:\s*\{[^}]*"data"\s*:\s*(\[[^\]]*\])""")
 
         val urls = qualityUrlRegex.findAll(response)
             .map { it.groupValues[1] }
@@ -94,7 +94,7 @@ open class Dailymotion : ExtractorApi() {
 
         val subtitlesMatches = subtitlesRegex.findAll(response).map { it.groupValues[1] }.toList()
         subtitlesMatches.forEach { subtitleJson ->
-            val subRegex = Regex("""\{\s*"label"\s*:\s*"([^"]+)",\s*"urls"\s*:\s*\["([^"]+)"""")
+            val subRegex = Regex("""\{\s*"label"\s*:\s*"([^"]+)",\s*"urls"\s*:\s*\["([^"]+)"{T})
             subRegex.findAll(subtitleJson).forEach { match ->
                 val label = match.groupValues[1]
                 val subUrl = match.groupValues[2]
@@ -162,7 +162,7 @@ open class Odnoklassniki : ExtractorApi() {
                 Integer.parseInt(matchResult.groupValues[1], 16).toChar().toString()
             }
 
-        val videosStr = Regex(""""videos":(\[[^]]*])""").find(videoReq)?.groupValues?.get(1) ?: throw ErrorLoadingException("Video not found")
+        val videosStr = Regex("""videos":(\[[^]]*])""").find(videoReq)?.groupValues?.get(1) ?: throw ErrorLoadingException("Video not found")
         val videos    = AppUtils.tryParseJson<List<OkRuVideo>>(videosStr) ?: throw ErrorLoadingException("Video not found")
 
         for (video in videos) {
@@ -217,7 +217,7 @@ class Rumble : ExtractorApi() {
             ?.substringAfter("{\"mp4")?.substringBefore("\"evt\":{")
         if (scriptData == null) return
 
-        val regex = """"url":"(.*?)"|h":(.*?)\}""".toRegex()
+        val regex = """url":"(.*?)"|h":(.*?)\}""".toRegex()
         val matches = regex.findAll(scriptData)
         val processedUrls = mutableSetOf<String>()
 
