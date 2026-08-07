@@ -234,8 +234,7 @@ class KlikxxiProvider : MainAPI() {
                 try {
                     val embedHtml = app.get(fixedSrc, referer = refererUrl, timeout = 15).text
                     val unpacked = getPacked(embedHtml)?.let { getAndUnpack(embedHtml) } ?: embedHtml
-                    val contentToScan = embedHtml + "
-" + unpacked
+                    val contentToScan = embedHtml + unpacked
 
                     val m3u8Regex = Regex("""https?://[^\s"'<>]+\.m3u8[^\s"'<>]*""")
                     m3u8Regex.findAll(contentToScan).forEach { match ->
