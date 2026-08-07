@@ -68,7 +68,7 @@ class JuraganfilmProvider : MainAPI() {
         } else if (pageUrl.startsWith("http://")) {
             pageUrl = "http://" + pageUrl.substring(7).replace("//", "/")
         }
-        val document = app.get(pageUrl, timeout = 30).document
+        val document = app.get(pageUrl, headers = mapOf("Referer" to "$mainUrl/"), timeout = 12).document
         val homeList = document.select(".listupd .bsx, .listupd .bs, .card, article, div.movie-item").mapNotNull {
             it.toSearchResult()
         }

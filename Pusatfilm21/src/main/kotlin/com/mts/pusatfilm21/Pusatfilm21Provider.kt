@@ -17,14 +17,9 @@ class Pusatfilm21Provider : MainAPI() {
     override val mainPage = mainPageOf(
         "" to "Movies Terbaru",
         "drama-korea/" to "Drama Korea",
-        "drama-china/" to "Drama China",
         "west-series/" to "West Series",
-        "series-netflix/" to "Series Netflix",
         "best-rating/" to "Best Rating",
-        "genre/action/" to "Action",
-        "genre/horror/" to "Horror",
-        "genre/comedy/" to "Comedy",
-        "genre/romance/" to "Romance"
+        "genre/action/" to "Action"
     )
 
     override suspend fun getMainPage(
@@ -43,7 +38,7 @@ class Pusatfilm21Provider : MainAPI() {
         } else if (pageUrl.startsWith("http://")) {
             pageUrl = "http://" + pageUrl.substring(7).replace("//", "/")
         }
-        val document = app.get(pageUrl, timeout = 30).document
+        val document = app.get(pageUrl, headers = mapOf("Referer" to "$mainUrl/"), timeout = 12).document
         val items = document.select("article.item-infinite, div.gmr-box-item, article.post, article.item")
         val homeItems = items.mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, homeItems, hasNext = homeItems.isNotEmpty())

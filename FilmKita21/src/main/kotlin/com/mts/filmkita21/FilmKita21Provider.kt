@@ -19,11 +19,7 @@ class FilmKita21Provider : MainAPI() {
         "category/tv-series/" to "TV Series",
         "best-rating/" to "Best Rating",
         "category/action/" to "Action",
-        "category/drama/" to "Drama",
-        "category/horror/" to "Horror",
-        "category/comedy/" to "Comedy",
-        "category/science-fiction/" to "Science Fiction",
-        "year/2026/" to "Tahun 2026"
+        "category/horror/" to "Horror"
     )
 
     override suspend fun getMainPage(
@@ -42,7 +38,7 @@ class FilmKita21Provider : MainAPI() {
         } else if (pageUrl.startsWith("http://")) {
             pageUrl = "http://" + pageUrl.substring(7).replace("//", "/")
         }
-        val document = app.get(pageUrl, timeout = 30).document
+        val document = app.get(pageUrl, headers = mapOf("Referer" to "$mainUrl/"), timeout = 12).document
         val items = document.select("article.item-infinite, div.gmr-box-item, article.post, article.item")
         val homeItems = items.mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, homeItems, hasNext = homeItems.isNotEmpty())

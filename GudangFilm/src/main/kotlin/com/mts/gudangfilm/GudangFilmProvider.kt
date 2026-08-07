@@ -70,7 +70,7 @@ class GudangFilmProvider : MainAPI() {
         } else if (pageUrl.startsWith("http://")) {
             pageUrl = "http://" + pageUrl.substring(7).replace("//", "/")
         }
-        val document = app.get(pageUrl, timeout = 30).document
+        val document = app.get(pageUrl, headers = mapOf("Referer" to "$mainUrl/"), timeout = 12).document
         val items = document.select("article.item-infinite, div.gmr-box-item, article.post, article.item")
         val homeItems = items.mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, homeItems, hasNext = homeItems.isNotEmpty())
