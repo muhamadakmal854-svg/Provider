@@ -70,12 +70,12 @@ class RebahinProvider : MainAPI() {
 
     private fun parseRebahinItems(html: String): List<SearchResponse> {
         val items = mutableListOf<SearchResponse>()
-        val regex = Regex("""id.*?:\s*["\]*([^"]+)["\]*,\s*type.*?:\s*["\]*([^"]+)["\]*,\s*title.*?:\s*["\]*([^"]+)["\]*""")
+        val regex = Regex("""id.*?:\s*["\\]*([^"]+)["\\]*,\s*type.*?:\s*["\\]*([^"]+)["\\]*,\s*title.*?:\s*["\\]*([^"]+)["\\]*""")
 
         regex.findAll(html).forEach { match ->
-            val id = match.groupValues[1].replace("\\", "")
-            val type = match.groupValues[2].replace("\\", "")
-            val title = match.groupValues[3].replace("\\", "")
+            val id = match.groupValues[1]
+            val type = match.groupValues[2]
+            val title = match.groupValues[3]
 
             if (id.isNotBlank() && title.isNotBlank() && !title.contains("REBAHIN", true)) {
                 val isTv = type.equals("tv", ignoreCase = true)
@@ -102,16 +102,16 @@ class RebahinProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val res = app.get(url, referer = "$mainUrl/").text
 
-        val title = Regex("""title.*?:\s*["\]*([^"]+)["\]*""").find(res)?.groupValues?.get(1)
+        val title = Regex("""title.*?:\s*["\\]*([^"]+)["\\]*""").find(res)?.groupValues?.get(1)
             ?: Regex("""<h1[^>]*>([^<]+)</h1>""").find(res)?.groupValues?.get(1)?.trim()
             ?: "Rebahin"
 
-        val poster = Regex("""posterUrl.*?:\s*["\]*([^"]+)["\]*""").find(res)?.groupValues?.get(1)
-            ?: Regex("""posterPath.*?:\s*["\]*([^"]+)["\]*""").find(res)?.groupValues?.get(1)?.let {
+        val poster = Regex("""posterUrl.*?:\s*["\\]*([^"]+)["\\]*""").find(res)?.groupValues?.get(1)
+            ?: Regex("""posterPath.*?:\s*["\\]*([^"]+)["\\]*""").find(res)?.groupValues?.get(1)?.let {
                 if (it.startsWith("/")) "https://image.tmdb.org/t/p/w500$it" else it
             }
 
-        val plot = Regex("""overview.*?:\s*["\]*([^"]+)["\]*""").find(res)?.groupValues?.get(1)
+        val plot = Regex("""overview.*?:\s*["\\]*([^"]+)["\\]*""").find(res)?.groupValues?.get(1)
 
         val year = Regex("""releaseYear.*?:\s*(\d+)""").find(res)?.groupValues?.get(1)?.toIntOrNull()
 
@@ -119,7 +119,7 @@ class RebahinProvider : MainAPI() {
 
         if (isTv) {
             val episodes = mutableListOf<Episode>()
-            val epRegex = Regex("""episodeNumber.*?:\s*(\d+).*?seasonNumber.*?:\s*(\d+).*?name.*?:\s*["\]*([^"]+)["\]*""")
+            val epRegex = Regex("""episodeNumber.*?:\s*(\d+).*?seasonNumber.*?:\s*(\d+).*?name.*?:\s*["\\]*([^"]+)["\\]*""")
 
             epRegex.findAll(res).forEach { match ->
                 val epNum = match.groupValues[1].toIntOrNull() ?: 1
@@ -159,9 +159,9 @@ class RebahinProvider : MainAPI() {
         val res = app.get(data, referer = "$mainUrl/").text
         val playbackUrls = mutableListOf<String>()
 
-        val regex = Regex("""playbackUrl.*?:\s*["\]*([^"]+)["\]*""")
+        val regex = Regex("""playbackUrl.*?:\s*["\\]*([^"]+)["\\]*""")
         regex.findAll(res).forEach { match ->
-            val link = match.groupValues[1].replace("\/", "/")
+            val link = match.groupValues[1]
             if (link.isNotBlank() && link.startsWith("http")) {
                 playbackUrls.add(link)
             }
@@ -169,7 +169,7 @@ class RebahinProvider : MainAPI() {
 
         val mediaRegex = Regex("""https?://[^\s"'<>]+\.(?:m3u8|mp4)[^\s"'<>]*""")
         mediaRegex.findAll(res).forEach { match ->
-            val link = match.value.replace("\/", "/")
+            val link = match.value
             if (link.isNotBlank() && !link.contains("advertisement") && !link.contains("logo")) {
                 playbackUrls.add(link)
             }
