@@ -71,11 +71,17 @@ class RebahinProvider : MainAPI() {
     private fun parseRebahinItems(html: String): List<SearchResponse> {
         val items = mutableListOf<SearchResponse>()
 
-        val regex = Regex("""id[\"]+:[\"]+([^"\>]+)[\"]+,[\"]+type[\"]+:[\"]+([^"\>]+)[\"]+,[\"]+title[\"]+:[\"]+([^"\>]+)[\"]+""")
-        regex.findAll(html).forEach { match ->
-            val id = match.groupValues[1].replace("\\"", "")
-            val type = match.groupValues[2].replace("\\"", "")
-            val title = match.groupValues[3].replace("\\"", "")
+        val ids = Regex("""id["\]+:["\]+([^"\>]+)""").findAll(html).map { it.groupValues[1] }.toList()
+        val types = Regex("""type["\]+:["\]+([^"\>]+)""").findAll(html).map { it.groupValues[1] }.toList()
+        val titles = Regex("""title["\]+:["\]+([^"\>]+)""").findAll(html).map { it.groupValues[1] }.toList()
+
+        val count = minOf(ids.size, types.size, titles.size)
+        for (i in 0 until count) {
+            val id = ids[i].replace("\\", "")
+            val type = types[i].replace("\\", "")
+            val title = titles[i].replace("\\", "")
+
+            if (id.isBlank() || title.isBlank() || title.contains("REBAHIN", true)) continue
 
             val isTv = type.equals("tv", ignoreCase = true)
             val itemUrl = if (isTv) "$mainUrl/tv/$id" else "$mainUrl/movies/$id"
@@ -100,26 +106,26 @@ class RebahinProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val res = app.get(url, referer = "$mainUrl/").text
 
-        val title = Regex("""title[\"]+:[\"]+([^"\>]+)""").find(res)?.groupValues?.get(1)?.replace("\\"", "")
+        val title = Regex("""title["\]+:["\]+([^"\>]+)""").find(res)?.groupValues?.get(1)?.replace("\\", "")
             ?: Regex("""<h1[^>]*>([^<]+)</h1>""").find(res)?.groupValues?.get(1)?.trim()
             ?: "Rebahin"
 
-        val poster = Regex("""posterUrl[\"]+:[\"]+([^"\>]+)""").find(res)?.groupValues?.get(1)?.replace("\\"", "")
-            ?: Regex("""posterPath[\"]+:[\"]+([^"\>]+)""").find(res)?.groupValues?.get(1)?.replace("\\"", "")?.let { "https://image.tmdb.org/t/p/w500$it" }
+        val poster = Regex("""posterUrl["\]+:["\]+([^"\>]+)""").find(res)?.groupValues?.get(1)?.replace("\\", "")
+            ?: Regex("""posterPath["\]+:["\]+([^"\>]+)""").find(res)?.groupValues?.get(1)?.replace("\\", "")?.let { "https://image.tmdb.org/t/p/w500$it" }
 
-        val plot = Regex("""overview[\"]+:[\"]+([^"\>]+)""").find(res)?.groupValues?.get(1)?.replace("\\"", "")
+        val plot = Regex("""overview["\]+:["\]+([^"\>]+)""").find(res)?.groupValues?.get(1)?.replace("\\", "")
 
-        val year = Regex("""releaseYear[\"]+:(\d+)""").find(res)?.groupValues?.get(1)?.toIntOrNull()
+        val year = Regex("""releaseYear["\]+:(\d+)""").find(res)?.groupValues?.get(1)?.toIntOrNull()
 
         val isTv = url.contains("/tv/") || res.contains("episodes")
 
         if (isTv) {
             val episodes = mutableListOf<Episode>()
-            val epRegex = Regex("""episodeNumber[\"]+:(\d+).*?seasonNumber[\"]+:(\d+).*?name[\"]+:[\"]+([^"\>]+)""")
+            val epRegex = Regex("""episodeNumber["\]+:(\d+).*?seasonNumber["\]+:(\d+).*?name["\]+:["\]+([^"\>]+)""")
             epRegex.findAll(res).forEach { match ->
                 val epNum = match.groupValues[1].toIntOrNull() ?: 1
                 val seasonNum = match.groupValues[2].toIntOrNull() ?: 1
-                val epName = match.groupValues[3].replace("\\"", "")
+                val epName = match.groupValues[3].replace("\\", "")
 
                 val epUrl = "$url?season=$seasonNum&episode=$epNum"
                 episodes.add(
@@ -154,9 +160,9 @@ class RebahinProvider : MainAPI() {
         val res = app.get(data, referer = "$mainUrl/").text
         val playbackUrls = mutableListOf<String>()
 
-        val regex = Regex("""playbackUrl[\"]+:[\"]+([^"\>]+)""")
+        val regex = Regex("""playbackUrl["\]+:["\]+([^"\>]+)""")
         regex.findAll(res).forEach { match ->
-            val link = match.groupValues[1].replace("\/", "/").replace("\\"", "")
+            val link = match.groupValues[1].replace("\\/", "/").replace("\\", "")
             if (link.isNotBlank() && link.startsWith("http")) {
                 playbackUrls.add(link)
             }
@@ -164,7 +170,7 @@ class RebahinProvider : MainAPI() {
 
         val mediaRegex = Regex("""https?://[^\s"'\>]+\.(?:m3u8|mp4)[^\s"'\>]*""")
         mediaRegex.findAll(res).forEach { match ->
-            val link = match.value.replace("\/", "/").replace("\\"", "")
+            val link = match.value.replace("\\/", "/").replace("\\", "")
             if (link.isNotBlank() && !link.contains("advertisement") && !link.contains("logo")) {
                 playbackUrls.add(link)
             }
