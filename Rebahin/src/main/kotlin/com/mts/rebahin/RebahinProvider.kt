@@ -58,7 +58,7 @@ class RebahinProvider : MainAPI() {
 
     private fun parseRebahinItems(html: String): List<SearchResponse> {
         val items = mutableListOf<SearchResponse>()
-        val cleanHtml = html.replace("\"", """).replace("\/", "/")
+        val cleanHtml = html.replace("\\\"", "\"").replace("\\/", "/")
 
         // 1. Next.js JSON RSC Payload Parser
         val itemRegex = Regex(""""id"\s*:\s*"([^"]+)".*?"type"\s*:\s*"([^"]+)".*?"title"\s*:\s*"([^"]+)"""")
@@ -130,7 +130,7 @@ class RebahinProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val res = app.get(url, referer = "$mainUrl/").text
-        val cleanHtml = res.replace("\"", """).replace("\/", "/")
+        val cleanHtml = res.replace("\\\"", "\"").replace("\\/", "/")
 
         val title = Regex(""""title"\s*:\s*"([^"]+)"""").find(cleanHtml)?.groupValues?.get(1)
             ?: Regex("""<h1[^>]*>([^<]+)</h1>""").find(cleanHtml)?.groupValues?.get(1)?.trim()
@@ -187,7 +187,7 @@ class RebahinProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val res = app.get(data, referer = "$mainUrl/").text
-        val cleanHtml = res.replace("\"", """).replace("\/", "/")
+        val cleanHtml = res.replace("\\\"", "\"").replace("\\/", "/")
         val playbackUrls = mutableListOf<String>()
 
         val regex = Regex(""""playbackUrl"\s*:\s*"([^"]+)"""")
