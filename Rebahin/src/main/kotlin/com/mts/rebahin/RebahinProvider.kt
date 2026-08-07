@@ -8,6 +8,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 class RebahinProvider : MainAPI() {
@@ -28,20 +29,7 @@ class RebahinProvider : MainAPI() {
         "$mainUrl/tv" to "TV Series",
         "$mainUrl/genre/action" to "Action",
         "$mainUrl/genre/horror" to "Horror",
-        "$mainUrl/genre/adventure" to "Adventure",
-        "$mainUrl/genre/comedy" to "Comedy",
-        "$mainUrl/genre/crime" to "Crime",
-        "$mainUrl/genre/drama" to "Drama",
-        "$mainUrl/genre/fantasy" to "Fantasy",
-        "$mainUrl/genre/mystery" to "Mystery",
-        "$mainUrl/genre/romance" to "Romance",
-        "$mainUrl/genre/science-fiction" to "Science Fiction",
-        "$mainUrl/genre/thriller" to "Thriller",
-        "$mainUrl/genre/animation" to "Animation",
-        "$mainUrl/country/kr" to "Korea",
-        "$mainUrl/country/cn" to "China",
-        "$mainUrl/country/jp" to "Japan",
-        "$mainUrl/country/ph" to "Philippines"
+        "$mainUrl/country/kr" to "Korea Drama"
     )
 
     override suspend fun getMainPage(
@@ -70,23 +58,64 @@ class RebahinProvider : MainAPI() {
 
     private fun parseRebahinItems(html: String): List<SearchResponse> {
         val items = mutableListOf<SearchResponse>()
-        val regex = Regex("""id.*?:\s*["\\]*([^"]+)["\\]*,\s*type.*?:\s*["\\]*([^"]+)["\\]*,\s*title.*?:\s*["\\]*([^"]+)["\\]*""")
+        val cleanHtml = html.replace("\"", """).replace("\/", "/")
 
-        regex.findAll(html).forEach { match ->
+        // 1. Next.js JSON RSC Payload Parser
+        val itemRegex = Regex(""""id"\s*:\s*"([^"]+)".*?"type"\s*:\s*"([^"]+)".*?"title"\s*:\s*"([^"]+)"""")
+        itemRegex.findAll(cleanHtml).forEach { match ->
             val id = match.groupValues[1]
             val type = match.groupValues[2]
             val title = match.groupValues[3]
 
-            if (id.isNotBlank() && title.isNotBlank() && !title.contains("REBAHIN", true)) {
+            if (id.isNotBlank() && title.isNotBlank() && !title.startsWith("REBAHIN", true)) {
                 val isTv = type.equals("tv", ignoreCase = true)
                 val itemUrl = if (isTv) "$mainUrl/tv/$id" else "$mainUrl/movies/$id"
 
+                // Find poster for this ID
+                val posterRegex = Regex(""""id"\s*:\s*"$id".*?"posterPath"\s*:\s*"([^"]+)"""")
+                var poster = posterRegex.find(cleanHtml)?.groupValues?.get(1)
+                if (poster != null && poster.startsWith("/")) {
+                    poster = "https://image.tmdb.org/t/p/w500$poster"
+                }
+
                 val item = if (isTv) {
-                    newTvSeriesSearchResponse(title, itemUrl, TvType.TvSeries)
+                    newTvSeriesSearchResponse(title, itemUrl, TvType.TvSeries) {
+                        this.posterUrl = poster
+                    }
                 } else {
-                    newMovieSearchResponse(title, itemUrl, TvType.Movie)
+                    newMovieSearchResponse(title, itemUrl, TvType.Movie) {
+                        this.posterUrl = poster
+                    }
                 }
                 items.add(item)
+            }
+        }
+
+        // 2. DOM HTML Jsoup Fallback
+        if (items.isEmpty()) {
+            val doc = Jsoup.parse(html)
+            doc.select("a[href^='/movies/'], a[href^='/tv/']").forEach { a ->
+                val href = a.attr("href")
+                val title = a.select(".font-medium, span, img").text().ifBlank { a.attr("title") }
+                val poster = a.select("img").attr("src").let {
+                    if (it.startsWith("/")) "https://image.tmdb.org/t/p/w500$it" else it
+                }
+
+                if (href.isNotBlank() && title.isNotBlank() && !title.contains("REBAHIN", true)) {
+                    val isTv = href.startsWith("/tv/")
+                    val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
+
+                    val item = if (isTv) {
+                        newTvSeriesSearchResponse(title, fullUrl, TvType.TvSeries) {
+                            this.posterUrl = poster.ifBlank { null }
+                        }
+                    } else {
+                        newMovieSearchResponse(title, fullUrl, TvType.Movie) {
+                            this.posterUrl = poster.ifBlank { null }
+                        }
+                    }
+                    items.add(item)
+                }
             }
         }
 
@@ -101,27 +130,28 @@ class RebahinProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val res = app.get(url, referer = "$mainUrl/").text
+        val cleanHtml = res.replace("\"", """).replace("\/", "/")
 
-        val title = Regex("""title.*?:\s*["\\]*([^"]+)["\\]*""").find(res)?.groupValues?.get(1)
-            ?: Regex("""<h1[^>]*>([^<]+)</h1>""").find(res)?.groupValues?.get(1)?.trim()
+        val title = Regex(""""title"\s*:\s*"([^"]+)"""").find(cleanHtml)?.groupValues?.get(1)
+            ?: Regex("""<h1[^>]*>([^<]+)</h1>""").find(cleanHtml)?.groupValues?.get(1)?.trim()
             ?: "Rebahin"
 
-        val poster = Regex("""posterUrl.*?:\s*["\\]*([^"]+)["\\]*""").find(res)?.groupValues?.get(1)
-            ?: Regex("""posterPath.*?:\s*["\\]*([^"]+)["\\]*""").find(res)?.groupValues?.get(1)?.let {
+        val poster = Regex(""""posterUrl"\s*:\s*"([^"]+)"""").find(cleanHtml)?.groupValues?.get(1)
+            ?: Regex(""""posterPath"\s*:\s*"([^"]+)"""").find(cleanHtml)?.groupValues?.get(1)?.let {
                 if (it.startsWith("/")) "https://image.tmdb.org/t/p/w500$it" else it
             }
 
-        val plot = Regex("""overview.*?:\s*["\\]*([^"]+)["\\]*""").find(res)?.groupValues?.get(1)
+        val plot = Regex(""""overview"\s*:\s*"([^"]+)"""").find(cleanHtml)?.groupValues?.get(1)
 
-        val year = Regex("""releaseYear.*?:\s*(\d+)""").find(res)?.groupValues?.get(1)?.toIntOrNull()
+        val year = Regex(""""releaseYear"\s*:\s*(\d+)""").find(cleanHtml)?.groupValues?.get(1)?.toIntOrNull()
 
-        val isTv = url.contains("/tv/") || res.contains("episodes")
+        val isTv = url.contains("/tv/") || cleanHtml.contains("episodes")
 
         if (isTv) {
             val episodes = mutableListOf<Episode>()
-            val epRegex = Regex("""episodeNumber.*?:\s*(\d+).*?seasonNumber.*?:\s*(\d+).*?name.*?:\s*["\\]*([^"]+)["\\]*""")
+            val epRegex = Regex(""""episodeNumber"\s*:\s*(\d+).*?"seasonNumber"\s*:\s*(\d+).*?"name"\s*:\s*"([^"]+)"""")
 
-            epRegex.findAll(res).forEach { match ->
+            epRegex.findAll(cleanHtml).forEach { match ->
                 val epNum = match.groupValues[1].toIntOrNull() ?: 1
                 val seasonNum = match.groupValues[2].toIntOrNull() ?: 1
                 val epName = match.groupValues[3]
@@ -157,10 +187,11 @@ class RebahinProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val res = app.get(data, referer = "$mainUrl/").text
+        val cleanHtml = res.replace("\"", """).replace("\/", "/")
         val playbackUrls = mutableListOf<String>()
 
-        val regex = Regex("""playbackUrl.*?:\s*["\\]*([^"]+)["\\]*""")
-        regex.findAll(res).forEach { match ->
+        val regex = Regex(""""playbackUrl"\s*:\s*"([^"]+)"""")
+        regex.findAll(cleanHtml).forEach { match ->
             val link = match.groupValues[1]
             if (link.isNotBlank() && link.startsWith("http")) {
                 playbackUrls.add(link)
@@ -168,7 +199,7 @@ class RebahinProvider : MainAPI() {
         }
 
         val mediaRegex = Regex("""https?://[^\s"'<>]+\.(?:m3u8|mp4)[^\s"'<>]*""")
-        mediaRegex.findAll(res).forEach { match ->
+        mediaRegex.findAll(cleanHtml).forEach { match ->
             val link = match.value
             if (link.isNotBlank() && !link.contains("advertisement") && !link.contains("logo")) {
                 playbackUrls.add(link)
