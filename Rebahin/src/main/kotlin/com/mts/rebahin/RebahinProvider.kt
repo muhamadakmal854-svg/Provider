@@ -70,7 +70,7 @@ class RebahinProvider : MainAPI() {
 
     private fun parseRebahinItems(html: String): List<SearchResponse> {
         val items = mutableListOf<SearchResponse>()
-        val regex = Regex("id.*?:\\s*["\\\\]*([^"]+)["\\\\]*,\\s*type.*?:\\s*["\\\\]*([^"]+)["\\\\]*,\\s*title.*?:\\s*["\\\\]*([^"]+)["\\\\]*")
+        val regex = Regex("""id.*?:\s*["\]*([^"]+)["\]*,\s*type.*?:\s*["\]*([^"]+)["\]*,\s*title.*?:\s*["\]*([^"]+)["\]*""")
 
         regex.findAll(html).forEach { match ->
             val id = match.groupValues[1].replace("\\", "")
@@ -102,29 +102,29 @@ class RebahinProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val res = app.get(url, referer = "$mainUrl/").text
 
-        val title = Regex("title.*?:\\s*["\\\\]*([^"]+)["\\\\]*").find(res)?.groupValues?.get(1)?.replace("\\", "")
-            ?: Regex("<h1[^>]*>([^<]+)</h1>").find(res)?.groupValues?.get(1)?.trim()
+        val title = Regex("""title.*?:\s*["\]*([^"]+)["\]*""").find(res)?.groupValues?.get(1)
+            ?: Regex("""<h1[^>]*>([^<]+)</h1>""").find(res)?.groupValues?.get(1)?.trim()
             ?: "Rebahin"
 
-        val poster = Regex("posterUrl.*?:\\s*["\\\\]*([^"]+)["\\\\]*").find(res)?.groupValues?.get(1)?.replace("\\", "")
-            ?: Regex("posterPath.*?:\\s*["\\\\]*([^"]+)["\\\\]*").find(res)?.groupValues?.get(1)?.replace("\\", "")?.let {
+        val poster = Regex("""posterUrl.*?:\s*["\]*([^"]+)["\]*""").find(res)?.groupValues?.get(1)
+            ?: Regex("""posterPath.*?:\s*["\]*([^"]+)["\]*""").find(res)?.groupValues?.get(1)?.let {
                 if (it.startsWith("/")) "https://image.tmdb.org/t/p/w500$it" else it
             }
 
-        val plot = Regex("overview.*?:\\s*["\\\\]*([^"]+)["\\\\]*").find(res)?.groupValues?.get(1)?.replace("\\", "")
+        val plot = Regex("""overview.*?:\s*["\]*([^"]+)["\]*""").find(res)?.groupValues?.get(1)
 
-        val year = Regex("releaseYear.*?:\\s*(\\d+)").find(res)?.groupValues?.get(1)?.toIntOrNull()
+        val year = Regex("""releaseYear.*?:\s*(\d+)""").find(res)?.groupValues?.get(1)?.toIntOrNull()
 
         val isTv = url.contains("/tv/") || res.contains("episodes")
 
         if (isTv) {
             val episodes = mutableListOf<Episode>()
-            val epRegex = Regex("episodeNumber.*?:\\s*(\\d+).*?seasonNumber.*?:\\s*(\\d+).*?name.*?:\\s*["\\\\]*([^"]+)["\\\\]*")
+            val epRegex = Regex("""episodeNumber.*?:\s*(\d+).*?seasonNumber.*?:\s*(\d+).*?name.*?:\s*["\]*([^"]+)["\]*""")
 
             epRegex.findAll(res).forEach { match ->
                 val epNum = match.groupValues[1].toIntOrNull() ?: 1
                 val seasonNum = match.groupValues[2].toIntOrNull() ?: 1
-                val epName = match.groupValues[3].replace("\\", "")
+                val epName = match.groupValues[3]
 
                 val epUrl = "$url?season=$seasonNum&episode=$epNum"
                 episodes.add(
@@ -159,17 +159,17 @@ class RebahinProvider : MainAPI() {
         val res = app.get(data, referer = "$mainUrl/").text
         val playbackUrls = mutableListOf<String>()
 
-        val regex = Regex("playbackUrl.*?:\\s*["\\\\]*([^"]+)["\\\\]*")
+        val regex = Regex("""playbackUrl.*?:\s*["\]*([^"]+)["\]*""")
         regex.findAll(res).forEach { match ->
-            val link = match.groupValues[1].replace("\\/", "/").replace("\\", "")
+            val link = match.groupValues[1].replace("\/", "/")
             if (link.isNotBlank() && link.startsWith("http")) {
                 playbackUrls.add(link)
             }
         }
 
-        val mediaRegex = Regex("https?://[^\\s"'<>]+\\.(?:m3u8|mp4)[^\\s"'< >]*")
+        val mediaRegex = Regex("""https?://[^\s"'<>]+\.(?:m3u8|mp4)[^\s"'<>]*""")
         mediaRegex.findAll(res).forEach { match ->
-            val link = match.value.replace("\\/", "/").replace("\\", "")
+            val link = match.value.replace("\/", "/")
             if (link.isNotBlank() && !link.contains("advertisement") && !link.contains("logo")) {
                 playbackUrls.add(link)
             }
