@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk MovieBox - Movies and TV Series"
+    description = "Provider untuk -M-o-v-i-e-B-o-x- --- -M-o-v-i-e-s- -a-n-d- -T-V- -S-e-r-i-e-s-"
 
     authors     = listOf("MTS")
 

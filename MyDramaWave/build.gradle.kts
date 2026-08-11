@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "en"
 
-    description = "Provider untuk MyDramaWave"
+    description = "Provider untuk -M-y-D-r-a-m-a-W-a-v-e-"
 
     authors     = listOf("MTS")
 

@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "ms"
 
-    description = "Provider untuk MYTV Live"
+    description = "Provider untuk -M-Y-T-V- -L-i-v-e-"
 
     authors     = listOf("MTS")
 

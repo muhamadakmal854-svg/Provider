@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk AnimePlay - Anime Subtitle Indonesia"
+    description = "Provider untuk -A-n-i-m-e-P-l-a-y- --- -A-n-i-m-e- -S-u-b-t-i-t-l-e- -I-n-d-o-n-e-s-i-a-"
 
     authors     = listOf("MTS")
 

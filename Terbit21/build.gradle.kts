@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "ms"
 
-    description = "Provider untuk Terbit21 Nonton Dunia21 Bioskop Online Layarkaca21 INDOXXI"
+    description = "Provider untuk -T-e-r-b-i-t-2-1- -N-o-n-t-o-n- -D-u-n-i-a-2-1- -B-i-o-s-k-o-p- -O-n-l-i-n-e- -L-a-y-a-r-k-a-c-a-2-1- -I-N-D-O-X-X-I-"
 
     authors     = listOf("MTS")
 

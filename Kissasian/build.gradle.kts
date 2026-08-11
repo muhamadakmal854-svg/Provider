@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk KissAsian Tv"
+    description = "Provider untuk -K-i-s-s-A-s-i-a-n- -T-v-"
 
     authors     = listOf("MTS")
 

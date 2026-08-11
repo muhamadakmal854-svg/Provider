@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "ms"
 
-    description = "Provider untuk RTM Klik"
+    description = "Provider untuk -R-T-M- -K-l-i-k-"
 
     authors     = listOf("MTS")
 

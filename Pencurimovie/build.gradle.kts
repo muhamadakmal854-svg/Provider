@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "ms"
 
-    description = "Provider untuk Pencurimovie"
+    description = "Provider untuk -P-e-n-c-u-r-i-m-o-v-i-e-"
 
     authors     = listOf("MTS")
 

@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "en"
 
-    description = "Provider untuk GoodShort - Dramas & Mini-series"
+    description = "Provider untuk -G-o-o-d-S-h-o-r-t- --- -D-r-a-m-a-s- -&- -M-i-n-i---s-e-r-i-e-s-"
 
     authors     = listOf("MTS")
 

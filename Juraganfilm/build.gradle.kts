@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk JURAGANFILM : Situs Nonton Film Sub Indo Streaming Movie Online"
+    description = "Provider untuk -J-U-R-A-G-A-N-F-I-L-M- -:- -S-i-t-u-s- -N-o-n-t-o-n- -F-i-l-m- -S-u-b- -I-n-d-o- -S-t-r-e-a-m-i-n-g- -M-o-v-i-e- -O-n-l-i-n-e-"
 
     authors     = listOf("MTS")
 

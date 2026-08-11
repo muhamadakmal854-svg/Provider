@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk Bilibili TV Indonesia"
+    description = "Provider untuk -B-i-l-i-b-i-l-i- -T-V- -I-n-d-o-n-e-s-i-a-"
 
     authors     = listOf("MTS")
 

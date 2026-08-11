@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk FreeReels - MyDramaWave Korean Dramas"
+    description = "Provider untuk -F-r-e-e-R-e-e-l-s- --- -M-y-D-r-a-m-a-W-a-v-e- -K-o-r-e-a-n- -D-r-a-m-a-s-"
 
     authors     = listOf("MTS")
 

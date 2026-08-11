@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk FilmKita21 - Nonton Film Streaming Layarkaca21 LK21"
+    description = "Provider untuk -F-i-l-m-K-i-t-a-2-1- --- -N-o-n-t-o-n- -F-i-l-m- -S-t-r-e-a-m-i-n-g- -L-a-y-a-r-k-a-c-a-2-1- -L-K-2-1-"
 
     authors     = listOf("MTS")
 

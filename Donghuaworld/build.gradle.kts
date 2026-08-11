@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk Donghua World"
+    description = "Provider untuk -D-o-n-g-h-u-a- -W-o-r-l-d-"
 
     authors     = listOf("MTS")
 

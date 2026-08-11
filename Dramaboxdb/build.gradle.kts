@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "en"
 
-    description = "Provider untuk Dramaboxdb"
+    description = "Provider untuk -D-r-a-m-a-b-o-x-d-b-"
 
     authors     = listOf("MTS")
 
