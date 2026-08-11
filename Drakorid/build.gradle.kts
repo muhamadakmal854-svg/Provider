@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk drakor.id – drakorid.cam nonton drama korea dan drama china gratis"
+    description = "Provider untuk drakor.id â€“ drakorid.cam nonton drama korea dan drama china gratis"
 
     authors     = listOf("MTS")
 

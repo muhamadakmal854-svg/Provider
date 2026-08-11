@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk KLIKXXI – Nonton Film Online Gratis Sub Indo LAYARKACA21 LK21"
+    description = "Provider untuk KLIKXXI â€“ Nonton Film Online Gratis Sub Indo LAYARKACA21 LK21"
 
     authors     = listOf("MTS")
 
