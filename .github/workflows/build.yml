@@ -44,7 +44,7 @@ jobs:
         working-directory: ${{ github.workspace }}/src
         run: |
           chmod +x gradlew
-          ./gradlew make makePluginsJson --max-workers=1 --no-build-cache --no-daemon --rerun-tasks --no-build-cache --no-daemon --rerun-tasks --no-build-cache --no-daemon --rerun-tasks
+          ./gradlew make makePluginsJson --max-workers=1 --no-build-cache --no-daemon --rerun-tasks
           cp **/build/*.cs3 ${{ github.workspace }}/builds/
 
       - name: Update plugins.json size & hash
