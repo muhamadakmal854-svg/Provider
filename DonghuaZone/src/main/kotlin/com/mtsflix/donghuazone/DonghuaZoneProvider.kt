@@ -255,7 +255,7 @@ class DonghuaZoneProvider : MainAPI() {
                                     mimeType.contains("x-mpegURL", true)
                                 )) {
                                 callback.invoke(
-                                    ExtractorLink(
+                                    newExtractorLink(
                                         source = "DonghuaZone",
                                         name = "$serverName ($quality)",
                                         url = streamUrl,
@@ -268,7 +268,7 @@ class DonghuaZoneProvider : MainAPI() {
                                             "240" -> Qualities.P240.value
                                             else -> Qualities.Unknown.value
                                         },
-                                        isM3u8 = true
+                                        type = ExtractorLinkType.M3U8
                                     )
                                 )
                                 count++
