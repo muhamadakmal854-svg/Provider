@@ -259,17 +259,18 @@ class DonghuaZoneProvider : MainAPI() {
                                         source = "DonghuaZone",
                                         name = "$serverName ($quality)",
                                         url = streamUrl,
-                                        referer = "https://www.dailymotion.com/",
-                                        quality = when (quality.lowercase()) {
+                                        type = ExtractorLinkType.M3U8
+                                    ) {
+                                        referer = "https://www.dailymotion.com/"
+                                        this.quality = when (quality.lowercase()) {
                                             "1080" -> Qualities.P1080.value
                                             "720" -> Qualities.P720.value
                                             "480" -> Qualities.P480.value
                                             "360" -> Qualities.P360.value
                                             "240" -> Qualities.P240.value
                                             else -> Qualities.Unknown.value
-                                        },
-                                        type = ExtractorLinkType.M3U8
-                                    )
+                                        }
+                                    }
                                 )
                                 count++
                             }
