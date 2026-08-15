@@ -1,11 +1,11 @@
 {
-  "name": "DonghuaZoneProvider",
+  "name": "DonghuaZone",
   "plugin": "com.mtsflix.donghuazone.DonghuaZonePlugin",
   "description": "MTSFlix Provider Extension for DonghuaZone",
   "authors": [
     "MTS"
   ],
-  "version": 2,
+  "version": 3,
   "language": "id",
   "type": "movies",
   "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"

@@ -50,15 +50,19 @@ class DonghuaZoneProvider : MainAPI() {
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
-        val titleElem = this.selectFirst("h2, h3, .post-title, .entry-title") ?: return null
-        val title = titleElem.text().trim()
+        val title = this.selectFirst("h3.post-title, .home-title, .grid2-tt, h2, h3")?.text()?.trim()
+            ?: this.selectFirst("a[title]")?.attr("title")?.trim()
+            ?: return null
         if (title.isBlank()) return null
 
         val a = this.selectFirst("a[href]") ?: return null
         val href = fixUrl(a.attr("href"))
 
-        val imgElem = this.selectFirst("img[src], img[data-src]")
-        val posterUrl = imgElem?.let { it.attr("data-src").ifEmpty { it.attr("src") } }?.let { fixUrlNull(it) }
+        val imgElem = this.selectFirst("img[data-src], img[src]")
+        val posterUrl = imgElem?.let {
+            val src = it.attr("data-src").ifEmpty { it.attr("src") }
+            if (src.startsWith("data:")) null else fixUrlNull(src)
+        }
 
         val type = if (title.contains("Movie", true)) TvType.AnimeMovie else TvType.Anime
 
