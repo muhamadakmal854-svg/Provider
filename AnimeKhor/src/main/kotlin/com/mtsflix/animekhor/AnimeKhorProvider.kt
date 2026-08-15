@@ -3,6 +3,9 @@ package com.mtsflix.animekhor
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.nicehttp.Requests
+import com.lagradost.cloudstream3.network.addCloudFlareDns
+import java.util.concurrent.TimeUnit
 import org.jsoup.Jsoup
 import org.json.JSONObject
 import org.json.JSONArray
@@ -22,12 +25,18 @@ class AnimeKhorProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.Anime)
 
-    override val mainPage = mainPageOf(
-        "page/%d/" to "Rilisan Terbaru",
-        "donghua-series/page/%d/" to "Donghua Series",
-        "comic-series/page/%d/" to "Comic Series",
-        "a-z-lists/page/%d/" to "A-Z Lists",
-        "anime/page/%d/?status=&type=&order=" to "Filter Search"
+    private val client = Requests().apply {
+        baseClient = baseClient.newBuilder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .addCloudFlareDns()
+            .build()
+    }
+
+    private val browserHeaders = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language" to "en-US,en;q=0.9"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -37,7 +46,7 @@ class AnimeKhorProvider : MainAPI() {
             "$mainUrl/${request.data}"
         }
 
-        val document = app.get(targetUrl).document
+        val document = client.get(targetUrl, headers = browserHeaders).document
         val home = document.select("div.listupd article, div.bsx, article.bs, div.bs, .listupd .bsx, .item, article")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
@@ -73,7 +82,7 @@ class AnimeKhorProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
         for (i in 1..3) {
-            val document = app.get("$mainUrl/page/$i/?s=$query").document
+            val document = client.get("$mainUrl/page/$i/?s=$query", headers = browserHeaders).document
             val results = document.select("div.listupd article, .item, article").mapNotNull { it.toSearchResult() }
             if (results.isEmpty()) break
             searchResponse.addAll(results)
@@ -83,7 +92,7 @@ class AnimeKhorProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val cleanUrl = fixUrl(url)
-        val document = app.get(cleanUrl).document
+        val document = client.get(cleanUrl, headers = browserHeaders).document
         val title = document.selectFirst("h1.entry-title")?.text()?.trim().toString()
         val poster = document.selectFirst("img.wp-post-image, div.ime > img, .thumb img")
             ?.attr("src")?.takeIf { it.isNotBlank() }
@@ -146,7 +155,7 @@ class AnimeKhorProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(fixUrl(data)).document
+        val document = client.get(fixUrl(data), headers = browserHeaders).document
         val streamUrls = mutableSetOf<String>()
 
         val defaultIframeSrc = document.selectFirst("#pembed iframe, .player-embed iframe, #embed_holder iframe")?.attr("src")
@@ -197,7 +206,7 @@ class AnimeKhorProvider : MainAPI() {
 
                 if (!dmVideoId.isNullOrBlank()) {
                     val metaUrl = "https://www.dailymotion.com/player/metadata/video/$dmVideoId?locale=en_US"
-                    val metaResponse = app.get(
+                    val metaResponse = client.get(
                         metaUrl,
                         headers = mapOf(
                             "Origin" to "https://www.dailymotion.com",
@@ -248,7 +257,7 @@ class AnimeKhorProvider : MainAPI() {
 
                 // 2. AbyssPlayer Custom AES-CTR Decryption
                 if (streamUrl.contains("abyssplayer.com/")) {
-                    val streamDoc = app.get(
+                    val streamDoc = client.get(
                         streamUrl,
                         referer = data,
                         headers = mapOf(
@@ -329,7 +338,7 @@ class AnimeKhorProvider : MainAPI() {
                     val id = idMatch?.groupValues?.getOrNull(1)?.trim()
                     if (!id.isNullOrBlank()) {
                         // First trigger the info API to register IP session on the backend
-                        app.get(
+                        client.get(
                             "https://animekhor.upns.live/api/v1/info?id=$id",
                             headers = mapOf(
                                 "Referer" to "https://animekhor.upns.live/",
@@ -338,7 +347,7 @@ class AnimeKhorProvider : MainAPI() {
                         )
 
                         // Next fetch the video API
-                        val apiResponse = app.get(
+                        val apiResponse = client.get(
                             "https://animekhor.upns.live/api/v1/video?id=$id&w=1920&h=1080&r=animekhor.org",
                             headers = mapOf(
                                 "Referer" to "https://animekhor.upns.live/",
