@@ -32,10 +32,10 @@ class DonghuaFilmProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
 
-        "page/%d" to "Rilisan Terbaru",
-        "anime/page/%d/?status=ongoing" to "Ongoing",
-        "anime/page/%d/?status=completed" to "Completed",
-        "anime/page/%d/?type=movie" to "Movie"
+        "" to "Rilisan Terbaru",
+        "anime/?status=ongoing" to "Ongoing",
+        "anime/?status=completed" to "Completed",
+        "anime/?type=movie" to "Movie"
 
     )
 
