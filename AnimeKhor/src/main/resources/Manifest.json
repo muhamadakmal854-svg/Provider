@@ -1,0 +1,12 @@
+{
+  "name": "AnimeKhor",
+  "plugin": "com.mtsflix.animekhor.AnimeKhorPlugin",
+  "description": "MTSFlix Provider Extension for AnimeKhor",
+  "authors": [
+    "MTS"
+  ],
+  "version": 1,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}
