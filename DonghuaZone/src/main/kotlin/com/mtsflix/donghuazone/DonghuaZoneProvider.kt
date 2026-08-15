@@ -2,6 +2,7 @@ package com.mtsflix.donghuazone
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import org.json.JSONObject
 import org.json.JSONArray
 import org.jsoup.nodes.Element
@@ -18,7 +19,7 @@ class DonghuaZoneProvider : MainAPI() {
         TvType.OVA
     )
 
-    // Only categories with actual content - empty ones removed
+    // Only categories with real content
     override val mainPage = mainPageOf(
         "" to "Latest Episode",
         "search/label/Ongoing" to "Ongoing",
@@ -26,6 +27,9 @@ class DonghuaZoneProvider : MainAPI() {
         "search/label/Donghua" to "Donghua"
     )
 
+    // -------------------------------------------------------
+    // MAIN PAGE
+    // -------------------------------------------------------
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val path = request.data
         val url = if (path.isEmpty()) {
@@ -57,18 +61,24 @@ class DonghuaZoneProvider : MainAPI() {
         }
     }
 
+    // -------------------------------------------------------
+    // SEARCH
+    // -------------------------------------------------------
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/search?q=$query").document
         return document.select(".post-outer-container, article.post-outer-container, article.post")
             .mapNotNull { it.toSearchResult() }
     }
 
+    // -------------------------------------------------------
+    // LOAD - Series detail + episode list
+    // -------------------------------------------------------
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
         val title = document.selectFirst("h1.title-stream, h1.post-title, h1.entry-title, h1")
             ?.text()?.trim() ?: return null
 
-        val posterUrl = document.selectFirst(".post-thumbnail, .post-body img, .entry-content img")?.let {
+        val posterUrl = document.selectFirst(".post-thumbnail img, .post-body img, .entry-content img")?.let {
             val src = it.attr("data-src").ifEmpty { it.attr("src") }
             if (src.startsWith("data:")) null else fixUrlNull(src)
         }
@@ -82,7 +92,7 @@ class DonghuaZoneProvider : MainAPI() {
             }
         }
 
-        // Genre labels to ignore - only detect series title label
+        // Genre labels to skip when searching for series label
         val ignoreGenres = setOf(
             "movie", "ongoing", "completed", "action", "adventure",
             "fantasy", "romance", "cultivation", "martial arts", "donghua", "episode", "3d"
@@ -91,43 +101,41 @@ class DonghuaZoneProvider : MainAPI() {
         var seriesLabel: String? = null
         document.select("a[href*='/search/label/']").forEach { a ->
             val href = a.attr("href")
-            if (href.contains("/search/label/")) {
-                val raw = href.substringAfter("/search/label/").substringBefore("?")
-                    .replace("%20", " ").trim()
-                if (raw.isNotEmpty() && !ignoreGenres.contains(raw.lowercase())) {
-                    seriesLabel = raw
-                }
+            val raw = href.substringAfter("/search/label/").substringBefore("?")
+                .replace("+", " ").replace("%20", " ").trim()
+            if (raw.isNotEmpty() && !ignoreGenres.contains(raw.lowercase()) && seriesLabel == null) {
+                seriesLabel = raw
             }
         }
 
         val episodes = mutableListOf<Episode>()
         if (!seriesLabel.isNullOrBlank()) {
             try {
-                val feedUrl = "$mainUrl/feeds/posts/default/-/$seriesLabel?alt=json&max-results=100"
+                val encoded = seriesLabel!!.replace(" ", "%20")
+                val feedUrl = "$mainUrl/feeds/posts/default/-/$encoded?alt=json&max-results=200"
                 val jsonText = app.get(feedUrl).text
-                val feedJson = JSONObject(jsonText)
-                val feedObj = feedJson.optJSONObject("feed")
-                val entryArr = feedObj?.optJSONArray("entry") ?: JSONArray()
+                val feedObj = JSONObject(jsonText).optJSONObject("feed") ?: JSONObject()
+                val entryArr = feedObj.optJSONArray("entry") ?: JSONArray()
                 val epList = mutableListOf<Pair<String, String>>()
                 for (i in 0 until entryArr.length()) {
                     val entry = entryArr.getJSONObject(i)
                     val titleObj = entry.optJSONObject("title")
-                    val epTitle = titleObj?.optString("\$t")?.takeIf { it.isNotBlank() }
-                        ?: "Episode ${i + 1}"
+                    // Use getString on key "$t" directly
+                    val epTitle = if (titleObj != null && titleObj.has("\$t")) {
+                        titleObj.getString("\$t").trim()
+                    } else "Episode ${i + 1}"
                     val linkArr = entry.optJSONArray("link") ?: continue
                     var epHref: String? = null
                     for (j in 0 until linkArr.length()) {
-                        val linkObj = linkArr.getJSONObject(j)
-                        if (linkObj.optString("rel") == "alternate") {
-                            epHref = linkObj.optString("href")
+                        val lObj = linkArr.getJSONObject(j)
+                        if (lObj.optString("rel") == "alternate") {
+                            epHref = lObj.optString("href")
                             break
                         }
                     }
-                    if (!epHref.isNullOrBlank()) {
-                        epList.add(Pair(epTitle, epHref))
-                    }
+                    if (!epHref.isNullOrBlank()) epList.add(Pair(epTitle, epHref))
                 }
-                // Reverse to get ep 1 first
+                // Reverse so episode 1 comes first
                 epList.reversed().forEachIndexed { index, (epTitle, epHref) ->
                     episodes.add(newEpisode(epHref) {
                         this.name = epTitle
@@ -135,7 +143,7 @@ class DonghuaZoneProvider : MainAPI() {
                     })
                 }
             } catch (e: Exception) {
-                // Fallback: single episode
+                // fallback handled below
             }
         }
 
@@ -153,6 +161,9 @@ class DonghuaZoneProvider : MainAPI() {
         }
     }
 
+    // -------------------------------------------------------
+    // LOAD LINKS - Extract video from Dailymotion Metadata API
+    // -------------------------------------------------------
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -160,70 +171,119 @@ class DonghuaZoneProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).document
-        val foundServers = mutableListOf<Pair<String, String>>()
+        val html = document.html()
 
-        // Extract all 3 server buttons: Multi Sub, Indonesia Sub, English Sub
-        document.select("button[onclick*='changeServer'], a[onclick*='changeServer'], .serverBtn").forEach { btn ->
-            val serverName = btn.text().trim()
-            val onclick = btn.attr("onclick")
-            val match = Regex("""changeServer\([^,]+,\s*['"]([^'"]+)['"]\)""").find(onclick)
-            val serverUrl = match?.groupValues?.getOrNull(1)?.trim() ?: ""
-            if (serverUrl.isNotBlank() && serverUrl.startsWith("http")) {
-                if (foundServers.none { it.second == serverUrl }) {
-                    foundServers.add(Pair(serverName, serverUrl))
-                }
+        // Regex: extract changeServer URLs (geo.dailymotion.com player URLs)
+        val serverRegex = Regex("""changeServer\s*\(\s*(?:this|[^,]+)\s*,\s*['"]([^'"]+)['"]""")
+        val btnTextRegex = Regex("""<button[^>]*onclick="changeServer\([^)]+\)"[^>]*>\s*([^<]+)\s*</button>""", RegexOption.IGNORE_CASE)
+
+        // Map URL -> button label
+        val urlToName = mutableMapOf<String, String>()
+        btnTextRegex.findAll(html).forEach { m ->
+            val fullBtn = m.value
+            val btnLabel = m.groupValues[1].trim()
+            val urlMatch = serverRegex.find(fullBtn)
+            val playerUrl = urlMatch?.groupValues?.getOrNull(1)?.trim() ?: ""
+            if (playerUrl.isNotBlank()) urlToName[playerUrl] = btnLabel
+        }
+
+        // Fallback: just collect all URLs
+        serverRegex.findAll(html).forEach { m ->
+            val playerUrl = m.groupValues[1].trim()
+            if (playerUrl.isNotBlank() && !urlToName.containsKey(playerUrl)) {
+                urlToName[playerUrl] = "DonghuaZone"
             }
         }
 
-        // Fallback: regex scan whole HTML if no buttons found
-        if (foundServers.isEmpty()) {
-            val html = document.html()
-            val regex = Regex("""changeServer\([^,]+,\s*['"]([^'"]+)['"]\)""")
-            regex.findAll(html).forEach { m ->
-                val serverUrl = m.groupValues.getOrNull(1)?.trim() ?: ""
-                if (serverUrl.isNotBlank() && serverUrl.startsWith("http")) {
-                    if (foundServers.none { it.second == serverUrl }) {
-                        foundServers.add(Pair("Server", serverUrl))
-                    }
-                }
+        // Also check window.onload default server
+        val onloadRegex = Regex("""changeServer\s*\([^,]+,\s*['"]([^'"]+)['"]\)\s*;?\s*\}""")
+        onloadRegex.find(html)?.groupValues?.getOrNull(1)?.let { defUrl ->
+            if (defUrl.isNotBlank() && !urlToName.containsKey(defUrl)) {
+                urlToName[defUrl] = "Default"
             }
         }
 
-        // Fallback: iframes
-        if (foundServers.isEmpty()) {
-            document.select("iframe").forEach { iframe ->
-                val src = iframe.attr("data-src").ifEmpty { iframe.attr("src") }.trim()
+        if (urlToName.isEmpty()) {
+            // Final fallback: iframes
+            document.select("iframe[src], iframe[data-src]").forEach { iframe ->
+                val src = iframe.attr("src").ifEmpty { iframe.attr("data-src") }.trim()
                 if (src.isNotBlank() && src.startsWith("http")) {
-                    if (foundServers.none { it.second == src }) {
-                        foundServers.add(Pair("Iframe", src))
-                    }
+                    urlToName[src] = "Iframe Server"
                 }
             }
         }
 
         var count = 0
-        for ((_, serverUrl) in foundServers) {
-            val fixedUrl = fixUrl(serverUrl)
-            // Convert geo.dailymotion.com/player/...?video=ID to standard embed URL
-            if (fixedUrl.contains("dailymotion")) {
+        for ((playerUrl, serverName) in urlToName) {
+            try {
+                // Extract Dailymotion video ID from geo.dailymotion.com player URL
                 val videoId = when {
-                    fixedUrl.contains("video=") ->
-                        fixedUrl.substringAfter("video=").substringBefore("&").substringBefore("#")
-                    fixedUrl.contains("/embed/video/") ->
-                        fixedUrl.substringAfter("/embed/video/").substringBefore("?").substringBefore("/")
-                    fixedUrl.contains("/video/") ->
-                        fixedUrl.substringAfter("/video/").substringBefore("?").substringBefore("/")
+                    playerUrl.contains("video=") ->
+                        playerUrl.substringAfter("video=").substringBefore("&").substringBefore("#").trim()
+                    playerUrl.contains("/embed/video/") ->
+                        playerUrl.substringAfter("/embed/video/").substringBefore("?").substringBefore("/").trim()
+                    playerUrl.contains("dailymotion.com/video/") ->
+                        playerUrl.substringAfter("/video/").substringBefore("?").substringBefore("/").trim()
                     else -> null
                 }
+
                 if (!videoId.isNullOrBlank()) {
-                    val stdEmbedUrl = "https://www.dailymotion.com/embed/video/$videoId"
-                    loadExtractor(stdEmbedUrl, data, subtitleCallback, callback)
-                    count++
+                    // Use Dailymotion metadata API to get M3U8 stream directly
+                    val metaUrl = "https://www.dailymotion.com/player/metadata/video/$videoId?locale=en_US"
+                    val metaResponse = app.get(
+                        metaUrl,
+                        headers = mapOf(
+                            "Origin" to "https://www.dailymotion.com",
+                            "Referer" to "https://www.dailymotion.com/",
+                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                        )
+                    ).text
+
+                    val metaJson = JSONObject(metaResponse)
+                    val qualities = metaJson.optJSONObject("qualities") ?: JSONObject()
+                    val qualityKeys = qualities.keys()
+                    while (qualityKeys.hasNext()) {
+                        val quality = qualityKeys.next()
+                        val arr = qualities.optJSONArray(quality) ?: continue
+                        for (i in 0 until arr.length()) {
+                            val item = arr.getJSONObject(i)
+                            val streamUrl = item.optString("url").trim()
+                            val mimeType = item.optString("type")
+                            if (streamUrl.isNotBlank() && (
+                                    streamUrl.contains(".m3u8") ||
+                                    mimeType.contains("mpegURL", true) ||
+                                    mimeType.contains("x-mpegURL", true)
+                                )) {
+                                callback.invoke(
+                                    ExtractorLink(
+                                        source = "DonghuaZone",
+                                        name = "$serverName ($quality)",
+                                        url = streamUrl,
+                                        referer = "https://www.dailymotion.com/",
+                                        quality = when (quality.lowercase()) {
+                                            "1080" -> Qualities.P1080.value
+                                            "720" -> Qualities.P720.value
+                                            "480" -> Qualities.P480.value
+                                            "360" -> Qualities.P360.value
+                                            "240" -> Qualities.P240.value
+                                            else -> Qualities.Unknown.value
+                                        },
+                                        isM3u8 = true
+                                    )
+                                )
+                                count++
+                            }
+                        }
+                    }
                     continue
                 }
+
+                // Non-Dailymotion: try generic extractor
+                loadExtractor(fixUrl(playerUrl), data, subtitleCallback, callback)
+                count++
+            } catch (e: Exception) {
+                // Skip failed server
             }
-            loadExtractor(fixedUrl, data, subtitleCallback, callback)
-            count++
         }
 
         return count > 0
