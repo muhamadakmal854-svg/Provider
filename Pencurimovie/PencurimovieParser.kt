@@ -1,4 +1,4 @@
-package com.mts.pencurimovie
+package com.mtsflix.pencurimovie
 
 import com.fasterxml.jackson.annotation.JsonProperty
 

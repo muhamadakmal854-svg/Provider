@@ -1,4 +1,4 @@
-package com.mtsflix.layarotaku
+package com.mtsflix.layarotakulayarotaku
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

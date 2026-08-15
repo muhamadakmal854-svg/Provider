@@ -1,4 +1,4 @@
-package com.mtsflix.indoxxi
+package com.mtsflix.indoxxiindoxxi
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

@@ -1,4 +1,4 @@
-package com.mtsflix.filmapik
+package com.mtsflix.filmapikfilmapik
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

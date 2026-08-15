@@ -1,4 +1,4 @@
-package com.mydramawave
+package com.mtsflix.mydramawave
 
 import android.util.Base64
 import com.fasterxml.jackson.annotation.JsonProperty

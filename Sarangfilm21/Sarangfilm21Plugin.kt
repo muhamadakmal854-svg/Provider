@@ -1,4 +1,4 @@
-package com.mts.sarangfilm21
+package com.mtsflix.sarangfilm21
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

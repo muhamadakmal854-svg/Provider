@@ -1,4 +1,4 @@
-package com.mts.terbit21
+package com.mtsflix.terbit21
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.USER_AGENT

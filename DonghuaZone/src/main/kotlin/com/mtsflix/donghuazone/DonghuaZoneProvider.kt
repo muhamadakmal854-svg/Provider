@@ -1,4 +1,4 @@
-package com.mtsflix.donghuazone
+package com.mtsflix.donghuazonedonghuazone
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*

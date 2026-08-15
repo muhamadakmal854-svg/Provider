@@ -1,4 +1,4 @@
-package com.oppadrama
+package com.mtsflix.oppadrama
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

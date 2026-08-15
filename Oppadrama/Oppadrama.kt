@@ -1,4 +1,4 @@
-package com.oppadrama
+package com.mtsflix.oppadrama
 
 import com.lagradost.cloudstream3.*  
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors  

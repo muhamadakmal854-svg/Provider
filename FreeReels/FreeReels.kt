@@ -1,4 +1,4 @@
-package com.sad25kag.FreeReels
+package com.mtsflix.freereels
 
 import android.util.Base64
 import com.fasterxml.jackson.annotation.JsonProperty

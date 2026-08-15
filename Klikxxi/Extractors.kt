@@ -1,4 +1,4 @@
-package com.klikxxi
+package com.mtsflix.klikxxi
 
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.ExtractorApi

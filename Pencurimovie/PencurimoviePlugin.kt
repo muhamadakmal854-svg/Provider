@@ -1,4 +1,4 @@
-package com.mts.pencurimovie
+package com.mtsflix.pencurimovie
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

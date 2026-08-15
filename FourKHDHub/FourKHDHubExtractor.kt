@@ -1,4 +1,4 @@
-package com.fourKHDHub
+package com.mtsflix.fourkhdhub
 
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.SubtitleFile

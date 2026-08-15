@@ -1,4 +1,4 @@
-package com.sad25kag.animebagus
+package com.mtsflix.animebagus
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

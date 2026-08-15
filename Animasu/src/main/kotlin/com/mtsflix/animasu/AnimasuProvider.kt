@@ -1,4 +1,4 @@
-package com.mtsflix.animasu
+package com.mtsflix.animasuanimasu
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

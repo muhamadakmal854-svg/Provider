@@ -1,4 +1,4 @@
-package com.mtsflix.animekhor
+package com.mtsflix.animekhoranimekhor
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

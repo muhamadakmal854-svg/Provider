@@ -1,5 +1,5 @@
 @file:Suppress("OPT_IN_USAGE", "OPT_IN_USAGE_ERROR")
-package com.hexated
+package com.mtsflix.sorastream
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.capitalize

@@ -1,4 +1,4 @@
-package com.mts.pencurimovie
+package com.mtsflix.pencurimovie
 
 import org.jsoup.nodes.Element
 import java.net.URL

@@ -1,4 +1,4 @@
-package com.mydramawave
+package com.mtsflix.mydramawave
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

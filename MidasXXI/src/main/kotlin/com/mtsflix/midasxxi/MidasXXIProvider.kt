@@ -1,4 +1,4 @@
-package com.mtsflix.midasxxi
+package com.mtsflix.midasxximidasxxi
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

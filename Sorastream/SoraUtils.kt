@@ -1,4 +1,4 @@
-package com.hexated
+package com.mtsflix.sorastream
 
 import android.util.Base64
 import com.hexated.SoraStream.Companion.anilistAPI

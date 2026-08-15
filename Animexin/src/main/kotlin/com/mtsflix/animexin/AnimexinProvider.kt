@@ -1,4 +1,4 @@
-package com.mtsflix.animexin
+package com.mtsflix.animexinanimexin
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

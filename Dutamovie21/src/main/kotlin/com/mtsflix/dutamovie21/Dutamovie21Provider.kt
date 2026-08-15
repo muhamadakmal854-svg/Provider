@@ -1,4 +1,4 @@
-package com.mtsflix.dutamovie21
+package com.mtsflix.dutamovie21dutamovie21
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

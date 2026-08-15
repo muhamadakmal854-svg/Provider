@@ -1,4 +1,4 @@
-package com.sad25kag.bilibili
+package com.mtsflix.bilibiliprovider
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink

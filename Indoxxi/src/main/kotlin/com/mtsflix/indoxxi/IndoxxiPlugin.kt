@@ -1,4 +1,4 @@
-package com.mtsflix.indoxxi
+package com.mtsflix.indoxxiindoxxi
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

@@ -1,4 +1,4 @@
-package com.sad25kag.bilibili
+package com.mtsflix.bilibiliprovider
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

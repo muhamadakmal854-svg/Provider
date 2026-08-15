@@ -1,4 +1,4 @@
-package com.fourKHDHub
+package com.mtsflix.fourkhdhub
 
 import android.os.Build
 import androidx.annotation.RequiresApi

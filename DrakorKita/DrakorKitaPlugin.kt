@@ -1,4 +1,4 @@
-package com.sad25kag.drakorkita
+package com.mtsflix.drakorkita
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

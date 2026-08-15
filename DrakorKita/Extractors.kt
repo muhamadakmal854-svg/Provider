@@ -1,4 +1,4 @@
-package com.sad25kag.drakorkita
+package com.mtsflix.drakorkita
 
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.app

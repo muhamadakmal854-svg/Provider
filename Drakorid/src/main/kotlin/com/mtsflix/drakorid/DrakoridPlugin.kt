@@ -1,4 +1,4 @@
-package com.mtsflix.drakorid
+package com.mtsflix.drakoriddrakorid
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

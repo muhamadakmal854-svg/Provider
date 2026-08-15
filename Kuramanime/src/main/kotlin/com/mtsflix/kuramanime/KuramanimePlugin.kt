@@ -1,4 +1,4 @@
-package com.mtsflix.kuramanime
+package com.mtsflix.kuramanimekuramanime
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

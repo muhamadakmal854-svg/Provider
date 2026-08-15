@@ -1,4 +1,4 @@
-package com.mtsflix.lk21
+package com.mtsflix.lk21lk21
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

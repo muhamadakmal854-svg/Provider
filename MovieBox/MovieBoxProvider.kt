@@ -1,4 +1,4 @@
-package com.MovieBox
+package com.mtsflix.moviebox
 
 import android.annotation.SuppressLint
 import android.net.Uri

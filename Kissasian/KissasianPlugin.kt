@@ -1,4 +1,4 @@
-package com.mts.kissasian
+package com.mtsflix.kissasian
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

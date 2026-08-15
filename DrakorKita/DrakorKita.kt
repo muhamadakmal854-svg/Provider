@@ -1,4 +1,4 @@
-package com.sad25kag.drakorkita
+package com.mtsflix.drakorkita
 
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse

@@ -1,4 +1,4 @@
-package com.dramaboxdb
+package com.mtsflix.dramaboxdb
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.DeserializationFeature

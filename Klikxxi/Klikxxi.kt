@@ -1,4 +1,4 @@
-package com.klikxxi
+package com.mtsflix.klikxxi
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors

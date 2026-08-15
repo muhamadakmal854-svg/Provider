@@ -1,4 +1,4 @@
-package com.mtsflix.animasu
+package com.mtsflix.animasuanimasu
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

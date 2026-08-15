@@ -1,4 +1,4 @@
-package com.maxmovie21
+package com.mtsflix.maxmovie21
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

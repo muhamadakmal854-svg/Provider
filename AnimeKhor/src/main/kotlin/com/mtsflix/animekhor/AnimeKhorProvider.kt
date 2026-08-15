@@ -1,4 +1,4 @@
-package com.mtsflix.animekhor
+package com.mtsflix.animekhoranimekhor
 
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*

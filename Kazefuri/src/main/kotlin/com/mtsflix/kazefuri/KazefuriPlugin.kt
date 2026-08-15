@@ -1,4 +1,4 @@
-package com.mtsflix.kazefuri
+package com.mtsflix.kazefurikazefuri
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

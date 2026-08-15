@@ -1,4 +1,4 @@
-package com.MovieBox
+package com.mtsflix.moviebox
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

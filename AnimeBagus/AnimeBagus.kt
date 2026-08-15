@@ -1,4 +1,4 @@
-package com.sad25kag.animebagus
+package com.mtsflix.animebagus
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.toNewSearchResponseList

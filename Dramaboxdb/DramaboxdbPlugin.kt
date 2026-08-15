@@ -1,4 +1,4 @@
-package com.dramaboxdb
+package com.mtsflix.dramaboxdb
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

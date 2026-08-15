@@ -1,4 +1,4 @@
-package com.mtsflix.anichin
+package com.mtsflix.anichinanichin
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

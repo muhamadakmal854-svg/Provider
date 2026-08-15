@@ -1,4 +1,4 @@
-package com.mtsflix.kawanfilm
+package com.mtsflix.kawanfilmkawanfilm
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

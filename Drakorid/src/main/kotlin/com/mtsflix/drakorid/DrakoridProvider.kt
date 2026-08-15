@@ -1,4 +1,4 @@
-package com.mtsflix.drakorid
+package com.mtsflix.drakoriddrakorid
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

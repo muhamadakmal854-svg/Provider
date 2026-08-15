@@ -1,4 +1,4 @@
-package com.maxmovie21
+package com.mtsflix.maxmovie21
 
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*

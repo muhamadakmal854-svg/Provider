@@ -1,4 +1,4 @@
-package com.hexated
+package com.mtsflix.sorastream
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.hexated.SoraExtractor.invokeGomovies

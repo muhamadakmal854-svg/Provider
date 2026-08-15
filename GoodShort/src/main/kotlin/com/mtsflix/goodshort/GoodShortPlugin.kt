@@ -1,4 +1,4 @@
-package com.mtsflix.goodshort
+package com.mtsflix.goodshortgoodshort
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

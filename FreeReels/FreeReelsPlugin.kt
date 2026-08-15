@@ -1,4 +1,4 @@
-package com.sad25kag.FreeReels
+package com.mtsflix.freereels
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

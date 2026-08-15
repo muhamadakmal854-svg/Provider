@@ -1,4 +1,4 @@
-package com.oppadrama
+package com.mtsflix.oppadrama
 
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.app

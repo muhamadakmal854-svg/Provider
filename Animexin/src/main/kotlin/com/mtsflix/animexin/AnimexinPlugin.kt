@@ -1,4 +1,4 @@
-package com.mtsflix.animexin
+package com.mtsflix.animexinanimexin
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

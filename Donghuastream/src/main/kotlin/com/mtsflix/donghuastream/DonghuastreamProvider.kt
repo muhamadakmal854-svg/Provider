@@ -1,4 +1,4 @@
-package com.mtsflix.donghuastream
+package com.mtsflix.donghuastreamdonghuastream
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

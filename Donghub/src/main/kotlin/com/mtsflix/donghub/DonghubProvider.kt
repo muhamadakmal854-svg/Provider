@@ -1,4 +1,4 @@
-package com.mtsflix.donghub
+package com.mtsflix.donghubdonghub
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

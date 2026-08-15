@@ -1,4 +1,4 @@
-package com.mtsflix.donghuafilm
+package com.mtsflix.donghuafilmdonghuafilm
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

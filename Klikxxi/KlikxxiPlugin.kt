@@ -1,4 +1,4 @@
-package com.klikxxi
+package com.mtsflix.klikxxi
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin

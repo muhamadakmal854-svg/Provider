@@ -1,4 +1,4 @@
-package com.sad25kag.animechina
+package com.mtsflix.animechina
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*

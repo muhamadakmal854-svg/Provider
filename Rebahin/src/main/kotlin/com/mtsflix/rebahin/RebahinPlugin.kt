@@ -1,4 +1,4 @@
-package com.mtsflix.rebahin
+package com.mtsflix.rebahinrebahin
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

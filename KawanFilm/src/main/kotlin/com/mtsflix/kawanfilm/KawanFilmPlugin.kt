@@ -1,4 +1,4 @@
-package com.mtsflix.kawanfilm
+package com.mtsflix.kawanfilmkawanfilm
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

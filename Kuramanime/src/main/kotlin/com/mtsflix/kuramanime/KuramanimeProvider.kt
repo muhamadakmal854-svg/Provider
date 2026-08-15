@@ -1,4 +1,4 @@
-package com.mtsflix.kuramanime
+package com.mtsflix.kuramanimekuramanime
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

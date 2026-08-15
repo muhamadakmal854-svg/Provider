@@ -1,4 +1,4 @@
-package com.mts.kissasian
+package com.mtsflix.kissasian
 
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.*

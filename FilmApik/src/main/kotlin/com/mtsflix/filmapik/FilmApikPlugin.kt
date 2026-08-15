@@ -1,4 +1,4 @@
-package com.mtsflix.filmapik
+package com.mtsflix.filmapikfilmapik
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin

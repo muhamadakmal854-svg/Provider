@@ -1,4 +1,4 @@
-package com.sad25kag.animemovies
+package com.mtsflix.animemovies
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink

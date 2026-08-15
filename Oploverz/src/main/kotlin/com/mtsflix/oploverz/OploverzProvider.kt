@@ -1,4 +1,4 @@
-package com.mtsflix.oploverz
+package com.mtsflix.oploverzoploverz
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType

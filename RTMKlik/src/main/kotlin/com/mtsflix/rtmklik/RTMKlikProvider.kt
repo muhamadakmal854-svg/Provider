@@ -1,4 +1,4 @@
-package com.mtsflix.rtmklik
+package com.mtsflix.rtmklikrtmklik
 
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType
