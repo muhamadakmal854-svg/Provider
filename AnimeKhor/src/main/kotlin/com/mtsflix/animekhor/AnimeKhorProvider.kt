@@ -25,6 +25,14 @@ class AnimeKhorProvider : MainAPI() {
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.Movie, TvType.Anime)
 
+    override val mainPage = mainPageOf(
+        "page/%d/" to "Rilisan Terbaru",
+        "donghua-series/page/%d/" to "Donghua Series",
+        "comic-series/page/%d/" to "Comic Series",
+        "a-z-lists/page/%d/" to "A-Z Lists",
+        "anime/page/%d/?status=&type=&order=" to "Filter Search"
+    )
+
     private val client = Requests().apply {
         baseClient = baseClient.newBuilder()
             .connectTimeout(30, TimeUnit.SECONDS)
@@ -47,18 +55,11 @@ class AnimeKhorProvider : MainAPI() {
         }
 
         val document = client.get(targetUrl, headers = browserHeaders).document
-        val home = document.select("div.listupd article, div.bsx, article.bs, div.bs, .listupd .bsx, .item, article")
+        val home = document.select("div.listupd article, .listupd .bsx, .listupd .item")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
 
-        return newHomePageResponse(
-            list = HomePageList(
-                name = request.name,
-                list = home,
-                isHorizontalImages = false
-            ),
-            hasNext = home.isNotEmpty()
-        )
+        return newHomePageResponse(request.name, home)
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
@@ -92,7 +93,17 @@ class AnimeKhorProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val cleanUrl = fixUrl(url)
-        val document = client.get(cleanUrl, headers = browserHeaders).document
+        var document = client.get(cleanUrl, headers = browserHeaders).document
+        
+        val seriesUrl = document.select("a").firstOrNull { 
+            it.text().contains("All Episodes", ignoreCase = true) 
+        }?.attr("href")?.let { fixUrl(it) }
+
+        val targetUrl = seriesUrl ?: cleanUrl
+        if (!seriesUrl.isNullOrBlank()) {
+            document = client.get(seriesUrl, headers = browserHeaders).document
+        }
+
         val title = document.selectFirst("h1.entry-title")?.text()?.trim().toString()
         val poster = document.selectFirst("img.wp-post-image, div.ime > img, .thumb img")
             ?.attr("src")?.takeIf { it.isNotBlank() }
@@ -108,7 +119,7 @@ class AnimeKhorProvider : MainAPI() {
         val hasPlayer = document.selectFirst("#pembed, .player-embed, #embed_holder") != null
 
         if (episodeList.isEmpty() && hasPlayer) {
-            return newMovieLoadResponse(title, cleanUrl, TvType.Anime, cleanUrl) {
+            return newMovieLoadResponse(title, targetUrl, TvType.Anime, targetUrl) {
                 this.posterUrl = fixUrlNull(poster)
                 this.plot = description
                 this.tags = genres
@@ -117,7 +128,7 @@ class AnimeKhorProvider : MainAPI() {
 
         val isMovie = document.selectFirst(".spe")?.text().orEmpty().contains("Movie", true) || title.contains("Movie", true)
         return if (isMovie) {
-            val movieHref = document.selectFirst(".eplister li > a")?.attr("href")?.let { fixUrl(it) } ?: cleanUrl
+            val movieHref = document.selectFirst(".eplister li > a")?.attr("href")?.let { fixUrl(it) } ?: targetUrl
             newMovieLoadResponse(title, movieHref, TvType.Movie, movieHref) {
                 this.posterUrl = fixUrlNull(poster)
                 this.plot = description
@@ -141,7 +152,7 @@ class AnimeKhorProvider : MainAPI() {
                 }
             }.reversed()
 
-            newTvSeriesLoadResponse(title, cleanUrl, TvType.Anime, episodes) {
+            newTvSeriesLoadResponse(title, targetUrl, TvType.Anime, episodes) {
                 this.posterUrl = fixUrlNull(poster)
                 this.plot = description
                 this.tags = genres
