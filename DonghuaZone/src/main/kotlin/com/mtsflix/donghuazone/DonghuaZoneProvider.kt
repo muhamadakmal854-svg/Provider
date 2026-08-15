@@ -19,26 +19,31 @@ class DonghuaZoneProvider : MainAPI() {
     )
 
     override val mainPage = mainPageOf(
-        "search/label/Latest?&max-results=15" to "Latest Episodes",
-        "search/label/Ongoing?&max-results=15" to "Ongoing Donghua",
-        "search/label/Completed?&max-results=15" to "Completed Donghua",
-        "search/label/Movie?&max-results=15" to "Donghua Movies",
-        "search/label/Action?&max-results=15" to "Action",
-        "search/label/Adventure?&max-results=15" to "Adventure",
-        "search/label/Fantasy?&max-results=15" to "Fantasy",
-        "search/label/Cultivation?&max-results=15" to "Cultivation",
-        "search/label/Martial%20Arts?&max-results=15" to "Martial Arts",
-        "search/label/Romance?&max-results=15" to "Romance"
+        "" to "Latest Episode",
+        "search/label/Movie" to "Movie",
+        "search/label/Ongoing" to "Ongoing",
+        "search/label/Completed" to "Completed",
+        "search/label/Action" to "Action",
+        "search/label/Adventure" to "Adventure",
+        "search/label/Fantasy" to "Fantasy",
+        "search/label/Cultivation" to "Cultivation",
+        "search/label/Martial%20Arts" to "Martial Arts",
+        "search/label/Romance" to "Romance"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page <= 1) {
-            "$mainUrl/${request.data}"
+        val path = request.data
+        val url = if (path.isEmpty()) {
+            if (page <= 1) "$mainUrl/" else "$mainUrl/page/$page/"
         } else {
-            "$mainUrl/${request.data}&page=$page"
+            if (path.contains("?")) {
+                if (page <= 1) "$mainUrl/$path" else "$mainUrl/$path&page=$page"
+            } else {
+                if (page <= 1) "$mainUrl/$path" else "$mainUrl/$path?page=$page"
+            }
         }
         val document = app.get(url).document
-        val items = document.select("article, .post-outer-container, .post-outer, div.thumbnail")
+        val items = document.select(".post-outer-container, article.post-outer-container, article.post, div.blog-post")
             .mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
@@ -64,7 +69,7 @@ class DonghuaZoneProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/search?q=$query").document
-        return document.select("article, .post-outer-container, .post-outer, div.thumbnail")
+        return document.select(".post-outer-container, article.post-outer-container, article.post, div.blog-post")
             .mapNotNull { it.toSearchResult() }
     }
 
