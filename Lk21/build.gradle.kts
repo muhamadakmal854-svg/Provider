@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -L-k-2-1-"
-
+    description = "MTSFlix Provider Extension for Lk21"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries")
-
-    iconUrl     = "https://tv11.lk21official.cc/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.lk21"
-
+    namespace = "com.mtsflix.lk21"
 }
-

@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -N-G-E-F-I-L-M-2-1-"
-
+    description = "MTSFlix Provider Extension for Ngefilm"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries")
-
-    iconUrl     = "https://new37.ngefilm.site/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.ngefilm"
-
+    namespace = "com.mtsflix.ngefilm"
 }
-

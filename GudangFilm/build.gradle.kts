@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -G-U-D-A-N-G- -F-I-L-M-"
-
+    description = "MTSFlix Provider Extension for GudangFilm"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries")
-
-    iconUrl     = "https://www.huazai6.com/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.gudangfilm"
-
+    namespace = "com.mtsflix.gudangfilm"
 }
-

@@ -1,0 +1,12 @@
+{
+  "name": "FilmKita21",
+  "plugin": "com.mtsflix.filmkita21.FilmKita21Plugin",
+  "description": "MTSFlix Provider Extension for FilmKita21",
+  "authors": [
+    "MTS"
+  ],
+  "version": 7,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}

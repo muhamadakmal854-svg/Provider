@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -I-N-D-O-X-X-I- --- -I-D-L-I-X-"
-
+    description = "MTSFlix Provider Extension for Indoxxi"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries")
-
-    iconUrl     = "https://taroscafe.com/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.indoxxi"
-
+    namespace = "com.mtsflix.indoxxi"
 }
-

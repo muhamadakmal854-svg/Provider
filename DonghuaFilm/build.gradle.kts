@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk DonghuaFilm - Nonton Donghua Gratis Sub Terbaik"
-
+    description = "MTSFlix Provider Extension for DonghuaFilm"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
-
-    iconUrl     = "https://donghuafilm.com/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.donghuafilm"
-
+    namespace = "com.mtsflix.donghuafilm"
 }
-

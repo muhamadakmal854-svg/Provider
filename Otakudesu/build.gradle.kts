@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -O-t-a-k-u- -D-e-s-u-"
-
+    description = "MTSFlix Provider Extension for Otakudesu"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
-
-    iconUrl     = "https://otakudesu.blog/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.otakudesu"
-
+    namespace = "com.mtsflix.otakudesu"
 }
-

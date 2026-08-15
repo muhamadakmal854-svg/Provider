@@ -1,0 +1,12 @@
+{
+  "name": "Anoboy",
+  "plugin": "com.mtsflix.anoboy.AnoboyPlugin",
+  "description": "MTSFlix Provider Extension for Anoboy",
+  "authors": [
+    "MTS"
+  ],
+  "version": 7,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}

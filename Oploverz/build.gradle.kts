@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -S-i-t-u-s- -O-p-l-o-v-e-r-z- -y-a-n-g- -a-s-l-i-"
-
+    description = "MTSFlix Provider Extension for Oploverz"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
-
-    iconUrl     = "https://oploverz.ch/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.oploverz"
-
+    namespace = "com.mtsflix.oploverz"
 }
-

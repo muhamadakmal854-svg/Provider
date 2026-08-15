@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -D-u-t-a-m-o-v-i-e-2-1-"
-
+    description = "MTSFlix Provider Extension for Dutamovie21"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries")
-
-    iconUrl     = "https://austincomputerworks.org/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.dutamovie21"
-
+    namespace = "com.mtsflix.dutamovie21"
 }
-

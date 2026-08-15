@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -A-n-i-m-a-s-u- -•- -N-o-n-t-o-n- -S-t-r-e-a-m-i-n-g- -&- -D-o-w-n-l-o-a-d- -A-n-i-m-e- -S-u-b-t-i-t-l-e- -I-n-d-o-n-e-s-i-a-"
-
+    description = "MTSFlix Provider Extension for Animasu"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
-
-    iconUrl     = "https://v1.animasu.work/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.animasu"
-
+    namespace = "com.mtsflix.animasu"
 }
-

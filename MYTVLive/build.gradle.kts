@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
-    language    = "ms"
-
-    description = "Provider untuk -M-Y-T-V- -L-i-v-e-"
-
+    language    = "id"
+    description = "MTSFlix Provider Extension for MYTVLive"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries")
-
-    iconUrl     = "https://mana2.my/live/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.mytvlive"
-
+    namespace = "com.mtsflix.mytvlive"
 }
-

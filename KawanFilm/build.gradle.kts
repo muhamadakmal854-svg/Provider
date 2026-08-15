@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -K-a-w-a-n-F-i-l-m-2-1-"
-
+    description = "MTSFlix Provider Extension for KawanFilm"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries")
-
-    iconUrl     = "https://web.kawanfilm21.co/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.kawanfilm"
-
+    namespace = "com.mtsflix.kawanfilm"
 }
-

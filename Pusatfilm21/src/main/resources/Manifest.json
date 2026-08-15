@@ -1,0 +1,12 @@
+{
+  "name": "Pusatfilm21",
+  "plugin": "com.mtsflix.pusatfilm21.Pusatfilm21Plugin",
+  "description": "MTSFlix Provider Extension for Pusatfilm21",
+  "authors": [
+    "MTS"
+  ],
+  "version": 7,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}

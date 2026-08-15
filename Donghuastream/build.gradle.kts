@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
-    language    = "en"
-
-    description = "Provider untuk -D-o-n-g-h-u-a-S-t-r-e-a-m-"
-
+    language    = "id"
+    description = "MTSFlix Provider Extension for Donghuastream"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
-
-    iconUrl     = "https://donghuastream.org/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.donghuastream"
-
+    namespace = "com.mtsflix.donghuastream"
 }
-

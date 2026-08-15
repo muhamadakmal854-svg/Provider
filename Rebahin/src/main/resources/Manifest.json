@@ -1,0 +1,12 @@
+{
+  "name": "Rebahin",
+  "plugin": "com.mtsflix.rebahin.RebahinPlugin",
+  "description": "MTSFlix Provider Extension for Rebahin",
+  "authors": [
+    "MTS"
+  ],
+  "version": 7,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}

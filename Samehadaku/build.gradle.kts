@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -S-a-m-e-h-a-d-a-k-u-"
-
+    description = "MTSFlix Provider Extension for Samehadaku"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
-
-    iconUrl     = "https://v2.samehadaku.how/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.samehadaku"
-
+    namespace = "com.mtsflix.samehadaku"
 }
-

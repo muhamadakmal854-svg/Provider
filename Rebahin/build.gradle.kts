@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -R-E-B-A-H-I-N- --- -S-t-r-e-a-m-i-n-g- -D-a-n- -D-o-w-n-l-o-a-d- -F-i-l-m- -S-u-b- -I-n-d-o- -T-e-r-b-a-r-u-"
-
+    description = "MTSFlix Provider Extension for Rebahin"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries")
-
-    iconUrl     = "https://165.232.44.215/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.rebahin"
-
+    namespace = "com.mtsflix.rebahin"
 }
-

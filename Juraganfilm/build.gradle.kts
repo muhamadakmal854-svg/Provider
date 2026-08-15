@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -J-U-R-A-G-A-N-F-I-L-M- -:- -S-i-t-u-s- -N-o-n-t-o-n- -F-i-l-m- -S-u-b- -I-n-d-o- -S-t-r-e-a-m-i-n-g- -M-o-v-i-e- -O-n-l-i-n-e-"
-
+    description = "MTSFlix Provider Extension for Juraganfilm"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries")
-
-    iconUrl     = "https://tv47.juragan.film/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.juraganfilm"
-
+    namespace = "com.mtsflix.juraganfilm"
 }
-

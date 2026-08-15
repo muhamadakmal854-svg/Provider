@@ -1,0 +1,12 @@
+{
+  "name": "GoodShort",
+  "plugin": "com.mtsflix.goodshort.GoodShortPlugin",
+  "description": "MTSFlix Provider Extension for GoodShort",
+  "authors": [
+    "MTS"
+  ],
+  "version": 7,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}

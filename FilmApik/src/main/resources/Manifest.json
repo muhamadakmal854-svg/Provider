@@ -1,0 +1,12 @@
+{
+  "name": "FilmApik",
+  "plugin": "com.mtsflix.filmapik.FilmApikPlugin",
+  "description": "MTSFlix Provider Extension for FilmApik",
+  "authors": [
+    "MTS"
+  ],
+  "version": 7,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Animexin",
+  "plugin": "com.mtsflix.animexin.AnimexinPlugin",
+  "description": "MTSFlix Provider Extension for Animexin",
+  "authors": [
+    "MTS"
+  ],
+  "version": 7,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}

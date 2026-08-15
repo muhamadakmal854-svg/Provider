@@ -1,0 +1,12 @@
+{
+  "name": "Lk21",
+  "plugin": "com.mtsflix.lk21.Lk21Plugin",
+  "description": "MTSFlix Provider Extension for Lk21",
+  "authors": [
+    "MTS"
+  ],
+  "version": 7,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}

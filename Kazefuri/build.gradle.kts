@@ -1,24 +1,13 @@
-version = 1
+version = 7
 
 cloudstream {
-
     language    = "id"
-
-    description = "Provider untuk -K-a-z-e-f-u-r-i-"
-
+    description = "MTSFlix Provider Extension for Kazefuri"
     authors     = listOf("MTS")
-
     status      = 1
-
-    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
-
-    iconUrl     = "https://sv4.kazefuri.cloud/favicon.ico"
-
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-
-    namespace = "com.mts.kazefuri"
-
+    namespace = "com.mtsflix.kazefuri"
 }
-
