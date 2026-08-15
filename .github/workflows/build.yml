@@ -36,7 +36,6 @@ jobs:
         with:
           java-version: 21
           distribution: adopt
-          cache: gradle
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3.2.2
@@ -45,7 +44,7 @@ jobs:
         working-directory: ${{ github.workspace }}/src
         run: |
           chmod +x gradlew
-          ./gradlew make makePluginsJson --no-build-cache --no-daemon --rerun-tasks
+          ./gradlew make makePluginsJson --no-build-cache --no-daemon --rerun-tasks --no-build-cache --no-daemon --rerun-tasks
           cp **/build/*.cs3 ${{ github.workspace }}/builds/
 
       - name: Update plugins.json size & hash
