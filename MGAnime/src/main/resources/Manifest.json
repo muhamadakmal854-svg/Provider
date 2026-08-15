@@ -1,0 +1,12 @@
+{
+  "name": "MGAnime",
+  "plugin": "com.mtsflix.mganime.MGAnimePlugin",
+  "description": "MTSFlix Provider Extension for MGAnime",
+  "authors": [
+    "MTS"
+  ],
+  "version": 1,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}
