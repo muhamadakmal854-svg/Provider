@@ -26,50 +26,33 @@ class MGAnimeProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "page/%d/" to "Rilisan Terbaru",
         "anime/page/%d/?order=popular" to "Trending Anime",
-        "donghua/page/%d/" to "Donghua Series",
-        "genre/donghua/page/%d/" to "Kategori Donghua",
-        "movie/page/%d/" to "Movie",
-        "anime/page/%d/" to "Anime List"
+        "category/donghua/page/%d/" to "Donghua Series",
+        "category/movie/page/%d/" to "Movie",
+        "anime/page/%d/?status=&type=&order=" to "Filter Search"
     )
 
     private val cloudflareInterceptor by lazy { CloudflareKiller() }
 
-    private val browserHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
-    )
-
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val targetUrl = if (page <= 1) {
-            when (request.data) {
-                "page/%d/" -> "$mainUrl/"
-                "anime/page/%d/?order=popular" -> "$mainUrl/anime/?order=popular"
-                "donghua/page/%d/" -> "$mainUrl/donghua/"
-                "genre/donghua/page/%d/" -> "$mainUrl/genre/donghua/"
-                "movie/page/%d/" -> "$mainUrl/movie/"
-                "anime/page/%d/" -> "$mainUrl/anime/"
-                else -> {
-                    val raw = request.data.replace("page/%d/", "").replace("page/%d", "")
-                    if (raw.isBlank()) "$mainUrl/" else "$mainUrl/$raw"
-                }
-            }
+        val targetUrl = if (request.data.contains("%d")) {
+            "$mainUrl/${request.data.format(page)}"
         } else {
-            if (request.data.contains("%d")) {
-                "$mainUrl/${request.data.format(page)}"
-            } else if (request.data.contains("?")) {
-                "$mainUrl/${request.data}&page=$page"
-            } else {
-                "$mainUrl/${request.data}page/$page/"
-            }
+            "$mainUrl/${request.data}"
         }
 
-        val document = app.get(targetUrl, headers = browserHeaders, interceptor = cloudflareInterceptor).document
-        val home = document.select("div.listupd article, .listupd .bs, .listupd .bsx, .listupd .item, .animposx, .bsx, article.bs, .bs, .postl, .animepost, .box-item, div.item, article")
+        val document = app.get(targetUrl, interceptor = cloudflareInterceptor).document
+        val home = document.select("div.listupd article, div.bsx, article.bs, div.bs, .listupd .bsx, .animposx, article")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
 
-        return newHomePageResponse(request.name, home)
+        return newHomePageResponse(
+            list = HomePageList(
+                name = request.name,
+                list = home,
+                isHorizontalImages = false
+            ),
+            hasNext = home.isNotEmpty()
+        )
     }
 
     private fun Element.toSearchResult(): SearchResponse? {
@@ -107,9 +90,8 @@ class MGAnimeProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
         for (i in 1..3) {
-            val searchUrl = if (i == 1) "$mainUrl/?s=$query" else "$mainUrl/page/$i/?s=$query"
-            val document = app.get(searchUrl, headers = browserHeaders, interceptor = cloudflareInterceptor).document
-            val results = document.select("div.listupd article, .listupd .bs, .listupd .bsx, .item, article, .bsx, .bs").mapNotNull { it.toSearchResult() }
+            val document = app.get("$mainUrl/page/$i/?s=$query", interceptor = cloudflareInterceptor).document
+            val results = document.select("div.listupd article, div.bsx, article.bs, div.bs, .listupd .bsx, .animposx, article").mapNotNull { it.toSearchResult() }
             if (results.isEmpty()) break
             searchResponse.addAll(results)
         }
@@ -118,7 +100,7 @@ class MGAnimeProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val cleanUrl = fixUrl(url)
-        var document = app.get(cleanUrl, headers = browserHeaders, interceptor = cloudflareInterceptor).document
+        var document = app.get(cleanUrl, interceptor = cloudflareInterceptor).document
         
         val seriesUrl = document.select("a").firstOrNull { 
             val txt = it.text()
@@ -129,7 +111,7 @@ class MGAnimeProvider : MainAPI() {
 
         val targetUrl = seriesUrl ?: cleanUrl
         if (!seriesUrl.isNullOrBlank()) {
-            document = app.get(seriesUrl, headers = browserHeaders, interceptor = cloudflareInterceptor).document
+            document = app.get(seriesUrl, interceptor = cloudflareInterceptor).document
         }
 
         val title = document.selectFirst("h1.entry-title, h1")?.text()?.trim().toString()
@@ -199,7 +181,7 @@ class MGAnimeProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(fixUrl(data), headers = browserHeaders, interceptor = cloudflareInterceptor).document
+        val document = app.get(fixUrl(data), interceptor = cloudflareInterceptor).document
         val streamUrls = mutableSetOf<String>()
 
         // 1. Default Iframe Src
@@ -228,8 +210,7 @@ class MGAnimeProvider : MainAPI() {
                             "type" to dataType
                         ),
                         headers = mapOf(
-                            "X-Requested-With" to "XMLHttpRequest",
-                            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                            "X-Requested-With" to "XMLHttpRequest"
                         ),
                         interceptor = cloudflareInterceptor
                     ).text
