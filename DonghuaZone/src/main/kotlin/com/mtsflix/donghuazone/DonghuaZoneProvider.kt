@@ -1,10 +1,10 @@
 package com.mtsflix.donghuazone
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import org.jsoup.nodes.Element
-import org.jsoup.Jsoup
-import java.util.regex.Pattern
 
 class DonghuaZoneProvider : MainAPI() {
     override var mainUrl = "https://www.donghuazone.com"
@@ -37,7 +37,6 @@ class DonghuaZoneProvider : MainAPI() {
         } else {
             "$mainUrl/${request.data}&page=$page"
         }
-        
         val document = app.get(url).document
         val items = document.select("article, .post-outer-container, .post-outer, div.thumbnail")
             .mapNotNull { it.toSearchResult() }
@@ -72,19 +71,17 @@ class DonghuaZoneProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
         val title = document.selectFirst("h1.post-title, h1.entry-title, h1")?.text()?.trim() ?: return null
-        
         val posterUrl = document.selectFirst(".post-body img, .entry-content img")?.attr("src")?.let { fixUrlNull(it) }
         val plot = document.selectFirst(".sinoposis p, .post-body p")?.text()?.trim()
-
         val isMovie = title.contains("Movie", true) || url.contains("Movie", true)
 
         val scriptText = document.select("script").joinToString("\n") { it.data() }
-        val labelMatch = Pattern.compile("label_episode\\s*=\\s*["']([^"']+)["']").matcher(scriptText)
-        
+        val regex = Regex("""label_episode\s*=\s*["']([^"']+)["']""")
+        val match = regex.find(scriptText)
         val episodes = mutableListOf<Episode>()
 
-        if (labelMatch.find()) {
-            val rawLabel = labelMatch.group(1).split("/")[0].replace("_", " ")
+        if (match != null) {
+            val rawLabel = match.groupValues[1].split("/")[0].replace("_", " ")
             val feedUrl = "$mainUrl/feeds/posts/default/-/$rawLabel?alt=json&max-results=100"
             try {
                 val jsonText = app.get(feedUrl).text
@@ -132,13 +129,11 @@ class DonghuaZoneProvider : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         val html = document.html()
-
         val foundServers = mutableListOf<String>()
 
-        val changeServerRegex = Pattern.compile("changeServer\\([^,]+,\\s*['"]([^'"]+)['"]\\)")
-        val matcher = changeServerRegex.matcher(html)
-        while (matcher.find()) {
-            val serverUrl = matcher.group(1).trim()
+        val regex = Regex("""changeServer\([^,]+,\s*["']([^"']+)["']\)""")
+        regex.findAll(html).forEach { m ->
+            val serverUrl = m.groupValues[1].trim()
             if (serverUrl.isNotBlank() && !foundServers.contains(serverUrl)) {
                 foundServers.add(serverUrl)
             }
@@ -159,9 +154,9 @@ class DonghuaZoneProvider : MainAPI() {
         return foundServers.isNotEmpty()
     }
 
-    data class BloggerFeedResponse(val feed: BloggerFeed?)
-    data class BloggerFeed(val entry: List<BloggerEntry>?)
-    data class BloggerEntry(val title: BloggerText?, val link: List<BloggerLink>?)
-    data class BloggerText(val t: String?)
-    data class BloggerLink(val rel: String?, val href: String?)
+    data class BloggerFeedResponse(@JsonProperty("feed") val feed: BloggerFeed?)
+    data class BloggerFeed(@JsonProperty("entry") val entry: List<BloggerEntry>?)
+    data class BloggerEntry(@JsonProperty("title") val title: BloggerText?, @JsonProperty("link") val link: List<BloggerLink>?)
+    data class BloggerText(@JsonProperty("$" + "t") val t: String?)
+    data class BloggerLink(@JsonProperty("rel") val rel: String?, @JsonProperty("href") val href: String?)
 }
