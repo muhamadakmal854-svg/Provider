@@ -1,7 +1,7 @@
 package com.mtsflix.sorastream
 
 import android.util.Base64
-import com.hexated.SoraStream.Companion.anilistAPI
+import com.mtsflix.sorastream.*
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
 import com.lagradost.cloudstream3.mvvm.logError

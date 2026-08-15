@@ -1,22 +1,22 @@
 package com.mtsflix.sorastream
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.hexated.SoraExtractor.invokeGomovies
-import com.hexated.SoraExtractor.invokeKisskh
-import com.hexated.SoraExtractor.invokeIdlix
-import com.hexated.SoraExtractor.invokeMapple
-import com.hexated.SoraExtractor.invokeSuperembed
-import com.hexated.SoraExtractor.invokeVidfast
-import com.hexated.SoraExtractor.invokeVidlink
-import com.hexated.SoraExtractor.invokeVidrock
-import com.hexated.SoraExtractor.invokeVidsrc
-import com.hexated.SoraExtractor.invokeVidsrccc
-import com.hexated.SoraExtractor.invokeVidsrccx
-import com.hexated.SoraExtractor.invokeVixsrc
-import com.hexated.SoraExtractor.invokeWatchsomuch
-import com.hexated.SoraExtractor.invokeWyzie
-import com.hexated.SoraExtractor.invokeXprime
-import com.hexated.SoraExtractor.invokeRiveStream
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
+import com.mtsflix.sorastream.*
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.metaproviders.TmdbProvider
@@ -425,7 +425,7 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
-                invokeVidrock(
+                SoraExtractor.invokeVidrock(
                     res.id,
                     res.season,
                     res.episode,
@@ -434,7 +434,7 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
-                invokeGomovies(
+                SoraExtractor.invokeGomovies(
                     res.title,
                     res.year,
                     res.season,
