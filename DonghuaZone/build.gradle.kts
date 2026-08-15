@@ -1,18 +1,13 @@
-import com.lagradost.cloudstream3.gradle.CloudstreamPlugin
-
-plugins {
-    id("com.android.library")
-    id("kotlin-android")
-    id("com.lagradost.cloudstream3.gradle")
-}
+version = 1
 
 cloudstream {
-    setSrcDir("src/main/kotlin")
-    authors = listOf("MTS")
+    language    = "id"
+    description = "MTSFlix Provider Extension for DonghuaZone"
+    authors     = listOf("MTS")
+    status      = 1
+    tvTypes     = listOf("Movie", "TvSeries", "Anime")
 }
 
 android {
-    defaultConfig {
-        minSdk = 21
-    }
+    namespace = "com.mtsflix.donghuazone"
 }
