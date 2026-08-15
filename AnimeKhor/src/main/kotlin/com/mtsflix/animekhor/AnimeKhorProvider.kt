@@ -3,9 +3,7 @@ package com.mtsflix.animekhor
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.nicehttp.Requests
-import com.lagradost.cloudstream3.network.addCloudFlareDns
-import java.util.concurrent.TimeUnit
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import org.jsoup.Jsoup
 import org.json.JSONObject
 import org.json.JSONArray
@@ -33,13 +31,7 @@ class AnimeKhorProvider : MainAPI() {
         "anime/page/%d/?status=&type=&order=" to "Filter Search"
     )
 
-    private val client = Requests().apply {
-        baseClient = baseClient.newBuilder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .addCloudFlareDns()
-            .build()
-    }
+    private val cloudflareInterceptor by lazy { CloudflareKiller() }
 
     private val browserHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -54,7 +46,7 @@ class AnimeKhorProvider : MainAPI() {
             "$mainUrl/${request.data}"
         }
 
-        val document = client.get(targetUrl, headers = browserHeaders).document
+        val document = app.get(targetUrl, headers = browserHeaders, interceptor = cloudflareInterceptor).document
         val home = document.select("div.listupd article, .listupd .bsx, .listupd .item")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
@@ -83,7 +75,7 @@ class AnimeKhorProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
         for (i in 1..3) {
-            val document = client.get("$mainUrl/page/$i/?s=$query", headers = browserHeaders).document
+            val document = app.get("$mainUrl/page/$i/?s=$query", headers = browserHeaders, interceptor = cloudflareInterceptor).document
             val results = document.select("div.listupd article, .item, article").mapNotNull { it.toSearchResult() }
             if (results.isEmpty()) break
             searchResponse.addAll(results)
@@ -93,7 +85,7 @@ class AnimeKhorProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val cleanUrl = fixUrl(url)
-        var document = client.get(cleanUrl, headers = browserHeaders).document
+        var document = app.get(cleanUrl, headers = browserHeaders, interceptor = cloudflareInterceptor).document
         
         val seriesUrl = document.select("a").firstOrNull { 
             it.text().contains("All Episodes", ignoreCase = true) 
@@ -101,7 +93,7 @@ class AnimeKhorProvider : MainAPI() {
 
         val targetUrl = seriesUrl ?: cleanUrl
         if (!seriesUrl.isNullOrBlank()) {
-            document = client.get(seriesUrl, headers = browserHeaders).document
+            document = app.get(seriesUrl, headers = browserHeaders, interceptor = cloudflareInterceptor).document
         }
 
         val title = document.selectFirst("h1.entry-title")?.text()?.trim().toString()
@@ -166,7 +158,7 @@ class AnimeKhorProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = client.get(fixUrl(data), headers = browserHeaders).document
+        val document = app.get(fixUrl(data), headers = browserHeaders, interceptor = cloudflareInterceptor).document
         val streamUrls = mutableSetOf<String>()
 
         val defaultIframeSrc = document.selectFirst("#pembed iframe, .player-embed iframe, #embed_holder iframe")?.attr("src")
@@ -217,7 +209,7 @@ class AnimeKhorProvider : MainAPI() {
 
                 if (!dmVideoId.isNullOrBlank()) {
                     val metaUrl = "https://www.dailymotion.com/player/metadata/video/$dmVideoId?locale=en_US"
-                    val metaResponse = client.get(
+                    val metaResponse = app.get(
                         metaUrl,
                         headers = mapOf(
                             "Origin" to "https://www.dailymotion.com",
@@ -268,12 +260,13 @@ class AnimeKhorProvider : MainAPI() {
 
                 // 2. AbyssPlayer Custom AES-CTR Decryption
                 if (streamUrl.contains("abyssplayer.com/")) {
-                    val streamDoc = client.get(
+                    val streamDoc = app.get(
                         streamUrl,
                         referer = data,
                         headers = mapOf(
                             "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                        )
+                        ),
+                        interceptor = cloudflareInterceptor
                     ).text
 
                     val b64Match = Regex("""const\s+datas\s*=\s*"([^"]+)"""").find(streamDoc)
@@ -349,7 +342,7 @@ class AnimeKhorProvider : MainAPI() {
                     val id = idMatch?.groupValues?.getOrNull(1)?.trim()
                     if (!id.isNullOrBlank()) {
                         // First trigger the info API to register IP session on the backend
-                        client.get(
+                        app.get(
                             "https://animekhor.upns.live/api/v1/info?id=$id",
                             headers = mapOf(
                                 "Referer" to "https://animekhor.upns.live/",
@@ -358,7 +351,7 @@ class AnimeKhorProvider : MainAPI() {
                         )
 
                         // Next fetch the video API
-                        val apiResponse = client.get(
+                        val apiResponse = app.get(
                             "https://animekhor.upns.live/api/v1/video?id=$id&w=1920&h=1080&r=animekhor.org",
                             headers = mapOf(
                                 "Referer" to "https://animekhor.upns.live/",
