@@ -20,15 +20,14 @@ class DonghuaZoneProvider : MainAPI() {
 
     override val mainPage = mainPageOf(
         "" to "Latest Episode",
-        "search/label/Movie" to "Movie",
         "search/label/Ongoing" to "Ongoing",
+        "search/label/Movie" to "Movie",
         "search/label/Completed" to "Completed",
         "search/label/Action" to "Action",
         "search/label/Adventure" to "Adventure",
         "search/label/Fantasy" to "Fantasy",
-        "search/label/Cultivation" to "Cultivation",
-        "search/label/Martial%20Arts" to "Martial Arts",
-        "search/label/Romance" to "Romance"
+        "search/label/Romance" to "Romance",
+        "search/label/Donghua" to "Donghua"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -43,7 +42,7 @@ class DonghuaZoneProvider : MainAPI() {
             }
         }
         val document = app.get(url).document
-        val items = document.select(".post-outer-container, article.post-outer-container, article.post, div.blog-post")
+        val items = document.select(".post-outer-container, article.post-outer-container, article.post")
             .mapNotNull { it.toSearchResult() }
 
         return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
@@ -73,29 +72,43 @@ class DonghuaZoneProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val document = app.get("$mainUrl/search?q=$query").document
-        return document.select(".post-outer-container, article.post-outer-container, article.post, div.blog-post")
+        return document.select(".post-outer-container, article.post-outer-container, article.post")
             .mapNotNull { it.toSearchResult() }
     }
 
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url).document
-        val title = document.selectFirst("h1.post-title, h1.entry-title, h1")?.text()?.trim() ?: return null
-        val posterUrl = document.selectFirst(".post-body img, .entry-content img")?.attr("src")?.let { fixUrlNull(it) }
+        val title = document.selectFirst("h1.title-stream, h1.post-title, h1.entry-title, h1")?.text()?.trim() ?: return null
+        val posterUrl = document.selectFirst(".post-thumbnail, .post-body img, .entry-content img")?.let {
+            val src = it.attr("data-src").ifEmpty { it.attr("src") }
+            if (src.startsWith("data:")) null else fixUrlNull(src)
+        }
         val plot = document.selectFirst(".sinoposis p, .post-body p")?.text()?.trim()
         val isMovie = title.contains("Movie", true) || url.contains("Movie", true)
 
-        val scriptText = document.select("script").joinToString("\n") { it.data() }
-        val regex = Regex("""label_episode\s*=\s*["']([^"']+)["']""")
-        val match = regex.find(scriptText)
-        val episodes = mutableListOf<Episode>()
+        val ignoreGenres = setOf(
+            "movie", "ongoing", "completed", "action", "adventure",
+            "fantasy", "romance", "cultivation", "martial arts", "donghua", "episode", "3d"
+        )
 
-        if (match != null) {
-            val rawLabel = match.groupValues[1].split("/")[0].replace("_", " ")
-            val feedUrl = "$mainUrl/feeds/posts/default/-/$rawLabel?alt=json&max-results=100"
+        var seriesLabel: String? = null
+        document.select("a[href*='/search/label/']").forEach { a ->
+            val href = a.attr("href")
+            if (href.contains("/search/label/")) {
+                val raw = href.substringAfter("/search/label/").substringBefore("?").replace("%20", " ").trim()
+                if (raw.isNotEmpty() && !ignoreGenres.contains(raw.lowercase())) {
+                    seriesLabel = raw
+                }
+            }
+        }
+
+        val episodes = mutableListOf<Episode>()
+        if (!seriesLabel.isNullOrBlank()) {
+            val feedUrl = "$mainUrl/feeds/posts/default/-/$seriesLabel?alt=json&max-results=100"
             try {
                 val jsonText = app.get(feedUrl).text
                 val json = parseJson<BloggerFeedResponse>(jsonText)
-                json.feed?.entry?.forEachIndexed { index, entry ->
+                json.feed?.entry?.reversed()?.forEachIndexed { index, entry ->
                     val epTitle = entry.title?.t ?: "Episode ${index + 1}"
                     val epHref = entry.link?.firstOrNull { it.rel == "alternate" }?.href
                     if (!epHref.isNullOrBlank()) {
@@ -106,7 +119,7 @@ class DonghuaZoneProvider : MainAPI() {
                     }
                 }
             } catch (e: Exception) {
-                // Fallback
+                // Fallback if feed API fails
             }
         }
 
