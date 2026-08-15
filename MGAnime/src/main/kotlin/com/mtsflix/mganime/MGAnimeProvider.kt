@@ -26,9 +26,10 @@ class MGAnimeProvider : MainAPI() {
     override val mainPage = mainPageOf(
         "page/%d/" to "Rilisan Terbaru",
         "anime/page/%d/?order=popular" to "Trending Anime",
-        "category/donghua/page/%d/" to "Donghua Series",
-        "category/movie/page/%d/" to "Movie",
-        "anime/page/%d/?status=&type=&order=" to "Filter Search"
+        "donghua/page/%d/" to "Donghua Series",
+        "genre/donghua/page/%d/" to "Kategori Donghua",
+        "movie/page/%d/" to "Movie",
+        "anime/page/%d/" to "Anime List"
     )
 
     private val cloudflareInterceptor by lazy { CloudflareKiller() }
@@ -40,14 +41,31 @@ class MGAnimeProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val targetUrl = if (request.data.contains("%d")) {
-            "$mainUrl/${request.data.format(page)}"
+        val targetUrl = if (page <= 1) {
+            when (request.data) {
+                "page/%d/" -> "$mainUrl/"
+                "anime/page/%d/?order=popular" -> "$mainUrl/anime/?order=popular"
+                "donghua/page/%d/" -> "$mainUrl/donghua/"
+                "genre/donghua/page/%d/" -> "$mainUrl/genre/donghua/"
+                "movie/page/%d/" -> "$mainUrl/movie/"
+                "anime/page/%d/" -> "$mainUrl/anime/"
+                else -> {
+                    val raw = request.data.replace("page/%d/", "").replace("page/%d", "")
+                    if (raw.isBlank()) "$mainUrl/" else "$mainUrl/$raw"
+                }
+            }
         } else {
-            "$mainUrl/${request.data}"
+            if (request.data.contains("%d")) {
+                "$mainUrl/${request.data.format(page)}"
+            } else if (request.data.contains("?")) {
+                "$mainUrl/${request.data}&page=$page"
+            } else {
+                "$mainUrl/${request.data}page/$page/"
+            }
         }
 
         val document = app.get(targetUrl, headers = browserHeaders, interceptor = cloudflareInterceptor).document
-        val home = document.select("div.listupd article, .listupd .bsx, .listupd .item, .animposx")
+        val home = document.select("div.listupd article, .listupd .bs, .listupd .bsx, .listupd .item, .animposx, .bsx, article.bs, .bs, .postl, .animepost, .box-item, div.item, article")
             .mapNotNull { it.toSearchResult() }
             .distinctBy { it.url }
 
@@ -59,16 +77,27 @@ class MGAnimeProvider : MainAPI() {
         val href = fixUrlNull(a.attr("href")) ?: return null
         var title = a.attr("title").trim()
         if (title.isBlank()) {
-            title = this.selectFirst("div.title, div.tt, h2, h3, .entry-title, .data .title")?.text()?.trim().orEmpty()
+            title = this.selectFirst("div.title, div.tt, h2, h3, .entry-title, .data .title, .ttme")?.text()?.trim().orEmpty()
         }
         if (title.isBlank()) {
             title = a.text().trim()
         }
         if (title.isBlank()) return null
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.let { 
+
+        val imgEl = this.selectFirst("img")
+        val posterUrl = fixUrlNull(imgEl?.let { 
             val src = it.attr("src")
-            if (src.isNotBlank()) src else it.attr("data-src")
-        })
+            val dataSrc = it.attr("data-src")
+            val lazySrc = it.attr("data-lazy-src")
+            val origSrc = it.attr("data-original")
+            when {
+                src.isNotBlank() && !src.contains("data:image") -> src
+                dataSrc.isNotBlank() -> dataSrc
+                lazySrc.isNotBlank() -> lazySrc
+                origSrc.isNotBlank() -> origSrc
+                else -> src
+            }
+        }) ?: fixUrlNull(this.selectFirst("meta[property=og:image]")?.attr("content"))
 
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
@@ -78,8 +107,9 @@ class MGAnimeProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val searchResponse = mutableListOf<SearchResponse>()
         for (i in 1..3) {
-            val document = app.get("$mainUrl/page/$i/?s=$query", headers = browserHeaders, interceptor = cloudflareInterceptor).document
-            val results = document.select("div.listupd article, .item, article, .bsx").mapNotNull { it.toSearchResult() }
+            val searchUrl = if (i == 1) "$mainUrl/?s=$query" else "$mainUrl/page/$i/?s=$query"
+            val document = app.get(searchUrl, headers = browserHeaders, interceptor = cloudflareInterceptor).document
+            val results = document.select("div.listupd article, .listupd .bs, .listupd .bsx, .item, article, .bsx, .bs").mapNotNull { it.toSearchResult() }
             if (results.isEmpty()) break
             searchResponse.addAll(results)
         }
@@ -106,7 +136,8 @@ class MGAnimeProvider : MainAPI() {
         val poster = document.selectFirst("img.wp-post-image, div.ime > img, .thumb img")
             ?.let { 
                 val src = it.attr("src")
-                if (src.isNotBlank()) src else it.attr("data-src")
+                val dataSrc = it.attr("data-src")
+                if (src.isNotBlank() && !src.contains("data:image")) src else dataSrc
             }
             ?.takeIf { it.isNotBlank() }
             ?: document.selectFirst("meta[property=og:image]")?.attr("content").orEmpty()
@@ -178,8 +209,8 @@ class MGAnimeProvider : MainAPI() {
             streamUrls.add(abs)
         }
 
-        // 2. Options / Mirrors
-        document.select(".mobius option, select.mirror option, select option[value], .mob-mirror option[value], .mirroroption option").forEach { opt ->
+        // 2. Options / Mirrors / Servers
+        document.select(".mobius option, select.mirror option, select option[value], .mob-mirror option[value], .mirroroption option, select#selectserver option").forEach { opt ->
             val value = opt.attr("value").trim()
             val dataPost = opt.attr("data-post").trim()
             val dataNume = opt.attr("data-nume").trim()
@@ -227,7 +258,6 @@ class MGAnimeProvider : MainAPI() {
         var count = 0
         streamUrls.forEach { streamUrl ->
             try {
-                // Default extractors & fallbacks
                 loadExtractor(streamUrl, data, subtitleCallback, callback)
                 count++
             } catch (_: Exception) {}
