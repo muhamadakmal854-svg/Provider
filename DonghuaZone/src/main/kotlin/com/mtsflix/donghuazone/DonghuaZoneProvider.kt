@@ -22,11 +22,6 @@ class DonghuaZoneProvider : MainAPI() {
         "" to "Latest Episode",
         "search/label/Ongoing" to "Ongoing",
         "search/label/Movie" to "Movie",
-        "search/label/Completed" to "Completed",
-        "search/label/Action" to "Action",
-        "search/label/Adventure" to "Adventure",
-        "search/label/Fantasy" to "Fantasy",
-        "search/label/Romance" to "Romance",
         "search/label/Donghua" to "Donghua"
     )
 
@@ -86,6 +81,13 @@ class DonghuaZoneProvider : MainAPI() {
         val plot = document.selectFirst(".sinoposis p, .post-body p")?.text()?.trim()
         val isMovie = title.contains("Movie", true) || url.contains("Movie", true)
 
+        if (isMovie) {
+            return newMovieLoadResponse(title, url, TvType.AnimeMovie, url) {
+                this.posterUrl = posterUrl
+                this.plot = plot
+            }
+        }
+
         val ignoreGenres = setOf(
             "movie", "ongoing", "completed", "action", "adventure",
             "fantasy", "romance", "cultivation", "martial arts", "donghua", "episode", "3d"
@@ -129,17 +131,10 @@ class DonghuaZoneProvider : MainAPI() {
             })
         }
 
-        return if (isMovie) {
-            newMovieLoadResponse(title, url, TvType.AnimeMovie, url) {
-                this.posterUrl = posterUrl
-                this.plot = plot
-            }
-        } else {
-            newAnimeLoadResponse(title, url, TvType.Anime) {
-                this.posterUrl = posterUrl
-                this.plot = plot
-                addEpisodes(DubStatus.Subbed, episodes)
-            }
+        return newAnimeLoadResponse(title, url, TvType.Anime) {
+            this.posterUrl = posterUrl
+            this.plot = plot
+            addEpisodes(DubStatus.Subbed, episodes)
         }
     }
 
@@ -151,25 +146,43 @@ class DonghuaZoneProvider : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         val html = document.html()
-        val foundServers = mutableListOf<String>()
+        val foundServers = mutableListOf<Pair<String, String>>()
 
-        val regex = Regex("""changeServer\([^,]+,\s*["']([^"']+)["']\)""")
-        regex.findAll(html).forEach { m ->
-            val serverUrl = m.groupValues[1].trim()
-            if (serverUrl.isNotBlank() && !foundServers.contains(serverUrl)) {
-                foundServers.add(serverUrl)
+        document.select("button[onclick*='changeServer'], a[onclick*='changeServer'], .serverBtn").forEach { btn ->
+            val name = btn.text().trim()
+            val onclick = btn.attr("onclick")
+            val match = Regex("""changeServer\([^,]+,\s*["']([^"']+)["']\)""").find(onclick)
+            val serverUrl = match?.groupValues?.get(1)?.trim() ?: ""
+            if (serverUrl.isNotBlank() && serverUrl.startsWith("http")) {
+                if (foundServers.none { it.second == serverUrl }) {
+                    foundServers.add(Pair(name, serverUrl))
+                }
+            }
+        }
+
+        if (foundServers.isEmpty()) {
+            val regex = Regex("""changeServer\([^,]+,\s*["']([^"']+)["']\)""")
+            regex.findAll(html).forEach { m ->
+                val serverUrl = m.groupValues[1].trim()
+                if (serverUrl.isNotBlank() && serverUrl.startsWith("http")) {
+                    if (foundServers.none { it.second == serverUrl }) {
+                        foundServers.add(Pair("Server", serverUrl))
+                    }
+                }
             }
         }
 
         document.select("iframe").forEach { iframe ->
             val src = iframe.attr("data-src").ifEmpty { iframe.attr("src") }.trim()
-            if (src.isNotBlank() && !foundServers.contains(src)) {
-                foundServers.add(src)
+            if (src.isNotBlank() && src.startsWith("http")) {
+                if (foundServers.none { it.second == src }) {
+                    foundServers.add(Pair("Iframe", src))
+                }
             }
         }
 
         var count = 0
-        for (serverUrl in foundServers) {
+        for ((serverName, serverUrl) in foundServers) {
             val fixedUrl = fixUrl(serverUrl)
 
             if (fixedUrl.contains("dailymotion")) {
