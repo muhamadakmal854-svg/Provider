@@ -182,27 +182,6 @@ class DonghuaZoneProvider : MainAPI() {
                 } else null
 
                 if (!videoId.isNullOrBlank()) {
-                    try {
-                        val metaUrl = "https://www.dailymotion.com/player/metadata/video/$videoId"
-                        val metaJsonText = app.get(metaUrl, headers = mapOf("Referer" to mainUrl)).text
-                        val metaJson = parseJson<DailymotionMetaResponse>(metaJsonText)
-                        val m3u8Url = metaJson.qualities?.auto?.firstOrNull()?.url
-                        if (!m3u8Url.isNullOrBlank()) {
-                            callback(
-                                ExtractorLink(
-                                    name,
-                                    "DailyMotion (HD)",
-                                    m3u8Url,
-                                    referer = "https://www.dailymotion.com/",
-                                    quality = Qualities.P1080.value,
-                                    isM3u8 = true
-                                )
-                            )
-                            count++
-                        }
-                    } catch (e: Exception) {
-                        // Fallback
-                    }
                     val stdEmbedUrl = "https://www.dailymotion.com/embed/video/$videoId"
                     loadExtractor(stdEmbedUrl, data, subtitleCallback, callback)
                     count++
@@ -222,7 +201,4 @@ class DonghuaZoneProvider : MainAPI() {
     data class BloggerEntry(@JsonProperty("title") val title: BloggerText?, @JsonProperty("link") val link: List<BloggerLink>?)
     data class BloggerText(@JsonProperty("$" + "t") val t: String?)
     data class BloggerLink(@JsonProperty("rel") val rel: String?, @JsonProperty("href") val href: String?)
-    data class DailymotionMetaResponse(@JsonProperty("qualities") val qualities: DailymotionQualities?)
-    data class DailymotionQualities(@JsonProperty("auto") val auto: List<DailymotionAutoStream>?)
-    data class DailymotionAutoStream(@JsonProperty("url") val url: String?)
 }
