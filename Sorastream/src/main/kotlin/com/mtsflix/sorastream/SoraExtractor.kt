@@ -20,9 +20,9 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 
-// object SoraExtractor
+object SoraExtractor : SoraStream() {
 
-    suspend fun invokeGomovies(
+    suspend fun SoraExtractor.invokeGomovies(
         title: String? = null,
         year: Int? = null,
         season: Int? = null,
@@ -149,7 +149,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeIdlix(
+    suspend fun SoraExtractor.invokeIdlix(
         title: String? = null,
         year: Int? = null,
         season: Int? = null,
@@ -230,7 +230,7 @@ import org.jsoup.Jsoup
         }
     }
 
-    suspend fun invokeVidsrccc(
+    suspend fun SoraExtractor.invokeVidsrccc(
         tmdbId: Int?,
         imdbId: String?,
         season: Int?,
@@ -333,7 +333,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeVidsrc(
+    suspend fun SoraExtractor.invokeVidsrc(
         imdbId: String?,
         season: Int?,
         episode: Int?,
@@ -382,7 +382,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeXprime(
+    suspend fun SoraExtractor.invokeXprime(
         tmdbId: Int?,
         title: String? = null,
         year: Int? = null,
@@ -451,7 +451,7 @@ import org.jsoup.Jsoup
         )
     }
 
-    suspend fun invokeWatchsomuch(
+    suspend fun SoraExtractor.invokeWatchsomuch(
         imdbId: String? = null,
         season: Int? = null,
         episode: Int? = null,
@@ -494,7 +494,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeMapple(
+    suspend fun SoraExtractor.invokeMapple(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
@@ -555,7 +555,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeVidlink(
+    suspend fun SoraExtractor.invokeVidlink(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
@@ -587,7 +587,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeVidfast(
+    suspend fun SoraExtractor.invokeVidfast(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
@@ -640,7 +640,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeWyzie(
+    suspend fun SoraExtractor.invokeWyzie(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
@@ -665,7 +665,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeVixsrc(
+    suspend fun SoraExtractor.invokeVixsrc(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
@@ -714,7 +714,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeVidsrccx(
+    suspend fun SoraExtractor.invokeVidsrccx(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
@@ -744,7 +744,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeSuperembed(
+    suspend fun SoraExtractor.invokeSuperembed(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
@@ -802,7 +802,7 @@ import org.jsoup.Jsoup
 
     }
 
-    suspend fun invokeKisskh(
+    suspend fun SoraExtractor.invokeKisskh(
         title: String,
         year: Int?,
         season: Int?,
@@ -882,7 +882,7 @@ import org.jsoup.Jsoup
     private data class KisskhSubtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
 
 
-    suspend fun invokeVidrock(
+    suspend fun SoraExtractor.invokeVidrock(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
@@ -945,7 +945,7 @@ import org.jsoup.Jsoup
 
     }
     
-    suspend fun invokeRiveStream(
+    suspend fun SoraExtractor.invokeRiveStream(
         id: Int? = null,
         season: Int? = null,
         episode: Int? = null,
@@ -1078,8 +1078,8 @@ import org.jsoup.Jsoup
         }
     }
 
-}
     data class RiveStreamSource(
     @JsonProperty("data")
     val data: List<String>?
 )
+}
