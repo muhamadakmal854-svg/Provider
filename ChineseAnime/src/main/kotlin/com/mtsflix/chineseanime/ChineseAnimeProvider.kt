@@ -12,7 +12,7 @@ class ChineseAnimeProvider : MainAPI() {
     override var name = "ChineseAnime"
     override var lang = "zh"
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Anime, TvType.Donghua)
+    override val supportedTypes = setOf(TvType.Anime)
 
     override val mainPage = mainPageOf(
         "$mainUrl/" to "Latest Donghua",
