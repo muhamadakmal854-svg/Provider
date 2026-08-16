@@ -20,7 +20,7 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 
-object SoraExtractor : SoraStream() {
+// object SoraExtractor
 
     suspend fun invokeGomovies(
         title: String? = null,
