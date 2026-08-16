@@ -1,13 +1,24 @@
-version = 7
+version = 1
 
 cloudstream {
+
     language    = "id"
-    description = "MTSFlix Provider Extension for DrakorKita"
+
+    description = "Provider untuk -D-r-a-k-o-r-K-i-t-a-"
+
     authors     = listOf("MTS")
+
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries", "Anime")
+
+    tvTypes     = listOf("Movie", "TvSeries")
+
+    iconUrl     = "https://drakor.kita.mobi/favicon.ico"
+
 }
 
 android {
-    namespace = "com.mtsflix.drakorkita"
+
+    namespace = "com.sad25kag.drakorkita"
+
 }
+

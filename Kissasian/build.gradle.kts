@@ -1,13 +1,24 @@
-version = 7
+version = 1
 
 cloudstream {
+
     language    = "id"
-    description = "MTSFlix Provider Extension for Kissasian"
+
+    description = "Provider untuk -K-i-s-s-A-s-i-a-n- -T-v-"
+
     authors     = listOf("MTS")
+
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries", "Anime")
+
+    tvTypes     = listOf("Movie", "TvSeries")
+
+    iconUrl     = "https://kissasiantv.my/favicon.ico"
+
 }
 
 android {
-    namespace = "com.mtsflix.kissasian"
+
+    namespace = "com.mts.kissasian"
+
 }
+

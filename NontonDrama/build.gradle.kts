@@ -1,13 +1,24 @@
-version = 7
+version = 1
 
 cloudstream {
+
     language    = "id"
-    description = "MTSFlix Provider Extension for NontonDrama"
+
+    description = "Provider untuk -N-o-n-t-o-n-D-r-a-m-a-"
+
     authors     = listOf("MTS")
+
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries", "Anime")
+
+    tvTypes     = listOf("Movie", "TvSeries")
+
+    iconUrl     = "https://tv4.nontondrama.my/favicon.ico"
+
 }
 
 android {
-    namespace = "com.mtsflix.nontondrama"
+
+    namespace = "com.mts.nontondrama"
+
 }
+

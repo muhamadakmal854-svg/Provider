@@ -1,13 +1,24 @@
-version = 7
+version = 1
 
 cloudstream {
+
     language    = "id"
-    description = "MTSFlix Provider Extension for Animexin"
+
+    description = "Provider untuk -A-n-i-m-e-X-i-n-"
+
     authors     = listOf("MTS")
+
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries", "Anime")
+
+    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
+
+    iconUrl     = "https://animexin.dev/favicon.ico"
+
 }
 
 android {
-    namespace = "com.mtsflix.animexin"
+
+    namespace = "com.mts.animexin"
+
 }
+

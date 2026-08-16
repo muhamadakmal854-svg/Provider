@@ -1,22 +1,24 @@
-version = 9
+version = 1
 
 cloudstream {
-    description = "Klikxxi"
-    language = "id"
-    authors = listOf("sad25kag")
 
-    /**
-     * Status int as the following:
-     * 0: Down
-     * 1: Ok
-     * 2: Slow
-     * 3: Beta only
-     * */
-    status = 1 // will be 3 if unspecified
-    tvTypes = listOf(
-        "TvSeries",
-        "Movie",
-    )
+    language    = "id"
 
-    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://klikxxi.fit&size=%size%"
+    description = "Provider untuk -K-L-I-K-X-X-I- -–- -N-o-n-t-o-n- -F-i-l-m- -O-n-l-i-n-e- -G-r-a-t-i-s- -S-u-b- -I-n-d-o- -L-A-Y-A-R-K-A-C-A-2-1- -L-K-2-1-"
+
+    authors     = listOf("MTS")
+
+    status      = 1
+
+    tvTypes     = listOf("Movie", "TvSeries")
+
+    iconUrl     = "https://forumikatolik.net/favicon.ico"
+
 }
+
+android {
+
+    namespace = "com.mts.klikxxi"
+
+}
+

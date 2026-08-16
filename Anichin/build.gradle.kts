@@ -1,13 +1,24 @@
 version = 1
 
 cloudstream {
+
     language    = "id"
-    description = "MTSFlix Provider Extension for Anichin"
+
+    description = "Provider untuk -A-n-i-c-h-i-n- --- -F-a-n-s-u-b- -D-o-n-g-h-u-a- -S-u-b-t-i-t-l-e- -I-n-d-o-n-e-s-i-a-"
+
     authors     = listOf("MTS")
+
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries", "Anime")
+
+    tvTypes     = listOf("Movie", "TvSeries", "Anime", "OVA")
+
+    iconUrl     = "https://anichin.live/favicon.ico"
+
 }
 
 android {
-    namespace = "com.mtsflix.anichin"
+
+    namespace = "com.mts.anichin"
+
 }
+

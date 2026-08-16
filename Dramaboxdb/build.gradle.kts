@@ -1,13 +1,24 @@
-version = 7
+version = 1
 
 cloudstream {
+
     language    = "en"
-    description = "MTSFlix Provider Extension for Dramaboxdb"
+
+    description = "Provider untuk -D-r-a-m-a-b-o-x-d-b-"
+
     authors     = listOf("MTS")
+
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries", "Anime")
+
+    tvTypes     = listOf("Movie", "TvSeries")
+
+    iconUrl     = "https://www.dramaboxdb.com/favicon.ico"
+
 }
 
 android {
-    namespace = "com.mtsflix.dramaboxdb"
+
+    namespace = "com.dramaboxdb"
+
 }
+

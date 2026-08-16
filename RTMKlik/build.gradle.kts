@@ -1,13 +1,24 @@
-version = 7
+version = 1
 
 cloudstream {
-    language    = "id"
-    description = "MTSFlix Provider Extension for RTMKlik"
+
+    language    = "ms"
+
+    description = "Provider untuk -R-T-M- -K-l-i-k-"
+
     authors     = listOf("MTS")
+
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries", "Anime")
+
+    tvTypes     = listOf("Movie", "TvSeries")
+
+    iconUrl     = "https://rtmklik.rtm.gov.my/live/tv/tv1/favicon.ico"
+
 }
 
 android {
-    namespace = "com.mtsflix.rtmklik"
+
+    namespace = "com.mts.rtmklik"
+
 }
+

@@ -1,13 +1,24 @@
-version = 7
+version = 1
 
 cloudstream {
+
     language    = "id"
-    description = "MTSFlix Provider Extension for FourKHDHub"
+
+    description = "Provider untuk -4-K-H-D-H-u-b-"
+
     authors     = listOf("MTS")
+
     status      = 1
-    tvTypes     = listOf("Movie", "TvSeries", "Anime")
+
+    tvTypes     = listOf("Movie", "TvSeries")
+
+    iconUrl     = "https://4khdhub.one/favicon.ico"
+
 }
 
 android {
-    namespace = "com.mtsflix.fourkhdhub"
+
+    namespace = "com.fourKHDHub"
+
 }
+
