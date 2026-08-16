@@ -22,7 +22,7 @@ import org.jsoup.Jsoup
 
 object SoraExtractor : SoraStream() {
 
-    suspend fun SoraExtractor.invokeGomovies(
+    suspend fun invokeGomovies(
         title: String? = null,
         year: Int? = null,
         season: Int? = null,
@@ -744,7 +744,7 @@ object SoraExtractor : SoraStream() {
 
     }
 
-    suspend fun SoraExtractor.invokeSuperembed(
+    suspend fun invokeSuperembed(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
@@ -882,7 +882,7 @@ object SoraExtractor : SoraStream() {
     private data class KisskhSubtitle(@JsonProperty("src") val src: String?, @JsonProperty("label") val label: String?)
 
 
-    suspend fun SoraExtractor.invokeVidrock(
+    suspend fun invokeVidrock(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
