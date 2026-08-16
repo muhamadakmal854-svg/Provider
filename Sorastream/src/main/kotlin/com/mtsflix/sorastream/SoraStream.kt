@@ -322,7 +322,7 @@ open class SoraStream : TmdbProvider() {
 
         runAllAsync(
             {
-                invokeIdlix(
+                SoraExtractor.invokeIdlix(
                     res.title,
                     res.year,
                     res.season,
@@ -332,7 +332,7 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
-                invokeKisskh(
+                SoraExtractor.invokeKisskh(
                     res.title ?: return@runAllAsync,
                     res.year,
                     res.season,
@@ -346,7 +346,7 @@ open class SoraStream : TmdbProvider() {
                 if (!altTitle.isNullOrBlank() && !altTitle.equals(res.title, ignoreCase = true) &&
                     (res.isAsian || res.isAnime || res.isBollywood)
                 ) {
-                    invokeKisskh(
+                    SoraExtractor.invokeKisskh(
                         altTitle,
                         res.year,
                         res.season,
@@ -357,7 +357,7 @@ open class SoraStream : TmdbProvider() {
                 }
             },
             {
-                invokeVidsrccc(
+                SoraExtractor.invokeVidsrccc(
                     res.id,
                     res.imdbId,
                     res.season,
@@ -367,7 +367,7 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
-                invokeXprime(
+                SoraExtractor.invokeXprime(
                     res.id,
                     res.title,
                     res.year,
@@ -378,7 +378,7 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
-                invokeVidsrc(
+                SoraExtractor.invokeVidsrc(
                     res.imdbId,
                     res.season,
                     res.episode,
@@ -387,10 +387,10 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
-                if (!res.isAnime) invokeRiveStream(res.id, res.season, res.episode, callback)
+                if (!res.isAnime) SoraExtractor.invokeRiveStream(res.id, res.season, res.episode, callback)
             },
             {
-                invokeWatchsomuch(
+                SoraExtractor.invokeWatchsomuch(
                     res.imdbId,
                     res.season,
                     res.episode,
@@ -398,25 +398,25 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
-                invokeVixsrc(res.id, res.season, res.episode, callback)
+                SoraExtractor.invokeVixsrc(res.id, res.season, res.episode, callback)
             },
             {
-                invokeVidlink(res.id, res.season, res.episode, callback)
+                SoraExtractor.invokeVidlink(res.id, res.season, res.episode, callback)
             },
             {
-                invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
+                SoraExtractor.invokeVidfast(res.id, res.season, res.episode, subtitleCallback, callback)
             },
             {
-                invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
+                SoraExtractor.invokeMapple(res.id, res.season, res.episode, subtitleCallback, callback)
             },
             {
-                invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
+                SoraExtractor.invokeWyzie(res.id, res.season, res.episode, subtitleCallback)
             },
             {
-                invokeVidsrccx(res.id, res.season, res.episode, callback)
+                SoraExtractor.invokeVidsrccx(res.id, res.season, res.episode, callback)
             },
             {
-                invokeSuperembed(
+                SoraExtractor.invokeSuperembed(
                     res.id,
                     res.season,
                     res.episode,
@@ -425,7 +425,7 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
-                invokeVidrock(
+                SoraExtractor.invokeVidrock(
                     res.id,
                     res.season,
                     res.episode,
@@ -434,7 +434,7 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
-                invokeGomovies(
+                SoraExtractor.invokeGomovies(
                     res.title,
                     res.year,
                     res.season,
