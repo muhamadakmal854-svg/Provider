@@ -1,0 +1,12 @@
+{
+  "name": "Kuronime",
+  "plugin": "com.mtsflix.kuronime.KuronimePlugin",
+  "description": "MTSFlix Provider Extension for Kuronime",
+  "authors": [
+    "MTS"
+  ],
+  "version": 7,
+  "language": "id",
+  "type": "movies",
+  "iconUrl": "https://raw.githubusercontent.com/muhamadakmal854-svg/Provider/master/icon.png"
+}
