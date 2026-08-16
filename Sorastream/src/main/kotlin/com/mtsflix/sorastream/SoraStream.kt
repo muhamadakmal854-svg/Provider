@@ -51,7 +51,7 @@ open class SoraStream : TmdbProvider() {
 
         private const val tmdbAPI = "https://api.themoviedb.org/3"
         const val gdbot = "https://gdtot.pro"
-        const val anilistAPI = "https://graphql.anilist.co"
+        const val https://graphql.anilist.co = "https://graphql.anilist.co"
         const val malsyncAPI = "https://api.malsync.moe"
         const val jikanAPI = "https://api.jikan.moe/v4"
 
@@ -416,7 +416,7 @@ open class SoraStream : TmdbProvider() {
                 invokeVidsrccx(res.id, res.season, res.episode, callback)
             },
             {
-                invokeSuperembed(
+                SoraExtractor.invokeSuperembed(
                     res.id,
                     res.season,
                     res.episode,

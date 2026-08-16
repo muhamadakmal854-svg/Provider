@@ -744,7 +744,7 @@ object SoraExtractor : SoraStream() {
 
     }
 
-    suspend fun invokeSuperembed(
+    suspend fun SoraExtractor.invokeSuperembed(
         tmdbId: Int?,
         season: Int?,
         episode: Int?,
