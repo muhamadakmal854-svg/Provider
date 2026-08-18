@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk Animeplay"
+    description = "Provider untuk AnimePlay"
 
     authors     = listOf("MTS")
 

@@ -6,9 +6,9 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
-class Animeplay : MainAPI() {
+class AnimePlay : MainAPI() {
     override var mainUrl = "https://animeplay.org"
-    override var name = "Animeplay"
+    override var name = "AnimePlay"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
@@ -169,8 +169,6 @@ class Animeplay : MainAPI() {
             Regex("""\b(19\d\d|20\d\d)\b""").find(it)?.groupValues?.get(1)?.toIntOrNull()
         }
 
-        val rating = doc.selectFirst(".gmr-rating-value, [itemprop='ratingValue']")?.text()?.toRatingInt()
-
         // Extract Episode List for TV Series
         val epElements = doc.select(".gmr-listseries a, ul.episodelist a, .gmr-box-item a, a[href*='/eps/'], a[href*='/episode/']")
         val episodes = epElements.mapNotNull { el ->
@@ -199,7 +197,6 @@ class Animeplay : MainAPI() {
                 this.plot = plot
                 this.tags = tags
                 this.year = year
-                this.rating = rating
             }
         } else {
             // Sort episodes in ascending order
@@ -214,7 +211,6 @@ class Animeplay : MainAPI() {
                 this.plot = plot
                 this.tags = tags
                 this.year = year
-                this.rating = rating
             }
         }
     }
