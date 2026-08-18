@@ -7,7 +7,7 @@ import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 class Animeplay : MainAPI() {
-    override var mainUrl = "https://anime-play.id"
+    override var mainUrl = "https://animeplay.org"
     override var name = "Animeplay"
     override val hasMainPage = true
     override var lang = "id"

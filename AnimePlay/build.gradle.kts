@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk -A-n-i-m-e-P-l-a-y- --- -A-n-i-m-e- -S-u-b-t-i-t-l-e- -I-n-d-o-n-e-s-i-a-"
+    description = "Provider untuk Animeplay"
 
     authors     = listOf("MTS")
 
@@ -12,13 +12,13 @@ cloudstream {
 
     tvTypes     = listOf("Anime", "AnimeMovie", "OVA", "Movie", "TvSeries")
 
-    iconUrl     = "https://anime-play.id/favicon.ico"
+    iconUrl     = "https://animeplay.org/favicon.ico"
 
 }
 
 android {
 
-    namespace = "com.sad25kag.animeplay"
+    namespace = "com.animeplay"
 
 }
 
