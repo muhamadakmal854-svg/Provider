@@ -49,12 +49,49 @@ class Anime3rb(val context: Context) : MainAPI() {
     }
 
     private fun toAbsoluteUrl(url: String): String {
+        val clean = url.trim()
+        if (clean.isBlank()) return ""
         return when {
-            url.startsWith("http") -> url
-            url.startsWith("//") -> "https:$url"
-            url.startsWith("/") -> "$mainUrl$url"
-            else -> "$mainUrl/$url"
+            clean.startsWith("http://", ignoreCase = true) || clean.startsWith("https://", ignoreCase = true) -> clean
+            clean.startsWith("//") -> "https:$clean"
+            clean.startsWith("/") -> "$mainUrl$clean"
+            else -> "$mainUrl/$clean"
         }
+    }
+
+    private fun getPosterUrl(element: Element?): String? {
+        if (element == null) return null
+        val img = if (element.tagName().equals("img", true) || element.tagName().equals("source", true)) {
+            element
+        } else {
+            element.selectFirst("img, picture source, [style*='background'], [style*='url']") ?: element
+        }
+
+        for (attr in listOf("data-cfsrc", "data-src", "src", "data-original", "data-lazy-src", "data-lazy", "data-image", "data-bg", "srcset", "data-srcset")) {
+            var v = img.attr(attr).trim()
+            if (v.isNotBlank() && !v.startsWith("data:image", true) && !v.startsWith("data:text", true)) {
+                if (attr.contains("srcset")) {
+                    v = v.substringBefore(" ").substringBefore(",").trim()
+                }
+                if (v.isNotBlank() && !v.startsWith("data:", true)) {
+                    return toAbsoluteUrl(v)
+                }
+            }
+        }
+
+        // Check style for background-image: url(...)
+        val style = img.attr("style").ifBlank { element.attr("style") }
+        if (style.isNotBlank()) {
+            val bgMatch = Regex("""url\(['"]?(.*?)['"]?\)""").find(style)
+            if (bgMatch != null) {
+                val bgUrl = bgMatch.groupValues[1].trim()
+                if (bgUrl.isNotBlank() && !bgUrl.startsWith("data:", true)) {
+                    return toAbsoluteUrl(bgUrl)
+                }
+            }
+        }
+
+        return null
     }
 
     private fun getSavedCookie(ctx: Context?): String {
@@ -132,8 +169,10 @@ class Anime3rb(val context: Context) : MainAPI() {
                         javaScriptEnabled = true
                         domStorageEnabled = true
                         databaseEnabled = true
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
                         userAgentString = USER_AGENT
-                        blockNetworkImage = true
+                        blockNetworkImage = false
                     }
                 } catch (_: Exception) {}
 
@@ -282,9 +321,7 @@ class Anime3rb(val context: Context) : MainAPI() {
             if (title.isBlank()) return null
 
             val href = toAbsoluteUrl(element.attr("href"))
-            val posterUrl = element.selectFirst("img")?.let {
-                it.attr("data-src").ifBlank { it.attr("src") }
-            }
+            val posterUrl = getPosterUrl(element)
 
             val episodeText = cleanTitleText(element.select("p.number, .episode-number, span.ep").text())
             val episodeNum = episodeText.filter { it.isDigit() }.toIntOrNull()
@@ -353,7 +390,7 @@ class Anime3rb(val context: Context) : MainAPI() {
                                 val rawTitle = item.selectFirst("h4, h3, .title")?.text()?.trim() ?: return@mapNotNull null
                                 val title = cleanTitleText(rawTitle)
                                 val link = toAbsoluteUrl(item.attr("href"))
-                                val img = item.selectFirst("img")?.let { it.attr("data-src").ifBlank { it.attr("src") } }
+                                val img = getPosterUrl(item)
 
                                 val ratingTag = item.selectFirst(".badge")?.text()?.trim() ?: ""
                                 val isMovie = ratingTag.contains("Movie", true) || ratingTag.contains("Film", true) || title.contains("فيلم")
@@ -400,19 +437,17 @@ class Anime3rb(val context: Context) : MainAPI() {
         suspendCoroutine { cont ->
             Handler(Looper.getMainLooper()).post {
                 val ctx = getSafeContext()
-                if (ctx == null) {
-                    cont.resume(null)
-                    return@post
-                }
 
                 val webView = WebView(ctx)
                 webView.settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
                     databaseEnabled = false
+                    useWideViewPort = true
+                    loadWithOverviewMode = true
                     userAgentString = USER_AGENT
-                    blockNetworkImage = true
-                    loadsImagesAutomatically = false
+                    blockNetworkImage = false
+                    loadsImagesAutomatically = true
                     mediaPlaybackRequiresUserGesture = true
                     javaScriptCanOpenWindowsAutomatically = false
                     cacheMode = WebSettings.LOAD_DEFAULT
@@ -486,9 +521,9 @@ class Anime3rb(val context: Context) : MainAPI() {
                 .replace("( فيلم )", "")
                 .trim()
 
-            val poster = doc.selectFirst("img[alt*='بوستر'], .poster img, meta[property='og:image']")?.let {
-                it.attr("src").ifBlank { it.attr("content") }
-            } ?: ""
+            val poster = getPosterUrl(doc.selectFirst("img[alt*='بوستر'], .poster img, .poster, img.cover, .video-info img, [property='og:image']"))
+                ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.let { toAbsoluteUrl(it) }
+                ?: ""
 
             val elements = doc.select(".video-list a, .episodes-list a, a[href*='/episode/']")
             var episodes = elements.mapNotNull { element ->
@@ -500,7 +535,7 @@ class Anime3rb(val context: Context) : MainAPI() {
                 val epText = cleanTitleText(videoData?.selectFirst("span")?.text() ?: videoData?.children()?.getOrNull(0)?.text() ?: element.text())
                 val epNum = NON_DIGITS.replace(epText, "").toIntOrNull()
                 val epName = cleanTitleText(videoData?.selectFirst("p")?.text() ?: videoData?.children()?.getOrNull(1)?.text() ?: "")
-                val imgAttr = element.selectFirst("img")?.attr("src").orEmpty()
+                val imgAttr = getPosterUrl(element) ?: ""
 
                 newEpisode(href) {
                     name = if (epName.isNotBlank()) epName else epText
@@ -565,10 +600,6 @@ class Anime3rb(val context: Context) : MainAPI() {
     ): Pair<List<Pair<String, String>>, List<String>> = suspendCoroutine { cont ->
         Handler(Looper.getMainLooper()).post {
             val ctx = getSafeContext()
-            if (ctx == null) {
-                cont.resume(Pair(emptyList(), emptyList()))
-                return@post
-            }
 
             val webView = WebView(ctx)
             webView.settings.apply {
