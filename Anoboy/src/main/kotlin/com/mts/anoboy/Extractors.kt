@@ -109,8 +109,9 @@ class BloggerExtractor : ExtractorApi() {
             ?: "en-US"
         val reqId = (10000..99999).random()
 
+        val host = if (fixedUrl.contains("draft.blogger.com", true)) "draft.blogger.com" else "www.blogger.com"
         val payload = """[[["$rpcId","[\"$token\",\"\",0]",null,"generic"]]]"""
-        val apiUrl = "$mainUrl/_/BloggerVideoPlayerUi/data/batchexecute" +
+        val apiUrl = "https://$host/_/BloggerVideoPlayerUi/data/batchexecute" +
             "?rpcids=$rpcId&source-path=%2Fvideo.g&f.sid=$fSid&bl=$bl&hl=$hl&_reqid=$reqId&rt=c"
 
         val response = app.post(
@@ -119,7 +120,7 @@ class BloggerExtractor : ExtractorApi() {
             referer = fixedUrl,
             cookies = cookies,
             headers = mapOf(
-                "Origin" to mainUrl,
+                "Origin" to "https://$host",
                 "Accept" to "*/*",
                 "Content-Type" to "application/x-www-form-urlencoded;charset=UTF-8",
                 "X-Same-Domain" to "1",
@@ -127,33 +128,34 @@ class BloggerExtractor : ExtractorApi() {
             )
         ).text
 
-        return Regex("""https://[^\s"']+""")
-            .findAll(decodeUnicodeEscapes(response))
-            .map { it.value }
-            .plus(
-                Regex("""https://[^\s"']+""")
-                    .findAll(response)
-                    .map { it.value }
-                )
-            .map { normalizeVideoUrl(it) }
-            .filter {
-                it.contains("googlevideo.com/videoplayback") ||
-                    it.contains("blogger.googleusercontent.com")
+        val resolved = mutableListOf<ResolvedVideo>()
+        try {
+            response.lines().forEach { line ->
+                val trimmed = line.trim()
+                if (trimmed.startsWith("[[") && trimmed.contains("wrb.fr")) {
+                    val batchArr = org.json.JSONArray(trimmed)
+                    for (i in 0 until batchArr.length()) {
+                        val item = batchArr.optJSONArray(i) ?: continue
+                        val innerJsonStr = item.optString(2, "")
+                        if (innerJsonStr.isNotBlank()) {
+                            val innerArr = org.json.JSONArray(innerJsonStr)
+                            val sourcesArr = innerArr.optJSONArray(2) ?: continue
+                            for (s in 0 until sourcesArr.length()) {
+                                val srcObj = sourcesArr.optJSONArray(s) ?: continue
+                                val videoUrl = srcObj.optString(0, "")
+                                val itags = srcObj.optJSONArray(1)
+                                val itag = itags?.optInt(0)
+                                if (videoUrl.isNotBlank() && (videoUrl.contains("googlevideo.com") || videoUrl.contains("blogger.googleusercontent.com"))) {
+                                    resolved.add(ResolvedVideo(videoUrl, itagToQuality(itag)))
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            .distinct()
-            .map { videoUrl ->
-                ResolvedVideo(
-                    videoUrl,
-                    itagToQuality(
-                        Regex("[?&]itag=(\\d+)")
-                            .find(videoUrl)
-                            ?.groupValues
-                            ?.getOrNull(1)
-                            ?.toIntOrNull()
-                    )
-                )
-            }
-            .toList()
+        } catch (_: Exception) {}
+
+        return resolved.distinctBy { it.url }
     }
 
     private fun decodeUnicodeEscapes(input: String): String {

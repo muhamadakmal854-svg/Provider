@@ -487,10 +487,11 @@ class Anoboy : MainAPI() {
                 ?.getOrNull(1)
                 ?.ifBlank { null }
                 ?: "en-US"
+            val host = if (fixedUrl.contains("draft.blogger.com", true)) "draft.blogger.com" else "www.blogger.com"
             val reqId = (10000..99999).random()
             val rpcId = "WcwnYd"
             val payload = """[[["$rpcId","[\"$token\",\"\",0]",null,"generic"]]]"""
-            val apiUrl = "https://www.blogger.com/_/BloggerVideoPlayerUi/data/batchexecute" +
+            val apiUrl = "https://$host/_/BloggerVideoPlayerUi/data/batchexecute" +
                 "?rpcids=$rpcId&source-path=%2Fvideo.g&f.sid=$fSid&bl=$bl&hl=$hl&_reqid=$reqId&rt=c"
 
             val response = runCatching {
@@ -500,7 +501,7 @@ class Anoboy : MainAPI() {
                     referer = fixedUrl,
                     cookies = cookies,
                     headers = mapOf(
-                        "Origin" to "https://www.blogger.com",
+                        "Origin" to "https://$host",
                         "Accept" to "*/*",
                         "Content-Type" to "application/x-www-form-urlencoded;charset=UTF-8",
                         "X-Same-Domain" to "1",
@@ -509,47 +510,46 @@ class Anoboy : MainAPI() {
                 ).text
             }.getOrNull() ?: return false
 
-            val directUrls = Regex("""https://[^\s"']+""")
-                .findAll(decodeUnicodeEscapes(response))
-                .map { it.value }
-                .plus(
-                    Regex("""https://[^\s"']+""")
-                        .findAll(response)
-                        .map { it.value }
-                )
-                .map { normalizeVideoUrl(it) }
-                .filter {
-                    it.contains("googlevideo.com/videoplayback") ||
-                        it.contains("blogger.googleusercontent.com")
-                }
-                .distinct()
-                .toList()
-
-            directUrls.forEach { videoUrl ->
-                val itag = Regex("[?&]itag=(\\d+)")
-                    .find(videoUrl)
-                    ?.groupValues
-                    ?.getOrNull(1)
-                    ?.toIntOrNull()
-                val directReferer = if (videoUrl.contains("googlevideo.com/", true)) {
-                    googleVideoReferer
-                } else {
-                    fixedUrl
-                }
-                callbackWrapper(
-                    newExtractorLink("Blogger", "Blogger", videoUrl, if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
-                        this.referer = directReferer
-                        this.headers = mapOf(
-                            "Referer" to directReferer,
-                            "User-Agent" to USER_AGENT,
-                            "Accept" to "*/*"
-                        )
-                        this.quality = itagToQuality(itag)
+            var found = false
+            try {
+                response.lines().forEach { line ->
+                    val trimmed = line.trim()
+                    if (trimmed.startsWith("[[") && trimmed.contains("wrb.fr")) {
+                        val batchArr = org.json.JSONArray(trimmed)
+                        for (i in 0 until batchArr.length()) {
+                            val item = batchArr.optJSONArray(i) ?: continue
+                            val innerJsonStr = item.optString(2, "")
+                            if (innerJsonStr.isNotBlank()) {
+                                val innerArr = org.json.JSONArray(innerJsonStr)
+                                val sourcesArr = innerArr.optJSONArray(2) ?: continue
+                                for (s in 0 until sourcesArr.length()) {
+                                    val srcObj = sourcesArr.optJSONArray(s) ?: continue
+                                    val videoUrl = srcObj.optString(0, "")
+                                    val itags = srcObj.optJSONArray(1)
+                                    val itag = itags?.optInt(0)
+                                    if (videoUrl.isNotBlank() && (videoUrl.contains("googlevideo.com") || videoUrl.contains("blogger.googleusercontent.com"))) {
+                                        val directReferer = if (videoUrl.contains("googlevideo.com/", true)) googleVideoReferer else fixedUrl
+                                        callbackWrapper(
+                                            newExtractorLink("Blogger", "Blogger", videoUrl, if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
+                                                this.referer = directReferer
+                                                this.headers = mapOf(
+                                                    "Referer" to directReferer,
+                                                    "User-Agent" to USER_AGENT,
+                                                    "Accept" to "*/*"
+                                                )
+                                                this.quality = itagToQuality(itag)
+                                            }
+                                        )
+                                        found = true
+                                    }
+                                }
+                            }
+                        }
                     }
-                )
-            }
+                }
+            } catch (_: Exception) {}
 
-            return directUrls.isNotEmpty()
+            return found
         }
 
         suspend fun resolveLegacyMirrorPage(pageUrl: String): Boolean {
