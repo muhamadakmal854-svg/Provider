@@ -28,7 +28,7 @@ import java.net.URL
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-class Anime3rb(val context: Context? = null) : MainAPI() {
+class Anime3rb(val context: Context) : MainAPI() {
     override var mainUrl = "https://anime3rb.com"
     override var name = "Anime3rb"
     override val hasMainPage = true
@@ -44,12 +44,8 @@ class Anime3rb(val context: Context? = null) : MainAPI() {
         private val TITLE_EP_REGEX = Regex("""الحلقة\s+\d+""")
     }
 
-    private fun getSafeContext(): Context? {
-        return context ?: try {
-            com.lagradost.cloudstream3.AcraApplication.context
-        } catch (_: Exception) {
-            null
-        }
+    private fun getSafeContext(): Context {
+        return this.context
     }
 
     private fun toAbsoluteUrl(url: String): String {
