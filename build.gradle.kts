@@ -132,6 +132,10 @@ subprojects {
 
         implementation("androidx.annotation:annotation:1.9.1")
 
+        implementation("androidx.preference:preference-ktx:1.2.1")
+
+        implementation("androidx.fragment:fragment-ktx:1.8.6")
+
         implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.20.1")
 
         implementation("com.fasterxml.jackson.core:jackson-databind:2.20.1")

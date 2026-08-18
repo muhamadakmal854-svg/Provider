@@ -10,7 +10,7 @@ cloudstream {
 
     status      = 1
 
-    tvTypes     = listOf("Movie", "TvSeries", "AsianDrama")
+    tvTypes     = listOf("Anime", "AnimeMovie", "OVA", "Movie", "TvSeries")
 
     iconUrl     = "https://ww11.pencurimovie.sbs/favicon.ico"
 

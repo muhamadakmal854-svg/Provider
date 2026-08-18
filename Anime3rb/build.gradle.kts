@@ -2,9 +2,9 @@ version = 1
 
 cloudstream {
 
-    language    = "id"
+    language    = "ar"
 
-    description = "Provider untuk -S-a-m-e-h-a-d-a-k-u-"
+    description = "Provider untuk Anime3rb"
 
     authors     = listOf("MTS")
 
@@ -12,13 +12,13 @@ cloudstream {
 
     tvTypes     = listOf("Anime", "AnimeMovie", "OVA", "Movie", "TvSeries")
 
-    iconUrl     = "https://v2.samehadaku.how/favicon.ico"
+    iconUrl     = "https://anime3rb.com/favicon.ico"
 
 }
 
 android {
 
-    namespace = "com.mts.samehadaku"
+    namespace = "com.anime3rb"
 
 }
 

@@ -1,0 +1,15 @@
+package com.anime3rb
+
+import android.content.Context
+import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
+import com.lagradost.cloudstream3.plugins.Plugin
+
+@CloudstreamPlugin
+class Anime3rbPlugin : Plugin() {
+    override fun load(context: Context) {
+        registerMainAPI(Anime3rb(context))
+        openSettings = { ctx ->
+            Anime3rbSettingsDialog.open(ctx)
+        }
+    }
+}

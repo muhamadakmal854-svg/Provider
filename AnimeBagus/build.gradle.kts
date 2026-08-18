@@ -10,7 +10,7 @@ cloudstream {
 
     status      = 1
 
-    tvTypes     = listOf("Movie", "TvSeries")
+    tvTypes     = listOf("Anime", "AnimeMovie", "OVA", "Movie", "TvSeries")
 
     iconUrl     = "https://tv2.animebagus.com/favicon.ico"
 
