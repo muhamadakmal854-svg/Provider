@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk -A-n-i-c-h-i-n- --- -F-a-n-s-u-b- -D-o-n-g-h-u-a- -S-u-b-t-i-t-l-e- -I-n-d-o-n-e-s-i-a-"
+    description = "Provider untuk Anichin"
 
     authors     = listOf("MTS")
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Anime", "AnimeMovie", "OVA", "Movie", "TvSeries")
 
-    iconUrl     = "https://anichin.live/favicon.ico"
+    iconUrl     = "https://anichin.moe/favicon.ico"
 
 }
 

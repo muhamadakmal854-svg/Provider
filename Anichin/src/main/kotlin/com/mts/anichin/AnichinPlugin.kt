@@ -1,31 +1,12 @@
 package com.mts.anichin
 
-import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
+import android.content.Context
 
 @CloudstreamPlugin
-class AnichinPlugin: Plugin() {
+class AnichinPlugin : Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(AnichinProvider())
-        // ── Dailymotion ───────────────────────────────────────────────
-        registerExtractorAPI(Dailymotion())
-        registerExtractorAPI(Geodailymotion())
-        registerExtractorAPI(AnichinPlayerWrapper())   // anichin-player.web.id wrapper
-        // ── OK.ru ──────────────────────────────────────────────────
-        registerExtractorAPI(Odnoklassniki())
-        registerExtractorAPI(OkRuSSL())
-        registerExtractorAPI(OkRuHTTP())
-        // ── Rumble ────────────────────────────────────────────────
-        registerExtractorAPI(Rumble())
-        // ── StreamRuby ────────────────────────────────────────────
-        registerExtractorAPI(StreamRuby())
-        // ── Vidhide / Smoothpre / EarnVids ────────────────────────
-        registerExtractorAPI(EarnVids())
-        registerExtractorAPI(EarnVidsMorencius())
-        registerExtractorAPI(Smoothpre())
-        // ── RPM Share & DTube ─────────────────────────────────────
-        registerExtractorAPI(AnichinRpmVid())
-        registerExtractorAPI(DTubePlayer())
+        registerMainAPI(Anichin(context))
     }
 }
