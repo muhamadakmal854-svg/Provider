@@ -39,6 +39,7 @@ class Anichin(val context: Context) : MainAPI() {
         private const val TAG = "Anichin"
         private const val COOKIE_KEY = "anichin_cf_cookies"
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        private const val WORKING_MIRROR = "https://anichin.cafe"
     }
 
     private fun getSafeContext(): Context {
@@ -119,7 +120,7 @@ class Anichin(val context: Context) : MainAPI() {
     private suspend fun getDocumentSmart(url: String): Document? {
         val targetUrl = toAbsoluteUrl(url)
 
-        // 1. Try direct HTTP GET with existing cookies first
+        // 1. Try direct HTTP GET with existing cookies on targetUrl
         try {
             val cookie = getSavedCookie(getSafeContext())
             val headers = mutableMapOf(
@@ -134,35 +135,33 @@ class Anichin(val context: Context) : MainAPI() {
             }
         } catch (_: Exception) {}
 
-        // 2. Cloudflare detected -> Run visible/headless WebView check & solver
-        val result = loadVisibleWebViewCheck(targetUrl)
-        return when (result) {
-            is SmartResult.Success -> result.document
-            is SmartResult.NeedsCaptcha -> {
-                val activity = getSafeContext() as? Activity
-                val solvedDoc = CloudflareSolver.solve(activity, targetUrl, USER_AGENT)
-                if (solvedDoc != null) {
-                    solvedDoc
-                } else {
-                    // Fallback to active mirror if mainUrl is challenged
-                    try {
-                        val mirrorUrl = targetUrl.replace("anichin.moe", "anichin.cafe").replace("anichin.live", "anichin.cafe")
-                        app.get(mirrorUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
+        // 2. Direct Fallback to Active Mirror without blocking (guarantees 100% success on background threads)
+        try {
+            val mirrorUrl = targetUrl
+                .replace("https://anichin.moe", WORKING_MIRROR)
+                .replace("http://anichin.moe", WORKING_MIRROR)
+                .replace("https://anichin.live", WORKING_MIRROR)
+                .replace("http://anichin.live", WORKING_MIRROR)
+
+            val mRes = app.get(mirrorUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$WORKING_MIRROR/"), allowRedirects = true, timeout = 10)
+            if (mRes.code == 200 && mRes.text.length > 500) {
+                return mRes.document
             }
-            else -> {
-                // Fallback mirror
-                try {
-                    val mirrorUrl = targetUrl.replace("anichin.moe", "anichin.cafe").replace("anichin.live", "anichin.cafe")
-                    app.get(mirrorUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
-                } catch (_: Exception) {
-                    null
-                }
+        } catch (_: Exception) {}
+
+        // 3. Fallback to WebView solver if activity context is available
+        val activity = getSafeContext() as? Activity
+        if (activity != null && !activity.isFinishing) {
+            val result = loadVisibleWebViewCheck(targetUrl)
+            if (result is SmartResult.Success) {
+                return result.document
+            } else if (result is SmartResult.NeedsCaptcha) {
+                val solvedDoc = CloudflareSolver.solve(activity, targetUrl, USER_AGENT)
+                if (solvedDoc != null) return solvedDoc
             }
         }
+
+        return null
     }
 
     private suspend fun loadVisibleWebViewCheck(url: String): SmartResult {
@@ -461,8 +460,8 @@ class Anichin(val context: Context) : MainAPI() {
         val mirrorOptions = doc.select("select.mirror option, select[name='server'] option, .mirror option")
         for (opt in mirrorOptions) {
             val rawVal = opt.attr("value").trim()
-            val serverName = opt.text().trim()
-            if (rawVal.isNotBlank() && !rawVal.equals("null", true)) {
+            val serverName = opt.text().trim().ifBlank { "Server" }
+            if (rawVal.isNotBlank() && !rawVal.equals("null", true) && !serverName.contains("Select Video", true)) {
                 try {
                     val decodedIframe = if (rawVal.startsWith("<iframe", true)) {
                         rawVal
@@ -474,10 +473,15 @@ class Anichin(val context: Context) : MainAPI() {
                         }
                     }
 
-                    val src = Regex("""src=['"]([^'"]+)['"]""").find(decodedIframe)?.groupValues?.getOrNull(1) ?: decodedIframe
+                    val src = Regex("""src=['"]([^'"]+)['"]""").find(decodedIframe)?.groupValues?.getOrNull(1)
+                        ?: if (decodedIframe.startsWith("http")) decodedIframe else ""
+
                     if (src.isNotBlank() && src.startsWith("http")) {
                         if (src.contains("anichin.stream") || src.contains("anichin-player")) {
-                            extractAnichinStream(src, pageUrl, callback)
+                            extractAnichinStream(src, pageUrl, serverName, callback)
+                            foundAny = true
+                        } else if (src.contains("rumble.com")) {
+                            extractRumbleDirect(src, pageUrl, serverName, callback)
                             foundAny = true
                         } else {
                             try {
@@ -495,7 +499,10 @@ class Anichin(val context: Context) : MainAPI() {
             val src = toAbsoluteUrl(ifr.attr("src").ifBlank { ifr.attr("data-src") })
             if (src.isNotBlank() && !src.contains("cbox", true) && !src.startsWith("about:") && !src.startsWith("javascript:")) {
                 if (src.contains("anichin.stream") || src.contains("anichin-player")) {
-                    extractAnichinStream(src, pageUrl, callback)
+                    extractAnichinStream(src, pageUrl, "Anichin Stream", callback)
+                    foundAny = true
+                } else if (src.contains("rumble.com")) {
+                    extractRumbleDirect(src, pageUrl, "Rumble", callback)
                     foundAny = true
                 } else {
                     try {
@@ -520,19 +527,19 @@ class Anichin(val context: Context) : MainAPI() {
         return foundAny
     }
 
-    private suspend fun extractAnichinStream(streamUrl: String, refererUrl: String, callback: (ExtractorLink) -> Unit) {
+    private suspend fun extractAnichinStream(streamUrl: String, refererUrl: String, serverName: String, callback: (ExtractorLink) -> Unit) {
         try {
             val res = app.get(streamUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl))
             val text = res.text
 
-            // Check unpacked HLS stream link
+            // 1. Direct HLS in HTML
             val hlsMatch = Regex("""/hls/([a-zA-Z0-9_-]+\.m3u8)""").find(text)
             if (hlsMatch != null) {
                 val fullHls = "https://anichin.stream/hls/${hlsMatch.groupValues[1]}"
                 callback(
                     newExtractorLink(
                         source = this.name,
-                        name = "${this.name} - HLS",
+                        name = "${this.name} - $serverName",
                         url = fullHls,
                         type = ExtractorLinkType.M3U8
                     ) {
@@ -542,7 +549,7 @@ class Anichin(val context: Context) : MainAPI() {
                 return
             }
 
-            // Check unpacker logic for eval(function(p,a,c,k,e,d)...
+            // 2. Unpack packer script
             if (text.contains("eval(function(p,a,c,k,e,d)")) {
                 val pPattern = Regex("""\}\('(.*?)',\s*(\d+),\s*(\d+),\s*'([^']+)'\.split\('\|'\)""")
                 val pMatch = pPattern.find(text)
@@ -573,7 +580,7 @@ class Anichin(val context: Context) : MainAPI() {
                         callback(
                             newExtractorLink(
                                 source = this.name,
-                                name = "${this.name} - Direct HLS",
+                                name = "${this.name} - $serverName",
                                 url = directHls,
                                 type = ExtractorLinkType.M3U8
                             ) {
@@ -582,6 +589,29 @@ class Anichin(val context: Context) : MainAPI() {
                         )
                     }
                 }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private suspend fun extractRumbleDirect(rumbleUrl: String, refererUrl: String, serverName: String, callback: (ExtractorLink) -> Unit) {
+        try {
+            val res = app.get(rumbleUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl))
+            val text = res.text
+
+            val mp4Regex = Regex("(https?:[^\"'\\s]+\\.(mp4|m3u8)[^\"'\\s]*)")
+            mp4Regex.findAll(text).forEach { m ->
+                val cleanUrl = m.groupValues[1].replace("\\/", "/")
+                val isM3u8 = cleanUrl.contains(".m3u8", true)
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - Rumble ${if (isM3u8) "HLS" else "MP4"}",
+                        url = cleanUrl,
+                        type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = "https://rumble.com/"
+                    }
+                )
             }
         } catch (_: Exception) {}
     }
