@@ -402,24 +402,36 @@ class Anichin(val context: Context) : MainAPI() {
             Regex("""\b(19\d\d|20\d\d)\b""").find(it)?.groupValues?.get(1)?.toIntOrNull()
         }
 
-        // Extract Episode List
-        val epElements = doc.select(".eplister ul li a, .episodelist ul li a, a[href*='-episode-']")
-        val episodes = epElements.mapNotNull { el ->
+        // Extract Episode List (Strictly inside episode list containers to avoid sidebar/recommended shows)
+        val containerElements = doc.select(".eplister ul li a, .episodelist ul li a, #daftarepisode li a, .clps li a, .ep-list li a")
+        val epElements = if (containerElements.isNotEmpty()) {
+            containerElements
+        } else {
+            doc.select(".entry-content ul li a[href*='-episode-'], #content .eplister a")
+        }
+
+        val rawEpisodes = epElements.mapNotNull { el ->
             val href = toAbsoluteUrl(el.attr("href"))
             if (href.isBlank() || href == fullUrl || href == "$mainUrl/") return@mapNotNull null
+            if (!href.contains("-episode-") && !href.contains("-ep-")) return@mapNotNull null
 
-            val epName = el.text().trim()
-            val epNum = Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE).find(epName)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: Regex("""-episode-(\d+)""", RegexOption.IGNORE_CASE).find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: Regex("""\b(\d+)\b""").find(epName)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            val numText = el.selectFirst(".epl-num")?.text()?.trim()
+            val epNum = if (!numText.isNullOrBlank() && numText.all { it.isDigit() }) {
+                numText.toIntOrNull()
+            } else {
+                val fullText = el.text().trim()
+                Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE).find(fullText)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                    ?: Regex("""-episode-(\d+)""", RegexOption.IGNORE_CASE).find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                    ?: Regex("""\b(\d+)\b""").find(fullText)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            }
 
             newEpisode(href) {
-                this.name = if (epNum != null) "Episode $epNum" else epName.lines().firstOrNull()?.trim() ?: "Episode"
+                this.name = if (epNum != null) "Episode $epNum" else "Episode"
                 this.episode = epNum
             }
         }.distinctBy { it.data }
 
-        val isMovie = episodes.isEmpty() || fullUrl.contains("/movie", true) || fullUrl.contains("-movie-", true)
+        val isMovie = rawEpisodes.isEmpty() || fullUrl.contains("/movie", true) || fullUrl.contains("-movie-", true)
 
         return if (isMovie) {
             newMovieLoadResponse(title, fullUrl, TvType.AnimeMovie, fullUrl) {
@@ -429,12 +441,11 @@ class Anichin(val context: Context) : MainAPI() {
                 this.year = year
             }
         } else {
-            // Sort episodes in ascending order (Episode 1, 2, 3...)
-            val sortedEpisodes = if (episodes.size > 1 && (episodes.first().episode ?: 0) > (episodes.last().episode ?: 0)) {
-                episodes.reversed()
-            } else {
-                episodes
-            }
+            // Strictly sort episodes in ascending order (Episode 1, Episode 2, ... Episode N)
+            val sortedEpisodes = rawEpisodes.sortedWith(
+                compareBy<Episode> { it.episode == null }
+                    .thenBy { it.episode ?: 0 }
+            )
 
             newTvSeriesLoadResponse(title, fullUrl, TvType.Anime, sortedEpisodes) {
                 this.posterUrl = poster
