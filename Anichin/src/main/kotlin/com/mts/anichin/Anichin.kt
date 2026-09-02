@@ -39,7 +39,6 @@ class Anichin(val context: Context) : MainAPI() {
         private const val TAG = "Anichin"
         private const val COOKIE_KEY = "anichin_cf_cookies"
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-        private const val WORKING_MIRROR = "https://anichin.cafe"
     }
 
     private fun getSafeContext(): Context {
@@ -103,11 +102,13 @@ class Anichin(val context: Context) : MainAPI() {
                 }
             } catch (_: Exception) {}
         }
-        val cm = CookieManager.getInstance().getCookie(mainUrl)
-        if (!cm.isNullOrBlank()) {
-            savedCookies = cm
-            return cm
-        }
+        try {
+            val cm = CookieManager.getInstance().getCookie(mainUrl)
+            if (!cm.isNullOrBlank()) {
+                savedCookies = cm
+                return cm
+            }
+        } catch (_: Exception) {}
         return ""
     }
 
@@ -120,7 +121,7 @@ class Anichin(val context: Context) : MainAPI() {
     private suspend fun getDocumentSmart(url: String): Document? {
         val targetUrl = toAbsoluteUrl(url)
 
-        // 1. Try direct HTTP GET with existing cookies on targetUrl
+        // 1. Try direct HTTP GET with existing cookies on anichin.moe
         try {
             val cookie = getSavedCookie(getSafeContext())
             val headers = mutableMapOf(
@@ -135,21 +136,7 @@ class Anichin(val context: Context) : MainAPI() {
             }
         } catch (_: Exception) {}
 
-        // 2. Direct Fallback to Active Mirror without blocking (guarantees 100% success on background threads)
-        try {
-            val mirrorUrl = targetUrl
-                .replace("https://anichin.moe", WORKING_MIRROR)
-                .replace("http://anichin.moe", WORKING_MIRROR)
-                .replace("https://anichin.live", WORKING_MIRROR)
-                .replace("http://anichin.live", WORKING_MIRROR)
-
-            val mRes = app.get(mirrorUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$WORKING_MIRROR/"), allowRedirects = true, timeout = 10)
-            if (mRes.code == 200 && mRes.text.length > 500) {
-                return mRes.document
-            }
-        } catch (_: Exception) {}
-
-        // 3. Fallback to WebView solver if activity context is available
+        // 2. Cloudflare solver via WebView / Dialog
         val activity = getSafeContext() as? Activity
         if (activity != null && !activity.isFinishing) {
             val result = loadVisibleWebViewCheck(targetUrl)
@@ -158,6 +145,12 @@ class Anichin(val context: Context) : MainAPI() {
             } else if (result is SmartResult.NeedsCaptcha) {
                 val solvedDoc = CloudflareSolver.solve(activity, targetUrl, USER_AGENT)
                 if (solvedDoc != null) return solvedDoc
+            }
+        } else {
+            // Fallback webview solver using application context on MainLooper
+            val result = loadVisibleWebViewCheck(targetUrl)
+            if (result is SmartResult.Success) {
+                return result.document
             }
         }
 
@@ -169,32 +162,41 @@ class Anichin(val context: Context) : MainAPI() {
             Handler(Looper.getMainLooper()).post {
                 val ctx = getSafeContext()
                 val activity = ctx as? Activity
-                if (activity == null || activity.isFinishing) {
+
+                var dialog: Dialog? = null
+                val webView: WebView = try {
+                    if (activity != null && !activity.isFinishing) {
+                        val d = Dialog(activity)
+                        d.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                        d.setCancelable(false)
+                        d.window?.addFlags(
+                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        )
+                        d.window?.setBackgroundDrawableResource(android.R.color.transparent)
+                        d.window?.setDimAmount(0f)
+
+                        val params = WindowManager.LayoutParams()
+                        params.copyFrom(d.window?.attributes)
+                        params.width = 1
+                        params.height = 1
+                        params.gravity = Gravity.TOP or Gravity.START
+                        params.x = -10
+                        params.y = -10
+                        d.window?.attributes = params
+
+                        val wv = WebView(activity)
+                        d.setContentView(wv, ViewGroup.LayoutParams(1, 1))
+                        d.show()
+                        dialog = d
+                        wv
+                    } else {
+                        WebView(ctx)
+                    }
+                } catch (_: Exception) {
                     continuation.resume(SmartResult.Error)
                     return@post
                 }
-
-                val dialog = Dialog(activity)
-                dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-                dialog.setCancelable(false)
-                dialog.window?.addFlags(
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                )
-                dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-                dialog.window?.setDimAmount(0f)
-
-                val params = WindowManager.LayoutParams()
-                params.copyFrom(dialog.window?.attributes)
-                params.width = 1
-                params.height = 1
-                params.gravity = Gravity.TOP or Gravity.START
-                params.x = -10
-                params.y = -10
-                dialog.window?.attributes = params
-
-                val webView = WebView(activity)
-                dialog.setContentView(webView, ViewGroup.LayoutParams(1, 1))
 
                 try {
                     webView.settings.apply {
@@ -219,7 +221,7 @@ class Anichin(val context: Context) : MainAPI() {
                     if (isFinished) return
                     isFinished = true
                     handler.removeCallbacksAndMessages(null)
-                    try { if (dialog.isShowing) dialog.dismiss() } catch (_: Exception) {}
+                    try { dialog?.dismiss() } catch (_: Exception) {}
                     try { webView.destroy() } catch (_: Exception) {}
 
                     if (result is SmartResult.Success) {
@@ -228,7 +230,7 @@ class Anichin(val context: Context) : MainAPI() {
                         if (!newCookies.isNullOrBlank()) {
                             savedCookies = newCookies
                             try {
-                                val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
+                                val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
                                 prefs.edit().putString(COOKIE_KEY, newCookies).apply()
                             } catch (_: Exception) {}
                         }
@@ -271,10 +273,9 @@ class Anichin(val context: Context) : MainAPI() {
                 }
 
                 try {
-                    dialog.show()
                     webView.loadUrl(url)
                     handler.postDelayed(poller, 1000)
-                    handler.postDelayed({ if (!isFinished) finish(SmartResult.Error) }, 20000)
+                    handler.postDelayed({ if (!isFinished) finish(SmartResult.Error) }, 25000)
                 } catch (_: Exception) {
                     finish(SmartResult.Error)
                 }
