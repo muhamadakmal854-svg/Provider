@@ -20,13 +20,6 @@ class Animexin : MainAPI() {
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     }
 
-    override fun getVideoHeaders(url: String): Map<String, String> {
-        return mapOf(
-            "User-Agent" to USER_AGENT,
-            "Referer" to "$mainUrl/"
-        )
-    }
-
     private fun toAbsoluteUrl(url: String): String {
         val clean = url.trim()
         if (clean.isBlank()) return ""
