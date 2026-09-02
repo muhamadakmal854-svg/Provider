@@ -4,13 +4,13 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk -A-n-i-m-e-X-i-n-"
+    description = "Provider untuk AnimeXin"
 
     authors     = listOf("MTS")
 
     status      = 1
 
-    tvTypes     = listOf("Anime", "AnimeMovie", "OVA", "Movie", "TvSeries")
+    tvTypes     = listOf("Anime", "AnimeMovie", "OVA")
 
     iconUrl     = "https://animexin.dev/favicon.ico"
 
