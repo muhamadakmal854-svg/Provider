@@ -473,7 +473,7 @@ class Anichin(val context: Context) : MainAPI() {
         for (opt in mirrorOptions) {
             val rawVal = opt.attr("value").trim()
             val serverName = opt.text().trim().ifBlank { "Server" }
-            if (rawVal.isNotBlank() && !rawVal.equals("null", true) && !serverName.contains("Select Video", true)) {
+            if (rawVal.isNotBlank() && !rawVal.equals("null", true) && !serverName.contains("Select Video", true) && !serverName.contains("Pilih Server", true)) {
                 try {
                     val decodedIframe = if (rawVal.startsWith("<iframe", true)) {
                         rawVal
@@ -490,7 +490,11 @@ class Anichin(val context: Context) : MainAPI() {
 
                     if (src.isNotBlank() && src.startsWith("http")) {
                         if (src.contains("anichin.stream") || src.contains("anichin-player")) {
-                            extractAnichinStream(src, pageUrl, serverName, callback)
+                            extractAnichinStream(src, pageUrl, serverName, subtitleCallback, callback)
+                            foundAny = true
+                        } else if (src.contains("dailymotion.com") || src.contains("geo.dailymotion.com") || src.contains("video=")) {
+                            extractDailymotionDirect(src, pageUrl, serverName, callback)
+                            try { loadExtractor(src, pageUrl, subtitleCallback, callback) } catch (_: Exception) {}
                             foundAny = true
                         } else if (src.contains("rumble.com")) {
                             extractRumbleDirect(src, pageUrl, serverName, callback)
@@ -511,7 +515,11 @@ class Anichin(val context: Context) : MainAPI() {
             val src = toAbsoluteUrl(ifr.attr("src").ifBlank { ifr.attr("data-src") })
             if (src.isNotBlank() && !src.contains("cbox", true) && !src.startsWith("about:") && !src.startsWith("javascript:")) {
                 if (src.contains("anichin.stream") || src.contains("anichin-player")) {
-                    extractAnichinStream(src, pageUrl, "Anichin Stream", callback)
+                    extractAnichinStream(src, pageUrl, "Anichin Player", subtitleCallback, callback)
+                    foundAny = true
+                } else if (src.contains("dailymotion.com") || src.contains("geo.dailymotion.com") || src.contains("video=")) {
+                    extractDailymotionDirect(src, pageUrl, "Dailymotion", callback)
+                    try { loadExtractor(src, pageUrl, subtitleCallback, callback) } catch (_: Exception) {}
                     foundAny = true
                 } else if (src.contains("rumble.com")) {
                     extractRumbleDirect(src, pageUrl, "Rumble", callback)
@@ -539,10 +547,72 @@ class Anichin(val context: Context) : MainAPI() {
         return foundAny
     }
 
-    private suspend fun extractAnichinStream(streamUrl: String, refererUrl: String, serverName: String, callback: (ExtractorLink) -> Unit) {
+    private suspend fun extractDailymotionDirect(videoUrlOrId: String, refererUrl: String, serverName: String, callback: (ExtractorLink) -> Unit) {
         try {
+            val videoId = if (videoUrlOrId.contains("video=")) {
+                videoUrlOrId.substringAfter("video=").substringBefore("&")
+            } else if (videoUrlOrId.contains("/video/")) {
+                videoUrlOrId.substringAfter("/video/").substringBefore("?").substringBefore("/")
+            } else if (!videoUrlOrId.contains("/") && !videoUrlOrId.contains(".")) {
+                videoUrlOrId
+            } else {
+                Regex("""video[=/]([a-zA-Z0-9]+)""").find(videoUrlOrId)?.groupValues?.getOrNull(1) ?: ""
+            }
+
+            if (videoId.isNotBlank()) {
+                val metaUrl = "https://www.dailymotion.com/player/metadata/video/$videoId"
+                val res = app.get(metaUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "https://www.dailymotion.com/"))
+                val text = res.text
+
+                // Find m3u8 in qualities
+                val m3u8Regex = Regex("""https?:\\/\\/[^"'\s]+\.m3u8[^"'\s]*""")
+                val found = m3u8Regex.findAll(text).map { it.value.replace("\\/", "/") }.distinct()
+
+                for (m3u8Url in found) {
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = "${this.name} - $serverName Dailymotion HLS",
+                            url = m3u8Url,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://www.dailymotion.com/"
+                        }
+                    )
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    private suspend fun extractAnichinStream(
+        streamUrl: String,
+        refererUrl: String,
+        serverName: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            if (streamUrl.contains("video=") || streamUrl.contains("dailymotion")) {
+                extractDailymotionDirect(streamUrl, refererUrl, serverName, callback)
+            }
+
             val res = app.get(streamUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl))
             val text = res.text
+
+            // Check if page contains nested iframes
+            val doc = res.document
+            doc.select("iframe[src]").forEach { ifr ->
+                val innerSrc = toAbsoluteUrl(ifr.attr("src"))
+                if (innerSrc.isNotBlank() && !innerSrc.contains("cbox", true) && !innerSrc.startsWith("about:") && !innerSrc.startsWith("javascript:")) {
+                    if (innerSrc.contains("video=") || innerSrc.contains("dailymotion")) {
+                        extractDailymotionDirect(innerSrc, streamUrl, serverName, callback)
+                    } else {
+                        try {
+                            loadExtractor(innerSrc, streamUrl, subtitleCallback, callback)
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
 
             // 1. Direct HLS in HTML
             val hlsMatch = Regex("""/hls/([a-zA-Z0-9_-]+\.m3u8)""").find(text)
@@ -559,6 +629,21 @@ class Anichin(val context: Context) : MainAPI() {
                     }
                 )
                 return
+            }
+
+            // Direct m3u8 urls in scripts / text
+            Regex("""(https?:[^"'\s<>]+\.m3u8[^"'\s<>]*)""").findAll(text).forEach { m ->
+                val cleanUrl = m.groupValues[1].replace("\\/", "/")
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - $serverName HLS",
+                        url = cleanUrl,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = streamUrl
+                    }
+                )
             }
 
             // 2. Unpack packer script
