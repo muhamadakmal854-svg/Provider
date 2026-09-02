@@ -81,24 +81,34 @@ class AnimePlay : MainAPI() {
 
     private fun toSearchResult(element: Element): SearchResponse? {
         return try {
-            val a = element.selectFirst("a[href]") ?: return null
+            val a = element.selectFirst("h2.entry-title a, .entry-title a, a[rel='bookmark'], a.item-title, h3 a, h2 a")
+                ?: element.select("a[href]").firstOrNull {
+                    val href = it.attr("href")
+                    href.isNotBlank() && !href.contains("youtube.com") && !href.contains("youtu.be") &&
+                            href != "$mainUrl/" && !href.startsWith("#") && !href.contains("javascript:")
+                } ?: return null
+
             val href = toAbsoluteUrl(a.attr("href"))
             if (href.isBlank() || href == "$mainUrl/" || href.contains("/category/") || href.contains("/year/")) return null
 
-            val rawTitle = element.selectFirst(".entry-title, .title, h2, h3, a")?.text()?.trim()
-                ?: a.attr("title").trim().ifEmpty { a.text().trim() }
-            if (rawTitle.isBlank()) return null
+            val rawTitleEl = element.selectFirst("h2.entry-title, .entry-title, .title, h2, h3")
+            var title = rawTitleEl?.text()?.trim() ?: a.attr("title").trim().ifEmpty { a.text().trim() }
+            title = title.replace("Permalink ke:", "", ignoreCase = true)
+                .replace("Nonton Film", "", ignoreCase = true)
+                .replace("Nonton Anime", "", ignoreCase = true)
+                .trim()
+            if (title.isBlank()) return null
 
             val poster = getPosterUrl(element)
 
             val isMovie = href.contains("/movie", true) ||
-                    !href.contains("/tv/", true) && !href.contains("/eps/", true) && !href.contains("/episode/", true)
+                    (!href.contains("/tv/", true) && !href.contains("/eps/", true) && !href.contains("/episode/", true))
             val type = if (isMovie) TvType.AnimeMovie else TvType.Anime
 
-            val epText = element.selectFirst(".gmr-episode-text, .episode, .ep, .label")?.text()?.trim()
+            val epText = element.selectFirst(".gmr-episode-text, .episode, .ep, .label, .gmr-postitem-season")?.text()?.trim()
             val epNum = epText?.filter { it.isDigit() }?.toIntOrNull()
 
-            newAnimeSearchResponse(rawTitle, href, type) {
+            newAnimeSearchResponse(title, href, type) {
                 this.posterUrl = poster
                 if (epNum != null) {
                     addDubStatus(false, epNum)
@@ -119,7 +129,7 @@ class AnimePlay : MainAPI() {
 
         val doc = app.get(targetUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$mainUrl/")).document
 
-        val cards = doc.select("article.item, .gmr-box-item, article, .item, .post-item").mapNotNull {
+        val cards = doc.select(".gmr-item-modulepost, article.item, article.item-infinite, .gmr-box-item, div.item-infinite, .gmr-module-posts .item, .item").mapNotNull {
             toSearchResult(it)
         }.distinctBy { it.url }
 
@@ -136,7 +146,7 @@ class AnimePlay : MainAPI() {
 
         val doc = app.get(searchUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$mainUrl/")).document
 
-        return doc.select("article.item, .gmr-box-item, article, .item, .post-item").mapNotNull {
+        return doc.select(".gmr-item-modulepost, article.item, article.item-infinite, .gmr-box-item, div.item-infinite, .gmr-module-posts .item, .item").mapNotNull {
             toSearchResult(it)
         }.distinctBy { it.url }
     }
@@ -150,12 +160,14 @@ class AnimePlay : MainAPI() {
             ?: return null
 
         val title = rawTitle.replace("Nonton Anime Sub Indo", "", ignoreCase = true)
+            .replace("Nonton Anime TV", "", ignoreCase = true)
+            .replace("Nonton Anime", "", ignoreCase = true)
             .replace("- ANIMEPLAY", "", ignoreCase = true)
             .replace("ANIMEPLAY", "", ignoreCase = true)
             .trim()
 
-        val poster = getPosterUrl(doc.selectFirst(".gmr-poster-thumbnail img, .entry-content img, meta[property='og:image']"))
-            ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.let { toAbsoluteUrl(it) }
+        val poster = doc.selectFirst("meta[property='og:image']")?.attr("content")?.let { toAbsoluteUrl(it) }
+            ?: getPosterUrl(doc.selectFirst(".gmr-poster-thumbnail img, .entry-content img, img[itemprop='image']"))
             ?: ""
 
         val plot = doc.select(".entry-content p, .gmr-moviedata, div[itemprop='description']").joinToString("\n") {
@@ -170,10 +182,11 @@ class AnimePlay : MainAPI() {
         }
 
         // Extract Episode List for TV Series
-        val epElements = doc.select(".gmr-listseries a, ul.episodelist a, .gmr-box-item a, a[href*='/eps/'], a[href*='/episode/']")
+        val epElements = doc.select(".gmr-listseries a, ul.episodelist a, .gmr-box-item a, a[href*='/eps/'], a[href*='/episode/'], .gmr-episode-list a")
         val episodes = epElements.mapNotNull { el ->
             val href = toAbsoluteUrl(el.attr("href"))
             if (href.isBlank() || href == fullUrl || href == "$mainUrl/") return@mapNotNull null
+            if (!href.contains("/eps/") && !href.contains("/episode/")) return@mapNotNull null
 
             val epName = el.text().trim()
             val epNum = Regex("""(?:Episode|Eps|Ep|S\d+\s*Eps?)\s*(\d+)""", RegexOption.IGNORE_CASE)
@@ -184,7 +197,7 @@ class AnimePlay : MainAPI() {
                 ?: Regex("""\b(\d+)\b""").find(epName)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
             newEpisode(href) {
-                this.name = epName
+                this.name = if (epNum != null) "Episode $epNum" else epName
                 this.episode = epNum
             }
         }.distinctBy { it.data }
@@ -280,7 +293,7 @@ class AnimePlay : MainAPI() {
 
             // Handle Byseqekaho / Byse API player embeds
             if (cleanCandidate.contains("byseqekaho.com") || cleanCandidate.contains("dismz4n3wp6xnr3.org")) {
-                val code = Regex("""/(?:e|v|3lh|d|2tkhl)/([a-zA-Z0-9]+)""").find(cleanCandidate)?.groupValues?.getOrNull(1)
+                val code = Regex("""/(?:e|v|3lh|d|2tkhl|b0b)/([a-zA-Z0-9]+)""").find(cleanCandidate)?.groupValues?.getOrNull(1)
                 if (!code.isNullOrBlank()) {
                     try {
                         val apiUrl = "https://byseqekaho.com/api/videos/$code/embed/details"
