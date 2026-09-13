@@ -2,10 +2,10 @@ package com.mts.juraganfilm
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.jsoup.nodes.Element
 import org.json.JSONObject
+import org.json.JSONArray
 import android.util.Log
 
 class JuraganfilmProvider : MainAPI() {
@@ -164,17 +164,20 @@ class JuraganfilmProvider : MainAPI() {
         val match = regex.find(iframeResponse) ?: return false
         val jsonStr = match.groupValues[1]
         
-        val sources = tryParseJson<List<SourceItem>>(jsonStr) ?: return false
+        val sourcesArr = try { org.json.JSONArray(jsonStr) } catch (_: Exception) { null } ?: return false
         var found = false
         
-        for (src in sources) {
-            val link = src.link ?: continue
+        for (i in 0 until sourcesArr.length()) {
+            val src = sourcesArr.optJSONObject(i) ?: continue
+            val link = src.optString("link").takeIf { it.isNotBlank() } ?: continue
+            val label = src.optString("label").takeIf { it.isNotBlank() } ?: "Server"
+            val type = src.optString("type")
             if (link.contains("hotfile.my.id") || link.contains(".m3u8") || link.contains(".mp4")) {
-                val isM3u8 = link.contains(".m3u8") || src.type == "hls"
+                val isM3u8 = link.contains(".m3u8") || type == "hls"
                 callback(
                     newExtractorLink(
                         source = name,
-                        name = src.label ?: "Server",
+                        name = label,
                         url = link,
                         type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     ) {
