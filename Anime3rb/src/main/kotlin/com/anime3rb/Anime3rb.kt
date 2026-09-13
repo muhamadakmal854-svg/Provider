@@ -379,10 +379,10 @@ class Anime3rb(val context: Context) : MainAPI() {
 
                     val postRes = app.post(updateUrl, headers = headers, json = payload)
                     if (postRes.code == 200) {
-                        val responseJson = AppUtils.parseJson<Map<String, Any>>(postRes.text)
-                        val components = responseJson["components"] as? List<Map<String, Any>>
-                        val effects = components?.firstOrNull()?.get("effects") as? Map<String, Any>
-                        val htmlContent = effects?.get("html") as? String
+                        val responseJson = org.json.JSONObject(postRes.text)
+                        val components = responseJson.optJSONArray("components")
+                        val effects = components?.optJSONObject(0)?.optJSONObject("effects")
+                        val htmlContent = effects?.optString("html")
 
                         if (!htmlContent.isNullOrBlank()) {
                             val soupResults = Jsoup.parse(htmlContent)
@@ -659,11 +659,12 @@ class Anime3rb(val context: Context) : MainAPI() {
 
                                 if (jsonMatch != null) {
                                     val jsonStr = jsonMatch.groupValues[1]
-                                    val linksFromJson = AppUtils.parseJson<List<Map<String, Any?>>>(jsonStr)
-                                    linksFromJson.forEach { item ->
-                                        val src = item["src"]?.toString() ?: item["file"]?.toString()
-                                        val label = item["label"]?.toString() ?: "Default"
-                                        if (!src.isNullOrBlank()) extractedRaw.add(src to label)
+                                    val linksArr = org.json.JSONArray(jsonStr)
+                                    for (i in 0 until linksArr.length()) {
+                                        val item = linksArr.optJSONObject(i) ?: continue
+                                        val src = item.optString("src", "").ifBlank { item.optString("file", "") }
+                                        val label = item.optString("label", "Default")
+                                        if (src.isNotBlank()) extractedRaw.add(src to label)
                                     }
 
                                     if (extractedRaw.isNotEmpty()) {
@@ -688,11 +689,12 @@ class Anime3rb(val context: Context) : MainAPI() {
                             val responseBytes = (if (connection.responseCode < 400) connection.inputStream else connection.errorStream).readBytes()
                             val jsonString = String(responseBytes, Charsets.UTF_8)
 
-                            val linksFromJson = AppUtils.parseJson<List<Map<String, Any?>>>(jsonString)
-                            linksFromJson.forEach { item ->
-                                val src = item["src"]?.toString() ?: item["file"]?.toString()
-                                val label = item["label"]?.toString() ?: "Default"
-                                if (!src.isNullOrBlank()) extractedRaw.add(src to label)
+                            val linksArr = org.json.JSONArray(jsonString)
+                            for (i in 0 until linksArr.length()) {
+                                val item = linksArr.optJSONObject(i) ?: continue
+                                val src = item.optString("src", "").ifBlank { item.optString("file", "") }
+                                val label = item.optString("label", "Default")
+                                if (src.isNotBlank()) extractedRaw.add(src to label)
                             }
 
                             if (extractedRaw.isNotEmpty()) {
