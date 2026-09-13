@@ -1,10 +1,15 @@
 package com.animeplay
 
+import android.util.Base64
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class AnimePlay : MainAPI() {
     override var mainUrl = "https://animeplay.org"
@@ -292,27 +297,12 @@ class AnimePlay : MainAPI() {
             val cleanCandidate = if (candidate.startsWith("//")) "https:$candidate" else candidate
 
             // Handle Byseqekaho / Byse API player embeds
-            if (cleanCandidate.contains("byseqekaho.com") || cleanCandidate.contains("dismz4n3wp6xnr3.org")) {
-                val code = Regex("""/(?:e|v|3lh|d|2tkhl|b0b)/([a-zA-Z0-9]+)""").find(cleanCandidate)?.groupValues?.getOrNull(1)
-                if (!code.isNullOrBlank()) {
-                    try {
-                        val apiUrl = "https://byseqekaho.com/api/videos/$code/embed/details"
-                        val apiRes = app.get(
-                            apiUrl,
-                            headers = mapOf(
-                                "User-Agent" to USER_AGENT,
-                                "Referer" to "https://animeplay.org/",
-                                "Accept" to "application/json"
-                            )
-                        ).text
-
-                        val json = org.json.JSONObject(apiRes)
-                        val frameUrl = json.optString("embed_frame_url", "")
-                        if (frameUrl.isNotBlank()) {
-                            loadExtractor(frameUrl, pageUrl, subtitleCallback, callback)
-                            foundAny = true
-                        }
-                    } catch (_: Exception) {}
+            if (cleanCandidate.contains("byseqekaho.com") || cleanCandidate.contains("dismz4n3wp6xnr3.org") ||
+                cleanCandidate.contains("f7hyg4q.org") || cleanCandidate.contains("owphbf24.com")) {
+                val byseExtracted = extractByseDirect(cleanCandidate, pageUrl, callback)
+                if (byseExtracted) {
+                    foundAny = true
+                    continue
                 }
             }
 
@@ -340,5 +330,94 @@ class AnimePlay : MainAPI() {
         }
 
         return foundAny
+    }
+
+    private fun decodeBase64Url(input: String): ByteArray {
+        val clean = input.replace('-', '+').replace('_', '/')
+        val pad = (4 - (clean.length % 4)) % 4
+        val padded = clean + "=".repeat(pad)
+        return Base64.decode(padded, Base64.DEFAULT)
+    }
+
+    private suspend fun extractByseDirect(embedUrl: String, pageUrl: String, callback: (ExtractorLink) -> Unit): Boolean {
+        return try {
+            val code = Regex("""/(?:e|v|3lh|d|2tkhl|b0b|klezq|[a-zA-Z0-9_-]+)/([a-zA-Z0-9]+)""").find(embedUrl)?.groupValues?.getOrNull(1)
+                ?: if (!embedUrl.contains("/") && embedUrl.length in 8..20) embedUrl else return false
+
+            val apiUrl = "https://byseqekaho.com/api/videos/$code"
+            val resText = app.get(
+                apiUrl,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "https://byseqekaho.com/e/$code",
+                    "Accept" to "application/json"
+                )
+            ).text
+
+            if (resText.isBlank()) return false
+            val json = JSONObject(resText)
+            val playback = json.optJSONObject("playback") ?: return false
+
+            val versionStr = playback.optString("version", "1").trim()
+            val version = versionStr.toIntOrNull() ?: 1
+            val keyPartsArr = playback.optJSONArray("key_parts") ?: return false
+
+            val n = version
+            val o = n
+            val a = 31 - n
+
+            val totalParts = keyPartsArr.length()
+            if (o < 1 || a < 1 || o > totalParts || a > totalParts) return false
+
+            val part1 = keyPartsArr.optString(o - 1, "")
+            val part2 = keyPartsArr.optString(a - 1, "")
+            if (part1.isBlank() || part2.isBlank()) return false
+
+            val keyBytes1 = decodeBase64Url(part1)
+            val keyBytes2 = decodeBase64Url(part2)
+            val keyBytes = keyBytes1 + keyBytes2
+            if (keyBytes.size != 32) return false
+
+            val ivRaw = playback.optString("iv", "")
+            val payloadRaw = playback.optString("payload", "")
+            if (ivRaw.isBlank() || payloadRaw.isBlank()) return false
+
+            val ivBytes = decodeBase64Url(ivRaw)
+            val payloadBytes = decodeBase64Url(payloadRaw)
+
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val keySpec = SecretKeySpec(keyBytes, "AES")
+            val gcmSpec = GCMParameterSpec(128, ivBytes)
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+            val decryptedBytes = cipher.doFinal(payloadBytes)
+            val decryptedJson = String(decryptedBytes, Charsets.UTF_8)
+
+            val decryptedObj = JSONObject(decryptedJson)
+            val sourcesArr = decryptedObj.optJSONArray("sources") ?: return false
+
+            var found = false
+            for (i in 0 until sourcesArr.length()) {
+                val sObj = sourcesArr.getJSONObject(i)
+                val streamUrl = sObj.optString("url", "").trim()
+                val label = sObj.optString("label", "1080p").ifBlank { "Direct" }
+                if (streamUrl.isNotBlank() && streamUrl.startsWith("http")) {
+                    val isM3u8 = streamUrl.contains(".m3u8") || sObj.optString("mime_type").contains("mpegurl", true)
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = "${this.name} - Byse $label",
+                            url = streamUrl,
+                            type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = "https://byseqekaho.com/"
+                        }
+                    )
+                    found = true
+                }
+            }
+            found
+        } catch (_: Exception) {
+            false
+        }
     }
 }
