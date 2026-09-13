@@ -344,12 +344,13 @@ class FourKHDHub : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val links = AppUtils.tryParseJson<List<String>>(data)
-            ?.asSequence()
-            ?.filter { it.isNotBlank() }
-            ?.distinct()
-            ?.toList()
-            ?: return false
+        val links = try {
+            val arr = org.json.JSONArray(data)
+            (0 until arr.length()).mapNotNull { arr.optString(it, "").takeIf { s -> s.isNotBlank() } }
+        } catch (_: Exception) {
+            listOf(data).filter { it.isNotBlank() }
+        }.filter { it.isNotBlank() }.distinct()
+        if (links.isEmpty()) return false
 
         links.amap { raw ->
             val resolved = try {
