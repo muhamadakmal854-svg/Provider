@@ -151,7 +151,7 @@ open class PutarinExtractor : ExtractorApi() {
 
                         if (isHls) {
                             generateM3u8(
-                                name = "Indoxxi Putarin VIP",
+                                source = name,
                                 streamUrl = fullStreamUrl,
                                 referer = embedUrl,
                                 headers = mapOf("Referer" to embedUrl, "Origin" to baseDomain)
@@ -159,8 +159,8 @@ open class PutarinExtractor : ExtractorApi() {
                         } else {
                             callback.invoke(
                                 newExtractorLink(
-                                    source = "Indoxxi Putarin",
-                                    name = "Indoxxi Putarin Fast",
+                                    source = name,
+                                    name = "$name Fast",
                                     url = fullStreamUrl,
                                     type = ExtractorLinkType.VIDEO
                                 ) {
@@ -177,7 +177,11 @@ open class PutarinExtractor : ExtractorApi() {
 
         // Direct stream search fallback
         Regex("""(https?://[^\s"'<>]+\.m3u8[^\s"'<>]*)""").findAll(html).forEach { m ->
-            generateM3u8("Indoxxi Putarin", m.groupValues[1], embedUrl).forEach(callback)
+            generateM3u8(
+                source = name,
+                streamUrl = m.groupValues[1],
+                referer = embedUrl
+            ).forEach(callback)
         }
     }
 }
@@ -222,7 +226,7 @@ open class VidHideExtractor : ExtractorApi() {
             val m3u8 = match.groupValues[1]
             if (foundLinks.add(m3u8)) {
                 generateM3u8(
-                    name = "VidHide",
+                    source = name,
                     streamUrl = m3u8,
                     referer = targetUrl,
                     headers = mapOf("Referer" to targetUrl)
@@ -276,7 +280,7 @@ open class EfekStream : ExtractorApi() {
         val m3u8Regex = Regex("""(https?://[^\s"'<>]+\.m3u8[^\s"'<>]*)""")
         m3u8Regex.findAll(unpacked).forEach { match ->
             generateM3u8(
-                name = "EfekStream VIP",
+                source = name,
                 streamUrl = match.groupValues[1],
                 referer = url,
                 headers = mapOf("Referer" to url)
@@ -319,7 +323,7 @@ open class StreamWishExtractor : ExtractorApi() {
         val m3u8Regex = Regex("""(https?://[^\s"'<>]+\.m3u8[^\s"'<>]*)""")
         m3u8Regex.findAll(unpacked).forEach { match ->
             generateM3u8(
-                name = "StreamWish",
+                source = name,
                 streamUrl = match.groupValues[1],
                 referer = url,
                 headers = mapOf("Referer" to url)
@@ -362,7 +366,7 @@ open class ByseqExtractor : ExtractorApi() {
         val m3u8Regex = Regex("""(https?://[^\s"'<>]+\.m3u8[^\s"'<>]*)""")
         m3u8Regex.findAll(unpacked).forEach { match ->
             generateM3u8(
-                name = "Filemoon",
+                source = name,
                 streamUrl = match.groupValues[1],
                 referer = url,
                 headers = mapOf("Referer" to url)
@@ -397,7 +401,7 @@ open class AbyssPlayer : ExtractorApi() {
         val m3u8Regex = Regex("""(https?://[^\s"'<>]+\.m3u8[^\s"'<>]*)""")
         m3u8Regex.findAll(unpacked).forEach { match ->
             generateM3u8(
-                name = "AbyssPlayer",
+                source = name,
                 streamUrl = match.groupValues[1],
                 referer = url
             ).forEach(callback)
@@ -439,7 +443,7 @@ open class StreamP2PExtractor : ExtractorApi() {
         val m3u8Regex = Regex("""(https?://[^\s"'<>]+\.m3u8[^\s"'<>]*)""")
         m3u8Regex.findAll(unpacked).forEach { match ->
             generateM3u8(
-                name = "StreamP2P",
+                source = name,
                 streamUrl = match.groupValues[1],
                 referer = url
             ).forEach(callback)
