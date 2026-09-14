@@ -3,6 +3,8 @@ package com.mts.donghuazone
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.M3u8Helper
+import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import org.json.JSONObject
 import org.jsoup.Jsoup
 import java.net.URLDecoder
@@ -371,14 +373,15 @@ class DonghuaZone : MainAPI() {
                                 } catch (_: Exception) {}
 
                                 callback(
-                                    ExtractorLink(
-                                        source = name,
-                                        name = "$name - Dailymotion Multi",
-                                        url = m3u8Url,
-                                        referer = dmReferer,
-                                        quality = Qualities.P1080.value,
-                                        isM3u8 = true
-                                    )
+                                    newExtractorLink(
+                                        name,
+                                        "$name - Dailymotion Multi",
+                                        m3u8Url,
+                                        ExtractorLinkType.M3U8
+                                    ) {
+                                        this.referer = dmReferer
+                                        this.quality = Qualities.P1080.value
+                                    }
                                 )
                                 foundAny = true
                             }
@@ -400,14 +403,15 @@ class DonghuaZone : MainAPI() {
             // Direct MP4
             if (u.contains(".mp4", true)) {
                 callback(
-                    ExtractorLink(
-                        source = name,
-                        name = "$name Direct MP4",
-                        url = u,
-                        referer = mainUrl,
-                        quality = Qualities.P1080.value,
-                        isM3u8 = false
-                    )
+                    newExtractorLink(
+                        name,
+                        "$name Direct MP4",
+                        u,
+                        ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = mainUrl
+                        this.quality = Qualities.P1080.value
+                    }
                 )
                 foundAny = true
             }
