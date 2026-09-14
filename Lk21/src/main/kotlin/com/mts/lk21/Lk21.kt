@@ -387,6 +387,7 @@ class Lk21 : MainAPI() {
         var foundAny = false
         val cleanData = data.trim()
         val candidates = linkedSetOf<String>()
+        val pagesToScrape = linkedSetOf(cleanData)
 
         val doc = try {
             app.get(
@@ -401,57 +402,93 @@ class Lk21 : MainAPI() {
             return false
         }
 
-        // 1. Direct iframes & embeds dari halaman utama
-        doc.select("iframe[src], embed[src], video[src], source[src]").forEach { el ->
-            val src = el.attr("src").ifBlank { el.attr("data-src") }.ifBlank { el.attr("data-litespeed-src") }.trim()
-            if (src.isNotBlank() && !src.contains("google.com") && !src.contains("youtube.com") && !src.contains("a-ads.com")) {
-                candidates.add(fixUrl(src))
+        // 1. Ambil semua link server alternatif (?player=2, ?player=3, dsb)
+        doc.select("a[href*='?player='], a[href*='&player='], a[href*='?server='], a[href*='&server='], .gmr-player-nav a").forEach { btn ->
+            val href = btn.attr("href").trim()
+            val fixedHref = fixUrlNull(href)
+            if (fixedHref != null && fixedHref.isNotBlank() && !fixedHref.contains("javascript:") && !fixedHref.contains("#")) {
+                pagesToScrape.add(fixedHref)
             }
         }
 
-        // 2. Muvipro Player Content Ajax
-        val postId = doc.selectFirst("div#muvipro_player_content_id, [data-id]")?.attr("data-id")
-        val tabs = doc.select("div.tab-content-ajax, ul.muviprop-player-tabs li a, .gmr-player-nav li a")
+        // 2. Scrape iframe / embed dari setiap halaman server
+        for (pageUrl in pagesToScrape) {
+            val pageDoc = if (pageUrl == cleanData) doc else {
+                try {
+                    app.get(
+                        pageUrl,
+                        headers = mapOf(
+                            "User-Agent" to USER_AGENT,
+                            "Referer" to cleanData
+                        ),
+                        timeout = 10
+                    ).document
+                } catch (_: Exception) {
+                    null
+                }
+            } ?: continue
 
-        if (!postId.isNullOrBlank() && tabs.isNotEmpty()) {
-            tabs.forEach { tab ->
-                val tabId = tab.attr("id").ifBlank { tab.attr("href").replace("#", "") }.ifBlank { tab.attr("data-tab") }.trim()
-                if (tabId.isNotBlank() && !tabId.startsWith("http")) {
-                    try {
-                        val responseDoc = app.post(
-                            "$mainUrl/wp-admin/admin-ajax.php",
-                            data = mapOf(
-                                "action" to "muvipro_player_content",
-                                "tab" to tabId,
-                                "post_id" to postId
-                            ),
-                            headers = mapOf(
-                                "User-Agent" to USER_AGENT,
-                                "Referer" to cleanData
-                            ),
-                            timeout = 10
-                        ).document
+            pageDoc.select("iframe[src], embed[src], video[src], source[src]").forEach { el ->
+                val src = el.attr("src").ifBlank { el.attr("data-src") }.ifBlank { el.attr("data-litespeed-src") }.trim()
+                if (src.isNotBlank() && !src.contains("google.com") && !src.contains("youtube.com") && !src.contains("a-ads.com") && !src.contains("twitter.com") && !src.contains("whatsapp.com") && !src.contains("t.me")) {
+                    candidates.add(fixUrl(src))
+                }
+            }
 
-                        responseDoc.select("iframe[src], iframe[data-litespeed-src], iframe[data-src]").forEach { ifr ->
-                            val src = ifr.attr("src").ifBlank { ifr.attr("data-litespeed-src") }.ifBlank { ifr.attr("data-src") }.trim()
-                            if (src.isNotBlank() && !src.contains("youtube.com")) {
-                                candidates.add(fixUrl(src))
+            // Regex scan pada seluruh HTML halaman untuk URL player
+            val htmlText = pageDoc.html()
+            val urlRegex = Regex("""(https?://[^\s"'<>]*(?:playerp2p|strp2p|rpmvid|vidhide|morencius|callistanise|efek\.stream|filemoon|byseq|streamwish|barplay|embedpyrox|wishembed|hgcloud|upns)[^\s"'<>]*)""", RegexOption.IGNORE_CASE)
+            urlRegex.findAll(htmlText).forEach { match ->
+                val u = match.groupValues[1].replace("\\/", "/").trim()
+                if (!u.contains("wp-json") && !u.contains("twitter.com") && !u.contains("whatsapp.com") && !u.contains("t.me")) {
+                    candidates.add(u)
+                }
+            }
+
+            // Muvipro Player Content Ajax
+            val postId = pageDoc.selectFirst("div#muvipro_player_content_id, [data-id]")?.attr("data-id")
+            val tabs = pageDoc.select("div.tab-content-ajax, ul.muviprop-player-tabs li a, .gmr-player-nav li a")
+
+            if (!postId.isNullOrBlank() && tabs.isNotEmpty()) {
+                tabs.forEach { tab ->
+                    val tabId = tab.attr("id").ifBlank { tab.attr("href").replace("#", "") }.ifBlank { tab.attr("data-tab") }.trim()
+                    if (tabId.isNotBlank() && !tabId.startsWith("http")) {
+                        try {
+                            val responseDoc = app.post(
+                                "$mainUrl/wp-admin/admin-ajax.php",
+                                data = mapOf(
+                                    "action" to "muvipro_player_content",
+                                    "tab" to tabId,
+                                    "post_id" to postId
+                                ),
+                                headers = mapOf(
+                                    "User-Agent" to USER_AGENT,
+                                    "Referer" to pageUrl
+                                ),
+                                timeout = 10
+                            ).document
+
+                            responseDoc.select("iframe[src], iframe[data-litespeed-src], iframe[data-src]").forEach { ifr ->
+                                val src = ifr.attr("src").ifBlank { ifr.attr("data-litespeed-src") }.ifBlank { ifr.attr("data-src") }.trim()
+                                if (src.isNotBlank() && !src.contains("youtube.com")) {
+                                    candidates.add(fixUrl(src))
+                                }
                             }
-                        }
-                    } catch (_: Exception) {}
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+
+            // Download buttons & other server links
+            pageDoc.select(".gmr-download-list a, .download-btn, a[href*='download'], a[href*='drive'], a[href*='player']").forEach { btn ->
+                val href = btn.attr("href").trim()
+                if (href.isNotBlank() && !href.startsWith("#") && !href.startsWith("javascript:") && !href.contains("/tag/")) {
+                    candidates.add(fixUrl(href))
                 }
             }
         }
 
-        // 3. Download buttons & other server links
-        doc.select(".gmr-download-list a, .download-btn, a[href*='download'], a[href*='drive'], a[href*='player']").forEach { btn ->
-            val href = btn.attr("href").trim()
-            if (href.isNotBlank() && !href.startsWith("#") && !href.startsWith("javascript:") && !href.contains("/tag/")) {
-                candidates.add(fixUrl(href))
-            }
-        }
-
-        // 4. Resolve every video server candidate
+        // 3. Resolve every video server candidate
         for (candidate in candidates) {
             val resolved = resolveCandidate(candidate, cleanData, subtitleCallback, callback)
             if (resolved) foundAny = true
@@ -469,7 +506,18 @@ class Lk21 : MainAPI() {
         var handled = false
         val lower = url.lowercase()
 
-        // 1. AbyssCDN / AbyssPlayer / Hydrax / Sora
+        // 1. StreamP2P / PlayerP2P / LivePlayerP2P / Ewa
+        if (lower.contains("playerp2p") || lower.contains("strp2p") || lower.contains("rpmvid") || lower.contains("p2pstream")) {
+            runCatching {
+                StreamP2PExtractor().getUrl(url, referer, subtitleCallback) { l ->
+                    callback.invoke(l)
+                    handled = true
+                }
+            }
+            if (handled) return true
+        }
+
+        // 2. AbyssCDN / AbyssPlayer / Hydrax / Sora
         if (lower.contains("abysscdn.com") || lower.contains("abyssplayer.com") || lower.contains("abyss.to")) {
             runCatching {
                 AbyssPlayer().getUrl(url, referer, subtitleCallback) { l ->
@@ -480,7 +528,7 @@ class Lk21 : MainAPI() {
             if (handled) return true
         }
 
-        // 2. VidHide / Morencius / Callistanise
+        // 3. VidHide / Morencius / Callistanise
         if (lower.contains("vidhide") || lower.contains("morencius.com") || lower.contains("callistanise.com")) {
             runCatching {
                 VidHideExtractor().getUrl(url, referer, subtitleCallback) { l ->
@@ -491,7 +539,7 @@ class Lk21 : MainAPI() {
             if (handled) return true
         }
 
-        // 3. EfekStream (VIP Server)
+        // 4. EfekStream (VIP Server)
         if (lower.contains("efek.stream")) {
             runCatching {
                 EfekStream().getUrl(url, referer, subtitleCallback) { l ->
@@ -502,7 +550,7 @@ class Lk21 : MainAPI() {
             if (handled) return true
         }
 
-        // 4. Byseq / Filemoon
+        // 5. Byseq / Filemoon
         if (lower.contains("byseqekaho.com") || lower.contains("filemoon.to") || lower.contains("filemoon.sx") || lower.contains("filemoon.in")) {
             runCatching {
                 ByseqExtractor().getUrl(url, referer, subtitleCallback) { l ->
@@ -513,21 +561,10 @@ class Lk21 : MainAPI() {
             if (handled) return true
         }
 
-        // 5. StreamWish / Hgcloud / Dm21 Upns
+        // 6. StreamWish / Hgcloud / Dm21 Upns
         if (lower.contains("streamwish") || lower.contains("wishembed") || lower.contains("hgcloud") || lower.contains("upns.live") || lower.contains("dwish")) {
             runCatching {
                 StreamWishExtractor().getUrl(url, referer, subtitleCallback) { l ->
-                    callback.invoke(l)
-                    handled = true
-                }
-            }
-            if (handled) return true
-        }
-
-        // 6. StreamP2P / PlayerP2P / LivePlayerP2P
-        if (lower.contains("strp2p.site") || lower.contains("playerp2p.online") || lower.contains("rpmvid.com") || lower.contains("fastdl.p2pstream.online")) {
-            runCatching {
-                StreamP2PExtractor().getUrl(url, referer, subtitleCallback) { l ->
                     callback.invoke(l)
                     handled = true
                 }

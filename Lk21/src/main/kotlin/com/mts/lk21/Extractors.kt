@@ -11,9 +11,10 @@ import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import org.json.JSONObject
+import java.net.URI
 import java.net.URLDecoder
 import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 // ─── DEAN EDWARDS / PACKER UNPACKER HELPER ────────────────────────────────────
@@ -26,18 +27,6 @@ object DeanEdwardsHelper {
             val radix = match.groupValues[2].toIntOrNull() ?: 36
             val count = match.groupValues[3].toIntOrNull() ?: 0
             val symtab = match.groupValues[4].split('|')
-
-            fun baseN(num: Int, base: Int): String {
-                val chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                if (num == 0) return "0"
-                var n = num
-                val sb = StringBuilder()
-                while (n > 0) {
-                    sb.append(chars[n % base])
-                    n /= base
-                }
-                return sb.reverse().toString()
-            }
 
             fun unbase(str: String, base: Int): Int {
                 val chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -293,7 +282,7 @@ open class ByseqExtractor : ExtractorApi() {
     }
 }
 
-// ─── STREAMP2P / PLAYERP2P EXTRACTOR ────────────────────────────────────────
+// ─── STREAMP2P / PLAYERP2P EXTRACTOR (AES-128-CBC DECRYPTION) ───────────────
 open class StreamP2PExtractor : ExtractorApi() {
     override var name = "StreamP2P"
     override var mainUrl = "https://live.playerp2p.online"
@@ -306,6 +295,90 @@ open class StreamP2PExtractor : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val ref = referer ?: "https://iwcsantodomingo.org/"
+        val host = runCatching { URI(url).host }.getOrNull() ?: "ewa.playerp2p.live"
+
+        val videoId = when {
+            url.contains("#") -> url.substringAfter("#").substringBefore("&").trim()
+            else -> url.trimEnd('/').substringAfterLast('/')
+        }
+
+        if (videoId.isNotBlank() && !videoId.startsWith("http")) {
+            val refDomain = runCatching { URI(ref).host }.getOrNull() ?: "iwcsantodomingo.org"
+            val apiUrl = "https://$host/api/v1/video?id=$videoId&w=1920&h=1080&r=$refDomain"
+
+            val hexData = try {
+                app.get(
+                    apiUrl,
+                    headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Referer" to url,
+                        "Origin" to "https://$host"
+                    ),
+                    timeout = 15
+                ).text.trim()
+            } catch (_: Exception) {
+                ""
+            }
+
+            if (hexData.length > 32 && hexData.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }) {
+                try {
+                    val keyBytes = "kiemtienmua911ca".toByteArray(Charsets.UTF_8)
+                    val ivBytes = "1234567890oiuytr".toByteArray(Charsets.UTF_8)
+
+                    val cipherBytes = ByteArray(hexData.length / 2) { i ->
+                        hexData.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+                    }
+
+                    val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+                    cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"), IvParameterSpec(ivBytes))
+                    val decryptedBytes = cipher.doFinal(cipherBytes)
+                    val jsonStr = String(decryptedBytes, Charsets.UTF_8)
+
+                    val json = JSONObject(jsonStr)
+                    val cfNative = json.optString("cfNative")
+                    val source = json.optString("source")
+                    val mp4 = json.optString("mp4")
+
+                    val added = mutableSetOf<String>()
+
+                    if (cfNative.isNotBlank() && added.add(cfNative)) {
+                        generateM3u8(
+                            source = "$name (P2P)",
+                            streamUrl = cfNative,
+                            referer = "https://$host/",
+                            headers = mapOf("Referer" to "https://$host/")
+                        ).forEach(callback)
+                    }
+
+                    if (source.isNotBlank() && added.add(source)) {
+                        generateM3u8(
+                            source = "$name (Direct)",
+                            streamUrl = source,
+                            referer = "https://$host/",
+                            headers = mapOf("Referer" to "https://$host/")
+                        ).forEach(callback)
+                    }
+
+                    if (mp4.isNotBlank() && added.add(mp4)) {
+                        callback.invoke(
+                            newExtractorLink(
+                                source = name,
+                                name = "$name MP4",
+                                url = mp4,
+                                type = ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = "https://$host/"
+                                this.quality = Qualities.P1080.value
+                            }
+                        )
+                    }
+
+                    if (added.isNotEmpty()) return
+                } catch (_: Exception) {}
+            }
+        }
+
+        // Fallback to HTML scraping
         val html = try {
             app.get(
                 url,
