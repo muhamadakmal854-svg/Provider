@@ -12,7 +12,6 @@ import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SearchResponseList
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
-import com.lagradost.cloudstream3.addDubStatus
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.fixUrl
 import com.lagradost.cloudstream3.fixUrlNull
@@ -193,18 +192,13 @@ class Film21 : MainAPI() {
                 href.contains("season-", ignoreCase = true) ||
                 cleanTitle.contains("Season", ignoreCase = true)
 
-            val rating = element.selectFirst(".gmr-rating-item, .rating, .gmr-meta-rating")?.text()?.trim()
-            val quality = element.selectFirst(".gmr-quality-item, .quality")?.text()?.trim()
-
             if (isSeries) {
                 newTvSeriesSearchResponse(cleanTitle, href, TvType.TvSeries) {
                     this.posterUrl = poster
-                    addDubStatus(false, null)
                 }
             } else {
                 newMovieSearchResponse(cleanTitle, href, TvType.Movie) {
                     this.posterUrl = poster
-                    addDubStatus(false, null)
                 }
             }
         }.getOrNull()
