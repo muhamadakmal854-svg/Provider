@@ -23,6 +23,8 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Locale
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -525,6 +527,9 @@ class Anichin(val context: Context) : MainAPI() {
             doc.select(".entry-content ul li a[href*='-episode-'], #content .eplister a")
         }
 
+        val backdrop = doc.selectFirst(".bigcover img, .bigcover, [style*='background-image']")?.let { getPosterUrl(it) }
+            ?: poster
+
         val rawEpisodes = epElements.mapNotNull { el ->
             val href = toAbsoluteUrl(el.attr("href"))
             if (href.isBlank() || href == fullUrl || href == "$mainUrl/") return@mapNotNull null
@@ -540,9 +545,33 @@ class Anichin(val context: Context) : MainAPI() {
                     ?: Regex("""\b(\d+)\b""").find(fullText)?.groupValues?.getOrNull(1)?.toIntOrNull()
             }
 
+            // Extract Release Date
+            val rawDate = el.selectFirst(".epl-date, .date, .time, .metadate")?.text()?.trim().orEmpty()
+                .ifBlank { el.parent()?.selectFirst(".epl-date, .date, .time, .metadate")?.text()?.trim().orEmpty() }
+
+            val parsedDate = if (rawDate.isNotBlank()) {
+                try {
+                    SimpleDateFormat("MMMM d, yyyy", Locale.US).parse(rawDate)?.time
+                        ?: SimpleDateFormat("d MMMM yyyy", Locale.US).parse(rawDate)?.time
+                        ?: SimpleDateFormat("MMMM d, yyyy", Locale("id", "ID")).parse(rawDate)?.time
+                        ?: SimpleDateFormat("d MMMM yyyy", Locale("id", "ID")).parse(rawDate)?.time
+                        ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(rawDate)?.time
+                } catch (_: Exception) {
+                    null
+                }
+            } else null
+
+            // Extract Episode Thumbnail / Card Image
+            val epImg = getPosterUrl(el.selectFirst("img") ?: el.parent()?.selectFirst("img"))
+
             newEpisode(href) {
                 this.name = if (epNum != null) "Episode $epNum" else "Episode"
                 this.episode = epNum
+                this.posterUrl = (epImg ?: backdrop).ifBlank { poster.ifBlank { null } }
+                if (parsedDate != null) {
+                    this.date = parsedDate
+                }
+                this.description = if (rawDate.isNotBlank()) "Rilis: $rawDate" else null
             }
         }.distinctBy { it.data }
 
