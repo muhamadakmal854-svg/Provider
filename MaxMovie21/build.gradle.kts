@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk -M-a-x-M-o-v-i-e-2-1-"
+    description = "Provider untuk MaxMovie21"
 
     authors     = listOf("MTS")
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://162.244.93.196/favicon.ico"
+    iconUrl     = "https://94.26.35.96/favicon.ico"
 
 }
 
