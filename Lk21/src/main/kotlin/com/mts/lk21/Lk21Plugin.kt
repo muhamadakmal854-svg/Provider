@@ -7,9 +7,15 @@ import android.content.Context
 @CloudstreamPlugin
 class Lk21Plugin : Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(Lk21Provider())
-        registerExtractorAPI(EmturbovidExtractor())
-        registerExtractorAPI(P2PExtractor())
-        registerExtractorAPI(F16Extractor())
+        registerMainAPI(Lk21())
+        registerExtractorAPI(AbyssPlayer())
+        registerExtractorAPI(VidHideExtractor())
+        registerExtractorAPI(MorenciusExtractor())
+        registerExtractorAPI(CallistaniseExtractor())
+        registerExtractorAPI(EfekStream())
+        registerExtractorAPI(ByseqExtractor())
+        registerExtractorAPI(StreamWishExtractor())
+        registerExtractorAPI(StreamP2PExtractor())
+        registerExtractorAPI(EmbedPyroxExtractor())
     }
 }

@@ -4,15 +4,15 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk -L-k-2-1-"
+    description = "Provider untuk Layarkaca21 LK21 Official - Nonton & Download Film Streaming Sub Indo Gratis"
 
     authors     = listOf("MTS")
 
     status      = 1
 
-    tvTypes     = listOf("Movie", "TvSeries")
+    tvTypes     = listOf("Movie", "TvSeries", "AsianDrama", "Anime")
 
-    iconUrl     = "https://tv11.lk21official.cc/favicon.ico"
+    iconUrl     = "https://iwcsantodomingo.org/favicon.ico"
 
 }
 
