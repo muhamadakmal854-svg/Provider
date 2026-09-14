@@ -12,6 +12,10 @@ import org.jsoup.nodes.Element
 import org.json.JSONObject
 import java.net.URLDecoder
 import java.net.URLEncoder
+import android.util.Base64
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class AnimeBagus : MainAPI() {
     override var mainUrl = "https://tv2.animebagus.com"
@@ -549,10 +553,13 @@ class AnimeBagus : MainAPI() {
 
             try {
                 val resolved = when {
-                    directUrl.contains("player.tikungan.store", ignoreCase = true) ->
+                    directUrl.contains("ablink.sbs", ignoreCase = true) ||
+                        directUrl.contains("player.tikungan.store", ignoreCase = true) ||
+                        server.name.equals("BOX", ignoreCase = true) ->
                         resolveTikunganBox(server.name, originalUrl, directUrl, callback)
 
                     directUrl.contains("rockethls.online", ignoreCase = true) ||
+                        directUrl.contains("byse", ignoreCase = true) ||
                         directUrl.contains("nzn3.org", ignoreCase = true) ||
                         server.name.contains("filemoon", ignoreCase = true) ->
                         resolveRocketHls(server.name, originalUrl, directUrl, subtitleCallback, callback)
@@ -560,7 +567,7 @@ class AnimeBagus : MainAPI() {
                     directUrl.contains("abysscdn.com", ignoreCase = true) ||
                         server.name.contains("hydrax", ignoreCase = true) ->
                         resolveGenericServer(server.name.ifBlank { "HYDRAX" }, directUrl, originalUrl, subtitleCallback, callback) ||
-                            resolveGenericServer(server.name.ifBlank { "HYDRAX" }, directUrl, "https://player.tikungan.store/", subtitleCallback, callback)
+                            resolveGenericServer(server.name.ifBlank { "HYDRAX" }, directUrl, "https://player.ablink.sbs/", subtitleCallback, callback)
 
                     directUrl.endsWith(".m3u8", ignoreCase = true) -> {
                         emitM3u8(server.name, directUrl, sourcePage, callback)
@@ -596,15 +603,18 @@ class AnimeBagus : MainAPI() {
             addPlayerServer(servers, label, element.attr("data-url"))
         }
 
+        document.select("select.select-player option[value], #mobile-server-select option[value]").forEach { opt ->
+            val value = opt.attr("value").trim()
+            val label = opt.text().trim().ifBlank { detectServerName(value) }
+            addPlayerServer(servers, label, value)
+        }
+
         document.select("iframe#player-frame[src], iframe[src], source[src], video[src]").forEach { element ->
             val raw = element.attr("src").ifBlank { element.attr("data-src") }
             val label = element.attr("title").trim().ifBlank { detectServerName(raw) }
             addPlayerServer(servers, label, raw)
         }
 
-        // Active AnimeBagus pages expose servers via select-player buttons, but movie/detail
-        // variants can expose playable URLs as plain anchors/text. Scan anchors and full HTML
-        // with strict host filtering so loadLinks does not miss BOX/FILEMOON/HYDRAX.
         document.select("a[href]").forEach { anchor ->
             val href = anchor.attr("href")
             val label = anchor.text().trim().ifBlank { detectServerName(href) }
@@ -651,14 +661,18 @@ class AnimeBagus : MainAPI() {
 
     private fun isPlayableUrl(url: String): Boolean {
         val lower = url.lowercase()
-        if (!lower.startsWith("http://") && !lower.startsWith("https://")) return false
+        if (!lower.startsWith("http://") && !lower.startsWith("https://") && !lower.startsWith("//")) return false
 
-        return lower.contains("player.tikungan.store") ||
+        return lower.contains("ablink.sbs") ||
+            lower.contains("player.tikungan.store") ||
+            lower.contains("iframe?url=") ||
             lower.contains("rockethls.online") ||
             lower.contains("nzn3.org") ||
             lower.contains("abysscdn.com") ||
             lower.contains("filemoon") ||
             lower.contains("hydrax") ||
+            lower.contains("byseqekaho.com") ||
+            lower.contains("owphbf24.com") ||
             lower.contains("r66nv9ed.com") ||
             lower.contains(".m3u8") ||
             lower.contains(".mp4")
@@ -694,18 +708,27 @@ class AnimeBagus : MainAPI() {
     }
 
     private fun unwrapTikunganUrl(url: String): String {
-        if (!url.contains("player.tikungan.store/iframe", ignoreCase = true)) return url
+        if (!url.contains("iframe?url=", ignoreCase = true) && !url.contains("url=", ignoreCase = true)) return url
 
-        val encoded = url.substringAfter("?", "")
-            .split("&")
-            .mapNotNull { pair ->
-                val parts = pair.split("=", limit = 2)
-                if (parts.firstOrNull().equals("url", ignoreCase = true)) parts.getOrNull(1) else null
-            }
-            .firstOrNull()
-            ?: return url
+        val encoded = if (url.contains("url=", ignoreCase = true)) {
+            url.substringAfter("url=").substringBefore("&")
+        } else {
+            url.substringAfter("?", "")
+                .split("&")
+                .mapNotNull { pair ->
+                    val parts = pair.split("=", limit = 2)
+                    if (parts.firstOrNull().equals("url", ignoreCase = true)) parts.getOrNull(1) else null
+                }
+                .firstOrNull()
+        } ?: return url
 
-        return cleanPlayerUrl(decodeUrl(encoded)) ?: url
+        val decoded = decodeUrl(encoded)
+        val clean = if (decoded.startsWith("http://") || decoded.startsWith("https://") || decoded.startsWith("//")) {
+            cleanPlayerUrl(decoded) ?: decoded
+        } else {
+            url
+        }
+        return clean
     }
 
     private fun decodeUrl(value: String): String {
@@ -724,7 +747,7 @@ class AnimeBagus : MainAPI() {
         return when {
             lower.contains("rockethls.online") || lower.contains("nzn3.org") || lower.contains("filemoon") -> "FILEMOON"
             lower.contains("abysscdn.com") || lower.contains("hydrax") -> "HYDRAX"
-            lower.contains("player.tikungan.store") -> "BOX"
+            lower.contains("ablink.sbs") || lower.contains("tikungan") -> "BOX"
             lower.contains(".m3u8") -> "HLS"
             lower.contains(".mp4") -> "MP4"
             else -> "Server"
@@ -737,10 +760,20 @@ class AnimeBagus : MainAPI() {
         directUrl: String,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        if (directUrl.contains("/iframe", ignoreCase = true)) return false
+        val targetUrl = if (directUrl.contains("iframe?url=", true)) {
+            unwrapTikunganUrl(directUrl)
+        } else {
+            directUrl
+        }
 
-        val refererUrl = if (originalUrl != directUrl) originalUrl else "https://player.tikungan.store/"
-        val playerText = app.get(directUrl, referer = refererUrl).text
+        val refererUrl = if (targetUrl.contains("ablink")) "https://player.ablink.sbs/" else "https://player.tikungan.store/"
+        val playerText = app.get(
+            targetUrl,
+            headers = mapOf(
+                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer" to refererUrl
+            )
+        ).text
             .replace("\\/", "/")
             .replace("&amp;", "&")
 
@@ -754,8 +787,25 @@ class AnimeBagus : MainAPI() {
 
         if (m3u8.isNullOrBlank()) return false
 
-        emitM3u8(serverName.ifBlank { "BOX" }, resolveAgainst(directUrl, m3u8), directUrl, callback)
+        val fullM3u8 = resolveAgainst(targetUrl, m3u8)
+        callback(
+            newExtractorLink(
+                source = this.name,
+                name = "${this.name} - ${serverName.ifBlank { "BOX" }}",
+                url = fullM3u8,
+                type = ExtractorLinkType.M3U8
+            ) {
+                this.referer = refererUrl
+            }
+        )
         return true
+    }
+
+    private fun decodeBase64Url(input: String): ByteArray {
+        val clean = input.replace('-', '+').replace('_', '/')
+        val pad = (4 - (clean.length % 4)) % 4
+        val padded = clean + "=".repeat(pad)
+        return Base64.decode(padded, Base64.DEFAULT)
     }
 
     private suspend fun resolveRocketHls(
@@ -765,42 +815,99 @@ class AnimeBagus : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        var emitted = false
+        var found = false
         val sourceName = serverName.ifBlank { "FILEMOON" }
 
-        listOf(
-            originalUrl to mainUrl,
-            originalUrl to "https://player.tikungan.store/",
-            directUrl to originalUrl,
-            directUrl to "https://player.tikungan.store/"
-        ).distinct().forEach { (candidate, referer) ->
-            if (!emitted && runCatching { runExtractorLink(sourceName, candidate, referer, subtitleCallback, callback) }.getOrDefault(false)) {
-                emitted = true
-            }
+        val targetUrl = if (directUrl.contains("iframe?url=", true)) {
+            unwrapTikunganUrl(directUrl)
+        } else {
+            directUrl
         }
 
-        val code = Regex("""(?i)/e/([^/?#]+)""").find(directUrl)?.groupValues?.getOrNull(1)
+        try {
+            loadExtractor(targetUrl, "https://rockethls.online/", subtitleCallback) {
+                found = true
+                callback(it)
+            }
+        } catch (_: Exception) {}
+
+        val code = Regex("""(?i)/(?:e|v|d|embed)/([a-zA-Z0-9_-]+)""").find(targetUrl)?.groupValues?.getOrNull(1)
+            ?: if (!targetUrl.contains("/") && targetUrl.length in 8..25) targetUrl else null
+
         if (!code.isNullOrBlank()) {
             try {
-                val detailsUrl = "https://rockethls.online/api/videos/$code/embed/details"
-                val details = app.get(detailsUrl, referer = directUrl).text
-                val embedFrameUrl = jsonStringValue(details, "embed_frame_url")
-                if (!embedFrameUrl.isNullOrBlank()) {
-                    listOf(
-                        embedFrameUrl to directUrl,
-                        embedFrameUrl to "https://rockethls.online/",
-                        embedFrameUrl to originalUrl
-                    ).distinct().forEach { (candidate, referer) ->
-                        if (!emitted && runCatching { runExtractorLink(sourceName, candidate, referer, subtitleCallback, callback) }.getOrDefault(false)) {
-                            emitted = true
+                val apiUrl = "https://rockethls.online/api/videos/$code"
+                val resText = app.get(
+                    apiUrl,
+                    headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Referer" to "https://rockethls.online/e/$code",
+                        "Accept" to "application/json"
+                    )
+                ).text
+
+                if (resText.isNotBlank()) {
+                    val json = JSONObject(resText)
+                    val playback = json.optJSONObject("playback")
+                    if (playback != null) {
+                        val versionStr = playback.optString("version", "1").trim()
+                        val version = versionStr.toIntOrNull() ?: 1
+                        val keyPartsArr = playback.optJSONArray("key_parts")
+                        if (keyPartsArr != null) {
+                            val o = version
+                            val a = 31 - version
+                            val totalParts = keyPartsArr.length()
+                            if (o in 1..totalParts && a in 1..totalParts) {
+                                val part1 = keyPartsArr.optString(o - 1, "")
+                                val part2 = keyPartsArr.optString(a - 1, "")
+                                if (part1.isNotBlank() && part2.isNotBlank()) {
+                                    val keyBytes = decodeBase64Url(part1) + decodeBase64Url(part2)
+                                    val ivRaw = playback.optString("iv", "")
+                                    val payloadRaw = playback.optString("payload", "")
+                                    if (keyBytes.size == 32 && ivRaw.isNotBlank() && payloadRaw.isNotBlank()) {
+                                        val ivBytes = decodeBase64Url(ivRaw)
+                                        val payloadBytes = decodeBase64Url(payloadRaw)
+
+                                        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                                        val keySpec = SecretKeySpec(keyBytes, "AES")
+                                        val gcmSpec = GCMParameterSpec(128, ivBytes)
+                                        cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+                                        val decryptedBytes = cipher.doFinal(payloadBytes)
+                                        val decryptedJson = String(decryptedBytes, Charsets.UTF_8)
+
+                                        val decryptedObj = JSONObject(decryptedJson)
+                                        val sourcesArr = decryptedObj.optJSONArray("sources")
+                                        if (sourcesArr != null) {
+                                            for (i in 0 until sourcesArr.length()) {
+                                                val sObj = sourcesArr.getJSONObject(i)
+                                                val streamUrl = sObj.optString("url", "").trim()
+                                                val label = sObj.optString("label", "1080p").ifBlank { "Direct" }
+                                                if (streamUrl.isNotBlank() && streamUrl.startsWith("http")) {
+                                                    val isM3u8 = streamUrl.contains(".m3u8") || sObj.optString("mime_type").contains("mpegurl", true)
+                                                    callback(
+                                                        newExtractorLink(
+                                                            source = this.name,
+                                                            name = "${this.name} - $sourceName $label",
+                                                            url = streamUrl,
+                                                            type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                                        ) {
+                                                            this.referer = "https://rockethls.online/"
+                                                        }
+                                                    )
+                                                    found = true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) {}
         }
 
-        return emitted
+        return found
     }
 
     private suspend fun resolveGenericServer(
