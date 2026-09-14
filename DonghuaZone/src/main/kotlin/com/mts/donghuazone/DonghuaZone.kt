@@ -2,7 +2,6 @@ package com.mts.donghuazone
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.M3u8Helper
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import org.json.JSONObject
@@ -24,23 +23,17 @@ class DonghuaZone : MainAPI() {
         private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     }
 
-    // Netflix-Style Main Page Configuration
+    // Netflix-Style Main Page Layout (Tanpa Baris Bintang Tersendiri)
     override val mainPage = mainPageOf(
         "$mainUrl/feeds/posts/default?alt=json#spotlight" to "✨ Pilihan Utama (Spotlight)",
         "$mainUrl/feeds/posts/default?alt=json#trending" to "🔥 Trending Hari Ini (Top 10)",
         "$mainUrl/feeds/posts/default?alt=json" to "⚡ Rilisan Terbaru (Update Harian)",
         "$mainUrl/feeds/posts/default/-/Ongoing?alt=json" to "🎬 Sedang Tayang (Ongoing)",
         "$mainUrl/feeds/posts/default/-/Movie?alt=json" to "🍿 Donghua Movie (Film Layar Lebar)",
-        "$mainUrl/feeds/posts/default/-/Renegade%20Immortal?alt=json" to "⭐ Renegade Immortal (Xian Ni)",
-        "$mainUrl/feeds/posts/default/-/Battle%20Through%20The%20Heaven%20Season%205?alt=json" to "⭐ Battle Through The Heavens (BTTH)",
-        "$mainUrl/feeds/posts/default/-/Perfect%20World?alt=json" to "⭐ Perfect World (Dunia Sempurna)",
-        "$mainUrl/feeds/posts/default/-/Tales%20of%20Herding%20Gods?alt=json" to "⭐ Tales of Herding Gods (Mu Shen Ji)",
-        "$mainUrl/feeds/posts/default/-/One%20Hundred%20Thousand%20Years%20of%20Qi%20Refining%20(Lian%20Qi%20Shi%20Wan%20Nian)?alt=json" to "⭐ 100.000 Years of Qi Refining",
-        "$mainUrl/feeds/posts/default/-/A%20Mortals%20Journey%20to%20Immortality?alt=json" to "⭐ A Mortal's Journey to Immortality",
-        "$mainUrl/feeds/posts/default/-/Soul%20Land%202?alt=json" to "⭐ Soul Land 2 (Benua Douluo)",
-        "$mainUrl/feeds/posts/default/-/Swallowed%20star?alt=json" to "⭐ Swallowed Star (Bintang Tertelan)",
-        "$mainUrl/feeds/posts/default/-/Martial%20Master?alt=json" to "⭐ Martial Master (Wu Shen Zhu Zai)",
-        "$mainUrl/feeds/posts/default/-/Shrouding%20the%20Heavens?alt=json" to "⭐ Shrouding the Heavens (Zhe Tian)"
+        "$mainUrl/feeds/posts/default/-/Action?alt=json" to "⚔️ Aksi & Petualangan",
+        "$mainUrl/feeds/posts/default/-/Fantasy?alt=json" to "🔮 Fantasi & Sihir",
+        "$mainUrl/feeds/posts/default/-/Adventure?alt=json" to "🥋 Bela Diri (Wuxia / Cultivation)",
+        "$mainUrl/feeds/posts/default/-/Romance?alt=json" to "🌸 Romantis"
     )
 
     private fun parseDateToEpoch(dateStr: String?): Long? {
@@ -125,13 +118,14 @@ class DonghuaZone : MainAPI() {
         if (altUrl.isBlank()) return null
 
         val thumb = getHighResThumbnail(entryObj.optJSONObject("media\$thumbnail")?.optString("url"))
-        val clean = cleanTitle(rawTitle)
+        // Paparkan nama siri Anime, bukan nombor episod pada tajuk kad homepage
+        val seriesTitle = cleanSeriesTitle(rawTitle).ifBlank { cleanTitle(rawTitle) }
         val epNum = extractEpisodeNumber(rawTitle, altUrl)
 
         val isMovie = rawTitle.contains("Movie", ignoreCase = true) || altUrl.contains("-movie", ignoreCase = true)
         val type = if (isMovie) TvType.AnimeMovie else TvType.Anime
 
-        return newAnimeSearchResponse(clean, altUrl, type) {
+        return newAnimeSearchResponse(seriesTitle, altUrl, type) {
             this.posterUrl = thumb
             if (epNum != null) {
                 addDubStatus(false, epNum)
@@ -146,7 +140,7 @@ class DonghuaZone : MainAPI() {
 
         if ((isSpotlight || isTrending) && page > 1) return null
 
-        val pageSize = if (isSpotlight) 10 else if (isTrending) 10 else 20
+        val pageSize = if (isSpotlight) 15 else if (isTrending) 15 else 30
         val startIndex = (page - 1) * pageSize + 1
         val sep = if (cleanData.contains("?")) "&" else "?"
         val targetUrl = "$cleanData${sep}start-index=$startIndex&max-results=$pageSize"
@@ -163,7 +157,8 @@ class DonghuaZone : MainAPI() {
             results.add(item)
         }
 
-        val finalResults = results.distinctBy { it.url }
+        // De-duplicate mengikut nama siri supaya tiada anime berulang dalam baris yang sama
+        val finalResults = results.distinctBy { it.name }
         return if (finalResults.isNotEmpty()) {
             newHomePageResponse(request.name, finalResults)
         } else null
@@ -190,7 +185,7 @@ class DonghuaZone : MainAPI() {
             results.add(item)
         }
 
-        return results.distinctBy { it.url }
+        return results.distinctBy { it.name }
     }
 
     override suspend fun load(url: String): LoadResponse? {
@@ -306,44 +301,51 @@ class DonghuaZone : MainAPI() {
         var foundAny = false
         val candidateUrls = mutableSetOf<String>()
 
-        // 1. changeServer(this, 'url') or changeServer(btn, 'url')
-        Regex("""changeServer\s*\([^,]+,\s*['"]([^'"]+)['"]""").findAll(html).forEach { m ->
+        // 1. changeServer(this, 'url') atau sebarang petikan
+        Regex("""changeServer\s*\(\s*[^,]+,\s*['"]([^'"]+)['"]""").findAll(html).forEach { m ->
             val u = m.groupValues[1].trim()
-            if (u.isNotBlank()) candidateUrls.add(u)
+            if (u.isNotBlank() && u.startsWith("http")) candidateUrls.add(u)
         }
 
-        // 2. iframe src
-        Regex("""<iframe[^>]+src=['"]([^'"]+)['"]""").findAll(html).forEach { m ->
+        // 2. Iframe src / data-src
+        Regex("""<iframe[^>]+(?:src|data-src)=['"]([^'"]+)['"]""").findAll(html).forEach { m ->
             val u = m.groupValues[1].trim()
             if (u.isNotBlank() && !u.contains("facebook.com") && !u.contains("disqus.com")) {
                 candidateUrls.add(u)
             }
         }
 
-        // 3. Any direct Dailymotion / geo.dailymotion links
-        Regex("""https?://(?:geo\.)?dailymotion\.com/(?:player/[^"'\s\?]+\.html\?video=|video/|embed/video/)[A-Za-z0-9]+""").findAll(html).forEach { m ->
-            candidateUrls.add(m.value.trim())
+        // 3. Sebarang Dailymotion / geo.dailymotion links dalam teks HTML
+        Regex("""https?://(?:geo\.)?dailymotion\.com/[^\s"'<>]+""").findAll(html).forEach { m ->
+            val u = m.value.trim().trimEnd('\\', '"', '\'')
+            candidateUrls.add(u)
         }
 
-        // 4. Any direct video / extractor links
+        // 4. Sebarang pautan terus video (.mp4 / .m3u8)
         Regex("""https?://[^\s"'<>]+\.(?:mp4|m3u8)(?:\?[^\s"'<>]*)?""").findAll(html).forEach { m ->
             candidateUrls.add(m.value.trim())
         }
 
         for (u in candidateUrls) {
-            // Dailymotion resolution
+            // Resolusi Dailymotion dengan Header Lengkap (Anti-403)
             if (u.contains("dailymotion.com", true) || u.contains("dai.ly", true)) {
-                val dmMatch = Regex("""(?:video=|/embed/video/|/video/)([A-Za-z0-9]+)""").find(u)
-                if (dmMatch != null) {
-                    val vid = dmMatch.groupValues[1]
-                    try {
-                        val dmReferer = if (u.contains("geo.dailymotion.com")) "https://geo.dailymotion.com/" else u
-                        val metaJson = app.get(
-                            "https://www.dailymotion.com/player/metadata/video/$vid",
-                            headers = mapOf("Referer" to dmReferer, "User-Agent" to USER_AGENT)
-                        ).text
+                val videoId = when {
+                    u.contains("video=") -> u.substringAfter("video=").substringBefore("&").substringBefore("\"").substringBefore("'")
+                    u.contains("/video/") -> u.substringAfter("/video/").substringBefore("?").substringBefore("/").substringBefore("\"")
+                    u.contains("dai.ly/") -> u.substringAfter("dai.ly/").substringBefore("?").substringBefore("/")
+                    else -> Regex("""(?:video[=/]|/embed/video/)([a-zA-Z0-9]+)""").find(u)?.groupValues?.getOrNull(1)
+                }
 
-                        // Subtitles
+                if (!videoId.isNullOrBlank()) {
+                    try {
+                        val dmHeaders = mapOf(
+                            "User-Agent" to USER_AGENT,
+                            "Referer" to "https://geo.dailymotion.com/"
+                        )
+                        val metaUrl = "https://www.dailymotion.com/player/metadata/video/$videoId"
+                        val metaJson = app.get(metaUrl, headers = dmHeaders).text
+
+                        // 1. Ekstrak Sarikata
                         try {
                             val metaObj = JSONObject(metaJson)
                             val subsData = metaObj.optJSONObject("subtitles")?.optJSONObject("data")
@@ -361,62 +363,120 @@ class DonghuaZone : MainAPI() {
                             }
                         } catch (_: Exception) {}
 
-                        // Master M3u8 streams
-                        Regex(""""url"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"""").findAll(metaJson).forEach { m ->
-                            val m3u8Url = m.groupValues[1].replace("\\/", "/").replace("\\u0026", "&")
-                            if (m3u8Url.contains(".m3u8", true)) {
-                                try {
-                                    M3u8Helper.generateM3u8(name, m3u8Url, dmReferer).forEach { link ->
-                                        callback(link)
-                                        foundAny = true
-                                    }
-                                } catch (_: Exception) {}
+                        // 2. Ekstrak Master M3u8 URL
+                        var autoM3u8Url = ""
+                        try {
+                            val metaObj = JSONObject(metaJson)
+                            autoM3u8Url = metaObj.optJSONObject("qualities")?.optJSONArray("auto")?.optJSONObject(0)?.optString("url").orEmpty()
+                        } catch (_: Exception) {}
 
-                                callback(
-                                    newExtractorLink(
-                                        name,
-                                        "$name - Dailymotion Multi",
-                                        m3u8Url,
-                                        ExtractorLinkType.M3U8
-                                    ) {
-                                        this.referer = dmReferer
-                                        this.quality = Qualities.P1080.value
+                        if (autoM3u8Url.isBlank()) {
+                            val m = Regex(""""url"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"""").find(metaJson)
+                            autoM3u8Url = m?.groupValues?.getOrNull(1)?.replace("\\/", "/")?.replace("\\u0026", "&").orEmpty()
+                        }
+
+                        if (autoM3u8Url.isNotBlank() && autoM3u8Url.contains(".m3u8", true)) {
+                            // Muat turun manifest untuk ekstrak resolusi sebenar terus dari CDN
+                            try {
+                                val manifestText = app.get(autoM3u8Url, headers = dmHeaders).text
+                                val streamRegex = Regex("""#EXT-X-STREAM-INF:[^\n]*?(?:NAME="(\d+)"|RESOLUTION=(\d+x\d+))[^\n]*\n([^\n]+)""")
+                                val subStreams = streamRegex.findAll(manifestText).toList()
+
+                                for (sub in subStreams) {
+                                    val nameQ = sub.groupValues[1]
+                                    val resQ = sub.groupValues[2]
+                                    val streamUrl = sub.groupValues[3].trim()
+                                    val qInt = when {
+                                        nameQ == "1080" || resQ.contains("1080") -> Qualities.P1080.value
+                                        nameQ == "720" || resQ.contains("720") -> Qualities.P720.value
+                                        nameQ == "480" || resQ.contains("480") -> Qualities.P480.value
+                                        nameQ == "360" || resQ.contains("360") -> Qualities.P360.value
+                                        nameQ == "240" || resQ.contains("240") -> Qualities.P240.value
+                                        else -> Qualities.Unknown.value
                                     }
-                                )
-                                foundAny = true
-                            }
+                                    val qLabel = if (nameQ.isNotBlank()) "${nameQ}p" else if (resQ.isNotBlank()) resQ else "HLS"
+
+                                    callback(
+                                        newExtractorLink(
+                                            source = name,
+                                            name = "$name - Dailymotion $qLabel",
+                                            url = streamUrl,
+                                            type = ExtractorLinkType.M3U8
+                                        ) {
+                                            this.referer = "https://geo.dailymotion.com/"
+                                            this.headers = dmHeaders
+                                            this.quality = qInt
+                                        }
+                                    )
+                                    foundAny = true
+                                }
+                            } catch (_: Exception) {}
+
+                            // Aliran Master Auto
+                            callback(
+                                newExtractorLink(
+                                    source = name,
+                                    name = "$name - Dailymotion Auto",
+                                    url = autoM3u8Url,
+                                    type = ExtractorLinkType.M3U8
+                                ) {
+                                    this.referer = "https://geo.dailymotion.com/"
+                                    this.headers = dmHeaders
+                                    this.quality = Qualities.P1080.value
+                                }
+                            )
+                            foundAny = true
                         }
                     } catch (_: Exception) {}
                 }
-            }
 
-            // Direct M3u8
-            if (u.contains(".m3u8", true) && !u.contains("dailymotion.com", true)) {
+                // Fallback kepada CloudStream built-in / registered Dailymotion extractor
                 try {
-                    M3u8Helper.generateM3u8(name, u, mainUrl).forEach { link ->
+                    loadExtractor(u, "https://geo.dailymotion.com/", subtitleCallback) { link ->
                         callback(link)
                         foundAny = true
                     }
                 } catch (_: Exception) {}
+                continue
+            }
+
+            // Direct M3u8
+            if (u.contains(".m3u8", true)) {
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = "$name - HLS Stream",
+                        url = u,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = mainUrl
+                        this.headers = mapOf("User-Agent" to USER_AGENT)
+                        this.quality = Qualities.P1080.value
+                    }
+                )
+                foundAny = true
+                continue
             }
 
             // Direct MP4
             if (u.contains(".mp4", true)) {
                 callback(
                     newExtractorLink(
-                        name,
-                        "$name Direct MP4",
-                        u,
-                        ExtractorLinkType.VIDEO
+                        source = name,
+                        name = "$name - Direct MP4",
+                        url = u,
+                        type = ExtractorLinkType.VIDEO
                     ) {
                         this.referer = mainUrl
+                        this.headers = mapOf("User-Agent" to USER_AGENT)
                         this.quality = Qualities.P1080.value
                     }
                 )
                 foundAny = true
+                continue
             }
 
-            // Standard extractors fallback (Blogger, Google Drive, OK.ru, Pixeldrain, Turbovid, etc.)
+            // Pelayan standard lain (Blogger, Google Drive, OK.ru, Pixeldrain, Turbovid dll)
             try {
                 loadExtractor(u, mainUrl, subtitleCallback) { link ->
                     callback(link)
