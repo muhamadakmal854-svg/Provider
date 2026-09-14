@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk -I-N-D-O-X-X-I- --- -I-D-L-I-X-"
+    description = "Provider untuk INDOXXI - Situs Download dan Nonton Film Gratis Sub Indo"
 
     authors     = listOf("MTS")
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://taroscafe.com/favicon.ico"
+    iconUrl     = "https://indoxx1.one/favicon.ico"
 
 }
 
