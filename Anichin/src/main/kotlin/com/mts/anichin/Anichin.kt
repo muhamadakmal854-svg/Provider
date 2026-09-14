@@ -121,7 +121,7 @@ class Anichin(val context: Context) : MainAPI() {
     private suspend fun getDocumentSmart(url: String): Document? {
         val targetUrl = toAbsoluteUrl(url)
 
-        // 1. Try direct HTTP GET with existing cookies on anichin.moe
+        // 1. Direct HTTP GET with saved/existing cookies
         try {
             val cookie = getSavedCookie(getSafeContext())
             val headers = mutableMapOf(
@@ -148,105 +148,167 @@ class Anichin(val context: Context) : MainAPI() {
             }
         } else {
             // Fallback webview solver using application context on MainLooper
-            val result = loadVisibleWebViewCheck(targetUrl)
+            val result = loadHiddenWebViewCheck(targetUrl)
             if (result is SmartResult.Success) {
                 return result.document
             }
         }
 
-        return null
+        // 3. Fallback direct Jsoup parse
+        return try {
+            Jsoup.connect(targetUrl)
+                .userAgent(USER_AGENT)
+                .referrer("$mainUrl/")
+                .timeout(10000)
+                .get()
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private suspend fun loadVisibleWebViewCheck(url: String): SmartResult {
+        val activity = getSafeContext() as? Activity ?: return SmartResult.Error
+        if (activity.isFinishing) return SmartResult.Error
+
         return suspendCoroutine { continuation ->
             Handler(Looper.getMainLooper()).post {
-                val ctx = getSafeContext()
-                val activity = ctx as? Activity
-
-                var dialog: Dialog? = null
-                val webView: WebView = try {
-                    if (activity != null && !activity.isFinishing) {
-                        val d = Dialog(activity)
-                        d.requestWindowFeature(Window.FEATURE_NO_TITLE)
-                        d.setCancelable(false)
-                        d.window?.addFlags(
-                            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        )
-                        d.window?.setBackgroundDrawableResource(android.R.color.transparent)
-                        d.window?.setDimAmount(0f)
-
-                        val params = WindowManager.LayoutParams()
-                        params.copyFrom(d.window?.attributes)
-                        params.width = 1
-                        params.height = 1
-                        params.gravity = Gravity.TOP or Gravity.START
-                        params.x = -10
-                        params.y = -10
-                        d.window?.attributes = params
-
-                        val wv = WebView(activity)
-                        d.setContentView(wv, ViewGroup.LayoutParams(1, 1))
-                        d.show()
-                        dialog = d
-                        wv
-                    } else {
-                        WebView(ctx)
-                    }
-                } catch (_: Exception) {
-                    continuation.resume(SmartResult.Error)
-                    return@post
-                }
-
-                try {
-                    webView.settings.apply {
-                        javaScriptEnabled = true
-                        domStorageEnabled = true
-                        databaseEnabled = true
-                        useWideViewPort = true
-                        loadWithOverviewMode = true
-                        userAgentString = USER_AGENT
-                        blockNetworkImage = false
-                    }
-                } catch (_: Exception) {}
-
-                val cookieManager = CookieManager.getInstance()
-                cookieManager.setAcceptCookie(true)
-                cookieManager.setAcceptThirdPartyCookies(webView, true)
-
                 var isFinished = false
-                val handler = Handler(Looper.getMainLooper())
+                var dialog: Dialog? = null
 
                 fun finish(result: SmartResult) {
                     if (isFinished) return
                     isFinished = true
-                    handler.removeCallbacksAndMessages(null)
-                    try { dialog?.dismiss() } catch (_: Exception) {}
-                    try { webView.destroy() } catch (_: Exception) {}
-
-                    if (result is SmartResult.Success) {
-                        cookieManager.flush()
-                        val newCookies = cookieManager.getCookie(url)
-                        if (!newCookies.isNullOrBlank()) {
-                            savedCookies = newCookies
-                            try {
-                                val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
-                                prefs.edit().putString(COOKIE_KEY, newCookies).apply()
-                            } catch (_: Exception) {}
+                    try {
+                        if (dialog?.isShowing == true && !activity.isFinishing) {
+                            dialog?.dismiss()
                         }
-                    }
+                    } catch (_: Exception) {}
                     continuation.resume(result)
                 }
 
+                try {
+                    val webView = WebView(activity)
+                    val settings = webView.settings
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.databaseEnabled = true
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    settings.userAgentString = USER_AGENT
+
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptThirdPartyCookies(webView, true)
+
+                    val newDialog = Dialog(activity)
+                    newDialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                    newDialog.setContentView(webView)
+                    newDialog.setCancelable(true)
+                    newDialog.setOnCancelListener { finish(SmartResult.Error) }
+
+                    val window = newDialog.window
+                    if (window != null) {
+                        window.setGravity(Gravity.TOP or Gravity.START)
+                        val layoutParams = WindowManager.LayoutParams().apply {
+                            copyFrom(window.attributes)
+                            width = 1
+                            height = 1
+                            x = -2000
+                            y = -2000
+                            flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        }
+                        window.attributes = layoutParams
+                    }
+
+                    dialog = newDialog
+                    newDialog.show()
+
+                    val handler = Handler(Looper.getMainLooper())
+                    val poller = object : Runnable {
+                        override fun run() {
+                            if (isFinished) return
+
+                            val jsCheck = """
+                            (function() {
+                                var body = document.body ? document.body.innerHTML : '';
+                                if (body.indexOf('challenge-platform') !== -1 || body.indexOf('cf-turnstile') !== -1 || body.indexOf('Just a moment...') !== -1) {
+                                    return 'CAPTCHA';
+                                }
+                                if (document.querySelector('.listupd, .bsx, article.bs, .entry-content, .player-wrapper, #content, .eplister, h1')) {
+                                    return 'SUCCESS::' + document.documentElement.outerHTML;
+                                }
+                                return 'WAITING';
+                            })();
+                            """.trimIndent()
+
+                            webView.evaluateJavascript(jsCheck) { result ->
+                                if (isFinished) return@evaluateJavascript
+                                val cleanResult = result?.removeSurrounding("\"")
+                                when {
+                                    cleanResult == "CAPTCHA" -> finish(SmartResult.NeedsCaptcha)
+                                    cleanResult?.startsWith("SUCCESS::") == true -> {
+                                        val html = cleanResult.substringAfter("SUCCESS::")
+                                        val cleanHtml = html.replace("\\u003C", "<").replace("\\u003E", ">").replace("\\\"", "\"").replace("\\\\", "\\")
+                                        finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
+                                    }
+                                    else -> handler.postDelayed(this, 1000)
+                                }
+                            }
+                        }
+                    }
+
+                    webView.webViewClient = object : WebViewClient() {
+                        override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
+                            handler?.proceed()
+                        }
+                    }
+
+                    webView.loadUrl(url)
+                    handler.postDelayed(poller, 1000)
+                    handler.postDelayed({ if (!isFinished) finish(SmartResult.Error) }, 25000)
+                } catch (_: Exception) {
+                    finish(SmartResult.Error)
+                }
+            }
+        }
+    }
+
+    private suspend fun loadHiddenWebViewCheck(url: String): SmartResult {
+        return suspendCoroutine { continuation ->
+            Handler(Looper.getMainLooper()).post {
+                var isFinished = false
+                val webView = WebView(getSafeContext())
+
+                fun finish(result: SmartResult) {
+                    if (isFinished) return
+                    isFinished = true
+                    try {
+                        webView.stopLoading()
+                        webView.destroy()
+                    } catch (_: Exception) {}
+                    continuation.resume(result)
+                }
+
+                val settings = webView.settings
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.userAgentString = USER_AGENT
+
+                val handler = Handler(Looper.getMainLooper())
                 val poller = object : Runnable {
                     override fun run() {
                         if (isFinished) return
+
                         val jsCheck = """
                         (function() {
-                            const html = document.documentElement.innerHTML || '';
-                            if (html.includes('challenge-platform') || html.includes('cf-turnstile') || document.getElementById('cf-wrapper')) return 'CAPTCHA';
-                            if (document.querySelector('.listupd, .bsx, .entry-content, .eplister, h1.entry-title, .site-main, #content')) return 'SUCCESS::' + html;
-                            return 'POLLING';
+                            var body = document.body ? document.body.innerHTML : '';
+                            if (body.indexOf('challenge-platform') !== -1 || body.indexOf('cf-turnstile') !== -1 || body.indexOf('Just a moment...') !== -1) {
+                                return 'CAPTCHA';
+                            }
+                            if (document.querySelector('.listupd, .bsx, article.bs, .entry-content, .player-wrapper, #content, .eplister, h1')) {
+                                return 'SUCCESS::' + document.documentElement.outerHTML;
+                            }
+                            return 'WAITING';
                         })();
                         """.trimIndent()
 
@@ -283,19 +345,22 @@ class Anichin(val context: Context) : MainAPI() {
         }
     }
 
+    // Netflix-Style Main Page Configuration
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "Rilisan Terbaru",
-        "$mainUrl/ongoing/" to "Ongoing",
-        "$mainUrl/completed/" to "Completed",
-        "$mainUrl/donghua/" to "Daftar Donghua",
-        "$mainUrl/schedule/" to "Jadwal Rilis",
-        "$mainUrl/genres/action/" to "Action",
-        "$mainUrl/genres/adventure/" to "Adventure",
-        "$mainUrl/genres/cultivation/" to "Cultivation",
-        "$mainUrl/genres/fantasy/" to "Fantasy",
-        "$mainUrl/genres/martial-arts/" to "Martial Arts",
-        "$mainUrl/genres/romance/" to "Romance",
-        "$mainUrl/genres/sci-fi/" to "Sci-Fi"
+        "$mainUrl/#spotlight" to "✨ Pilihan Utama (Spotlight)",
+        "$mainUrl/#trending" to "🔥 Trending Hari Ini (Top 10)",
+        "$mainUrl/anime/?status=&type=&order=update" to "⚡ Rilisan Terbaru (Update Harian)",
+        "$mainUrl/anime/?order=popular" to "⭐ Terpopuler Sepanjang Masa",
+        "$mainUrl/anime/?status=ongoing&order=update" to "🎬 Sedang Tayang (Ongoing)",
+        "$mainUrl/anime/?status=completed&order=update" to "🏆 Tamat (Binge-Watch / Selesai)",
+        "$mainUrl/anime/?type=movie&order=update" to "🍿 Donghua Movie (Film Layar Lebar)",
+        "$mainUrl/anime/?order=rating" to "💎 Rating Tertinggi (Top Rated)",
+        "$mainUrl/genres/cultivation/" to "⚔️ Kultivasi & Xianxia",
+        "$mainUrl/genres/action/" to "💥 Aksi & Petualangan",
+        "$mainUrl/genres/fantasy/" to "🔮 Fantasi & Sihir",
+        "$mainUrl/genres/martial-arts/" to "🥋 Bela Diri (Wuxia)",
+        "$mainUrl/genres/romance/" to "🌸 Romantis & Harem",
+        "$mainUrl/genres/sci-fi/" to "🚀 Sci-Fi & Reinkarnasi"
     )
 
     private fun toSearchResult(element: Element): SearchResponse? {
@@ -305,7 +370,9 @@ class Anichin(val context: Context) : MainAPI() {
             if (href.isBlank() || href == "$mainUrl/" || href.contains("/genres/") || href.contains("/schedule/")) return null
 
             val img = a.selectFirst("img") ?: element.selectFirst("img")
-            var rawTitle = element.selectFirst(".tt, h2, h3, .title, .entry-title")?.text()?.trim().orEmpty()
+
+            // Strict title extraction to avoid duplicated texts
+            var rawTitle = element.selectFirst(".tt h2, h2[itemprop='headline'], .tt h3, .info h2 a, .info h2, h2 a, h2, h3 a, h3, .title, .entry-title")?.text()?.trim().orEmpty()
             if (rawTitle.isBlank()) {
                 rawTitle = a.attr("title").trim()
             }
@@ -319,6 +386,16 @@ class Anichin(val context: Context) : MainAPI() {
             rawTitle = rawTitle.lines().firstOrNull()?.trim() ?: ""
             if (rawTitle.isBlank()) return null
 
+            // Clean title of repetitive suffix
+            val cleanTitle = rawTitle
+                .replace("- Fansub Donghua Subtitle Indonesia", "", ignoreCase = true)
+                .replace("Subtitle Indonesia", "", ignoreCase = true)
+                .replace("Sub Indo", "", ignoreCase = true)
+                .replace("– Anichin", "", ignoreCase = true)
+                .replace("- Anichin", "", ignoreCase = true)
+                .replace("Anichin", "", ignoreCase = true)
+                .trim()
+
             val poster = getPosterUrl(img ?: element)
 
             val isMovie = href.contains("/movie", true) || href.contains("-movie-", true)
@@ -327,7 +404,7 @@ class Anichin(val context: Context) : MainAPI() {
             val epText = element.selectFirst(".epx, .bt .ep, .ep")?.text()?.trim()
             val epNum = epText?.filter { it.isDigit() }?.toIntOrNull()
 
-            newAnimeSearchResponse(rawTitle, href, type) {
+            newAnimeSearchResponse(cleanTitle, href, type) {
                 this.posterUrl = poster
                 if (epNum != null) {
                     addDubStatus(false, epNum)
@@ -340,18 +417,44 @@ class Anichin(val context: Context) : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val targetUrl = when {
-            request.data == "$mainUrl/" -> {
-                if (page <= 1) "$mainUrl/" else "$mainUrl/page/$page/"
+            request.data.endsWith("#spotlight") || request.data.endsWith("#trending") -> {
+                if (page > 1) return null
+                "$mainUrl/"
             }
             page <= 1 -> request.data
+            request.data.contains("?") -> {
+                val base = request.data.substringBefore("?").trimEnd('/')
+                val query = request.data.substringAfter("?")
+                "$base/page/$page/?$query"
+            }
             request.data.endsWith("/") -> "${request.data}page/$page/"
             else -> "${request.data}/page/$page/"
         }
 
         val doc = getDocumentSmart(targetUrl) ?: return null
 
-        val cards = doc.select(".listupd .bsx, .bsx, article.bs, .item, .animpost, .listupd article").mapNotNull {
-            toSearchResult(it)
+        val cards = when {
+            request.data.endsWith("#spotlight") -> {
+                val slides = doc.select(".swiper-wrapper .swiper-slide, .slider .slide, .bigslider .slide").mapNotNull {
+                    toSearchResult(it)
+                }
+                if (slides.isNotEmpty()) slides else doc.select(".listupd .bsx, .bsx").take(15).mapNotNull { toSearchResult(it) }
+            }
+            request.data.endsWith("#trending") -> {
+                val trendBox = doc.select(".bixbox").firstOrNull {
+                    val h = it.selectFirst(".releases h2, .releases h3, h2, h3")?.text()?.lowercase() ?: ""
+                    h.contains("terpopuler") || h.contains("popular") || h.contains("trending")
+                }
+                val items = (trendBox?.select(".bsx, article, .item") ?: doc.select(".popularslider .bsx, .popconslide .bsx")).mapNotNull {
+                    toSearchResult(it)
+                }
+                if (items.isNotEmpty()) items else doc.select(".listupd .bsx, .bsx").take(10).mapNotNull { toSearchResult(it) }
+            }
+            else -> {
+                doc.select(".listupd .bsx, .bsx, article.bs, .item, .animpost, .listupd article").mapNotNull {
+                    toSearchResult(it)
+                }
+            }
         }.distinctBy { it.url }
 
         return if (cards.isNotEmpty()) {
@@ -374,7 +477,18 @@ class Anichin(val context: Context) : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         val fullUrl = toAbsoluteUrl(url)
-        val doc = getDocumentSmart(fullUrl) ?: return null
+        var doc = getDocumentSmart(fullUrl) ?: return null
+
+        // If user opened an individual episode directly, navigate to parent series to load all episodes
+        if (fullUrl.contains("-episode-", true) || fullUrl.contains("-ep-", true)) {
+            val parentSeriesUrl = doc.selectFirst(".ts-breadcrumb li:nth-last-child(2) a, .naveps .nvsc a, a:contains(Semua Episode)")?.attr("href")?.let { toAbsoluteUrl(it) }
+            if (!parentSeriesUrl.isNullOrBlank() && parentSeriesUrl != fullUrl && parentSeriesUrl != "$mainUrl/") {
+                val parentDoc = getDocumentSmart(parentSeriesUrl)
+                if (parentDoc != null && parentDoc.select(".eplister ul li a, .episodelist ul li a").isNotEmpty()) {
+                    doc = parentDoc
+                }
+            }
+        }
 
         val rawTitle = doc.selectFirst("h1.entry-title, h1")?.text()?.trim()
             ?: doc.selectFirst("meta[property='og:title']")?.attr("content")?.trim()
@@ -403,7 +517,7 @@ class Anichin(val context: Context) : MainAPI() {
             Regex("""\b(19\d\d|20\d\d)\b""").find(it)?.groupValues?.get(1)?.toIntOrNull()
         }
 
-        // Extract Episode List (Strictly inside episode list containers to avoid sidebar/recommended shows)
+        // Extract Episode List
         val containerElements = doc.select(".eplister ul li a, .episodelist ul li a, #daftarepisode li a, .clps li a, .ep-list li a")
         val epElements = if (containerElements.isNotEmpty()) {
             containerElements
@@ -442,7 +556,7 @@ class Anichin(val context: Context) : MainAPI() {
                 this.year = year
             }
         } else {
-            // Strictly sort episodes in ascending order (Episode 1, Episode 2, ... Episode N)
+            // Strictly sort episodes in ascending order (Episode 1, 2, ... N)
             val sortedEpisodes = rawEpisodes.sortedWith(
                 compareBy<Episode> { it.episode == null }
                     .thenBy { it.episode ?: 0 }
@@ -468,43 +582,76 @@ class Anichin(val context: Context) : MainAPI() {
 
         var foundAny = false
 
+        suspend fun resolveStream(rawSrc: String, serverName: String) {
+            val src = rawSrc.trim()
+            if (src.isBlank() || src.startsWith("javascript:") || src.startsWith("about:")) return
+
+            when {
+                // 1. Dailymotion & Anichin player embed
+                src.contains("dailymotion.com") || src.contains("geo.dailymotion.com") || src.contains("anichin-player.web.id") || (src.contains("video=") && !src.contains("ok.ru")) -> {
+                    extractDailymotionDirect(src, pageUrl, serverName, callback)
+                    foundAny = true
+                }
+                // 2. OK.ru (Odnoklassniki)
+                src.contains("ok.ru") || src.contains("odnoklassniki") || src.contains("racaty.my.id/empire") || src.contains("videoplayer.vip") -> {
+                    extractOkRuDirect(src, pageUrl, serverName, callback)
+                    try { loadExtractor(src, pageUrl, subtitleCallback, callback) } catch (_: Exception) {}
+                    foundAny = true
+                }
+                // 3. Rumble
+                src.contains("rumble.com") -> {
+                    extractRumbleDirect(src, pageUrl, serverName, callback)
+                    foundAny = true
+                }
+                // 4. TurboVIP / Turboviplay
+                src.contains("turbovidhls") || src.contains("turboviplay") -> {
+                    extractTurboVipDirect(src, pageUrl, serverName, callback)
+                    foundAny = true
+                }
+                // 5. PixelDrain
+                src.contains("pixeldrain.com") -> {
+                    extractPixelDrainDirect(src, serverName, callback)
+                    foundAny = true
+                }
+                // 6. Anichin Internal Stream
+                src.contains("anichin.stream") -> {
+                    extractAnichinStream(src, pageUrl, serverName, subtitleCallback, callback)
+                    foundAny = true
+                }
+                // 7. Generic Extractor (VidHide, StreamWish, StreamRuby, Playmogo, Dood, etc.)
+                else -> {
+                    try {
+                        loadExtractor(src, pageUrl, subtitleCallback, callback)
+                        foundAny = true
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+
         // 1. Parse Server Select / Mirror Dropdowns
-        val mirrorOptions = doc.select("select.mirror option, select[name='server'] option, .mirror option")
+        val mirrorOptions = doc.select("select.mirror option, select[name='server'] option, .mirror option, ul.mirror li, .server-list li")
         for (opt in mirrorOptions) {
-            val rawVal = opt.attr("value").trim()
+            val rawVal = opt.attr("value").ifBlank { opt.attr("data-embed") }.ifBlank { opt.attr("data-src") }.ifBlank { opt.attr("href") }.trim()
             val serverName = opt.text().trim().ifBlank { "Server" }
             if (rawVal.isNotBlank() && !rawVal.equals("null", true) && !serverName.contains("Select Video", true) && !serverName.contains("Pilih Server", true)) {
                 try {
                     val decodedIframe = if (rawVal.startsWith("<iframe", true)) {
                         rawVal
-                    } else {
+                    } else if (rawVal.length > 20 && !rawVal.startsWith("http")) {
                         try {
                             String(Base64.decode(rawVal, Base64.DEFAULT), Charsets.UTF_8)
                         } catch (_: Exception) {
                             rawVal
                         }
+                    } else {
+                        rawVal
                     }
 
                     val src = Regex("""src=['"]([^'"]+)['"]""").find(decodedIframe)?.groupValues?.getOrNull(1)
                         ?: if (decodedIframe.startsWith("http")) decodedIframe else ""
 
                     if (src.isNotBlank() && src.startsWith("http")) {
-                        if (src.contains("anichin.stream") || src.contains("anichin-player")) {
-                            extractAnichinStream(src, pageUrl, serverName, subtitleCallback, callback)
-                            foundAny = true
-                        } else if (src.contains("dailymotion.com") || src.contains("geo.dailymotion.com") || src.contains("video=")) {
-                            extractDailymotionDirect(src, pageUrl, serverName, callback)
-                            try { loadExtractor(src, pageUrl, subtitleCallback, callback) } catch (_: Exception) {}
-                            foundAny = true
-                        } else if (src.contains("rumble.com")) {
-                            extractRumbleDirect(src, pageUrl, serverName, callback)
-                            foundAny = true
-                        } else {
-                            try {
-                                loadExtractor(src, pageUrl, subtitleCallback, callback)
-                                foundAny = true
-                            } catch (_: Exception) {}
-                        }
+                        resolveStream(src, serverName)
                     }
                 } catch (_: Exception) {}
             }
@@ -514,61 +661,54 @@ class Anichin(val context: Context) : MainAPI() {
         doc.select("iframe[src], iframe[data-src]").forEach { ifr ->
             val src = toAbsoluteUrl(ifr.attr("src").ifBlank { ifr.attr("data-src") })
             if (src.isNotBlank() && !src.contains("cbox", true) && !src.startsWith("about:") && !src.startsWith("javascript:")) {
-                if (src.contains("anichin.stream") || src.contains("anichin-player")) {
-                    extractAnichinStream(src, pageUrl, "Anichin Player", subtitleCallback, callback)
-                    foundAny = true
-                } else if (src.contains("dailymotion.com") || src.contains("geo.dailymotion.com") || src.contains("video=")) {
-                    extractDailymotionDirect(src, pageUrl, "Dailymotion", callback)
-                    try { loadExtractor(src, pageUrl, subtitleCallback, callback) } catch (_: Exception) {}
-                    foundAny = true
-                } else if (src.contains("rumble.com")) {
-                    extractRumbleDirect(src, pageUrl, "Rumble", callback)
-                    foundAny = true
-                } else {
-                    try {
-                        loadExtractor(src, pageUrl, subtitleCallback, callback)
-                        foundAny = true
-                    } catch (_: Exception) {}
-                }
+                resolveStream(src, "Player")
             }
         }
 
         // 3. Download Links & External Mirrors
-        doc.select(".soradl a, .soraurlx a, .moredl a, .dlx a, a[href*='mirrored.to'], a[href*='pixeldrain'], a[href*='mediafire'], a[href*='terabox']").forEach { a ->
+        doc.select(".soradl a, .soraurlx a, .moredl a, .dlx a, a[href*='pixeldrain'], a[href*='mediafire'], a[href*='terabox']").forEach { a ->
             val href = a.attr("href").trim()
             if (href.startsWith("http") && !href.contains("javascript:")) {
-                try {
-                    loadExtractor(href, pageUrl, subtitleCallback, callback)
-                    foundAny = true
-                } catch (_: Exception) {}
+                val text = a.text().trim().ifBlank { "Mirror" }
+                resolveStream(href, text)
             }
         }
 
         return foundAny
     }
 
-    private suspend fun extractDailymotionDirect(videoUrlOrId: String, refererUrl: String, serverName: String, callback: (ExtractorLink) -> Unit) {
+    // Direct Dailymotion Extractor (Fixed 403 Forbidden with geo referer)
+    private suspend fun extractDailymotionDirect(
+        videoUrlOrId: String,
+        refererUrl: String,
+        serverName: String,
+        callback: (ExtractorLink) -> Unit
+    ) {
         try {
-            val videoId = if (videoUrlOrId.contains("video=")) {
-                videoUrlOrId.substringAfter("video=").substringBefore("&")
-            } else if (videoUrlOrId.contains("/video/")) {
-                videoUrlOrId.substringAfter("/video/").substringBefore("?").substringBefore("/")
-            } else if (!videoUrlOrId.contains("/") && !videoUrlOrId.contains(".")) {
-                videoUrlOrId
-            } else {
-                Regex("""video[=/]([a-zA-Z0-9]+)""").find(videoUrlOrId)?.groupValues?.getOrNull(1) ?: ""
+            val videoId = when {
+                videoUrlOrId.contains("video=") -> videoUrlOrId.substringAfter("video=").substringBefore("&")
+                videoUrlOrId.contains("/video/") -> videoUrlOrId.substringAfter("/video/").substringBefore("?").substringBefore("/")
+                videoUrlOrId.contains("geo.dailymotion.com") -> videoUrlOrId.substringAfter("video=").substringBefore("&")
+                !videoUrlOrId.contains("/") && !videoUrlOrId.contains(".") -> videoUrlOrId
+                else -> Regex("""video[=/]([a-zA-Z0-9]+)""").find(videoUrlOrId)?.groupValues?.getOrNull(1) ?: ""
             }
 
             if (videoId.isNotBlank()) {
                 val metaUrl = "https://www.dailymotion.com/player/metadata/video/$videoId"
-                val res = app.get(metaUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "https://www.dailymotion.com/"))
+                val res = app.get(
+                    metaUrl,
+                    headers = mapOf(
+                        "User-Agent" to USER_AGENT,
+                        "Referer" to "https://geo.dailymotion.com/"
+                    )
+                )
                 val text = res.text
 
-                // Find m3u8 in qualities
+                // Extract auto HLS master playlist
                 val m3u8Regex = Regex("""https?:\\/\\/[^"'\s]+\.m3u8[^"'\s]*""")
-                val found = m3u8Regex.findAll(text).map { it.value.replace("\\/", "/") }.distinct()
+                val foundM3u8s = m3u8Regex.findAll(text).map { it.value.replace("\\/", "/") }.distinct().toList()
 
-                for (m3u8Url in found) {
+                for (m3u8Url in foundM3u8s) {
                     callback(
                         newExtractorLink(
                             source = this.name,
@@ -576,7 +716,21 @@ class Anichin(val context: Context) : MainAPI() {
                             url = m3u8Url,
                             type = ExtractorLinkType.M3U8
                         ) {
-                            this.referer = "https://www.dailymotion.com/"
+                            this.referer = "https://geo.dailymotion.com/"
+                        }
+                    )
+                }
+
+                // Also check direct mp4 streams
+                Regex("""https?:\\/\\/[^"'\s]+\.mp4[^"'\s]*""").findAll(text).map { it.value.replace("\\/", "/") }.distinct().forEach { mp4Url ->
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = "${this.name} - $serverName Dailymotion MP4",
+                            url = mp4Url,
+                            type = ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = "https://geo.dailymotion.com/"
                         }
                     )
                 }
@@ -584,6 +738,202 @@ class Anichin(val context: Context) : MainAPI() {
         } catch (_: Exception) {}
     }
 
+    // Direct OK.ru (Odnoklassniki) Extractor with All Qualities (1080p -> 144p)
+    private suspend fun extractOkRuDirect(
+        okUrl: String,
+        refererUrl: String,
+        serverName: String,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val embedUrl = when {
+                okUrl.contains("/videoembed/") -> okUrl
+                okUrl.contains("/video/") -> okUrl.replace("/video/", "/videoembed/")
+                okUrl.contains("empire/") -> "https://ok.ru/videoembed/" + okUrl.substringAfter("empire/").substringBefore("?").substringBefore("/")
+                else -> {
+                    val okId = Regex("""\b(\d{10,})\b""").find(okUrl)?.groupValues?.getOrNull(1)
+                    if (okId != null) "https://ok.ru/videoembed/$okId" else okUrl
+                }
+            }
+
+            val res = app.get(
+                embedUrl,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "https://ok.ru/"
+                )
+            )
+            val html = res.text
+
+            val dataOptionsMatch = Regex("""data-options=['"]([^'"]+)['"]""").find(html)
+            if (dataOptionsMatch != null) {
+                val rawOptions = URLDecoder.decode(dataOptionsMatch.groupValues[1].replace("&quot;", "\""), "UTF-8")
+
+                // 1. HLS Master Playlist if available
+                val hlsMatch = Regex("""["']hlsMasterPlaylistUrl["']\s*:\s*["']([^"']+)["']""").find(rawOptions)
+                    ?: Regex("""["']hlsMasterPlaylistUrl["']\s*:\s*["']([^"']+)["']""").find(html)
+                if (hlsMatch != null) {
+                    val hlsUrl = hlsMatch.groupValues[1].replace("\\/", "/")
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = "${this.name} - $serverName OK.ru HLS",
+                            url = hlsUrl,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://ok.ru/"
+                        }
+                    )
+                }
+
+                // 2. Individual Video Qualities (Full HD 1080p, HD 720p, SD 480p, Low 360p, etc.)
+                val videoBlockMatch = Regex(""""videos"\s*:\s*(\[[^]]+\])""").find(rawOptions)
+                    ?: Regex(""""videos"\s*:\s*(\[[^]]+\])""").find(html)
+                if (videoBlockMatch != null) {
+                    val videosStr = videoBlockMatch.groupValues[1]
+                    val vMatches = Regex("""\{[^}]*?"name"\s*:\s*"([^"]+)"[^}]*?"url"\s*:\s*"([^"]+)"[^}]*?\}""").findAll(videosStr)
+                    for (vm in vMatches) {
+                        val qName = vm.groupValues[1].uppercase()
+                        val rawVideoUrl = vm.groupValues[2].replace("\\/", "/")
+                        val fullVideoUrl = if (rawVideoUrl.startsWith("//")) "https:$rawVideoUrl" else rawVideoUrl
+
+                        val qualityLabel = when (qName) {
+                            "MOBILE" -> "144p"
+                            "LOWEST" -> "240p"
+                            "LOW" -> "360p"
+                            "SD" -> "480p"
+                            "HD" -> "720p"
+                            "FULL" -> "1080p"
+                            "QUAD" -> "1440p"
+                            "ULTRA" -> "4K"
+                            else -> qName
+                        }
+
+                        callback(
+                            newExtractorLink(
+                                source = this.name,
+                                name = "${this.name} - $serverName OK.ru $qualityLabel",
+                                url = fullVideoUrl,
+                                type = ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = "https://ok.ru/"
+                            }
+                        )
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    // Direct Rumble Extractor (HLS Master & Multi-Quality MP4)
+    private suspend fun extractRumbleDirect(
+        rumbleUrl: String,
+        refererUrl: String,
+        serverName: String,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val res = app.get(rumbleUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl))
+            val text = res.text
+
+            // 1. HLS Master Playlist
+            Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").findAll(text).forEach { m ->
+                val cleanUrl = m.groupValues[1].replace("\\/", "/")
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - $serverName Rumble HLS",
+                        url = cleanUrl,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "https://rumble.com/"
+                    }
+                )
+            }
+
+            // 2. Direct MP4 Video Streams
+            val mp4Matches = Regex("""(https?:[\\/]+[^\s"']+\.mp4[^\s"']*)""").findAll(text).map {
+                it.groupValues[1].replace("\\/", "/")
+            }.distinct().toList()
+
+            for (cleanUrl in mp4Matches) {
+                val qualityLabel = when {
+                    cleanUrl.contains(".Faa.mp4", ignoreCase = true) -> "1080p"
+                    cleanUrl.contains(".gaa.mp4", ignoreCase = true) -> "720p"
+                    cleanUrl.contains(".caa.mp4", ignoreCase = true) -> "480p"
+                    cleanUrl.contains(".baa.mp4", ignoreCase = true) -> "360p"
+                    else -> "MP4"
+                }
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - $serverName Rumble $qualityLabel",
+                        url = cleanUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = "https://rumble.com/"
+                    }
+                )
+            }
+        } catch (_: Exception) {}
+    }
+
+    // Direct TurboVIP Extractor
+    private suspend fun extractTurboVipDirect(
+        turboUrl: String,
+        refererUrl: String,
+        serverName: String,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val res = app.get(turboUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl))
+            val text = res.text
+
+            Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").findAll(text).forEach { m ->
+                val cleanUrl = m.groupValues[1].replace("\\/", "/")
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - $serverName TurboVIP HLS",
+                        url = cleanUrl,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = turboUrl
+                    }
+                )
+            }
+        } catch (_: Exception) {}
+    }
+
+    // Direct PixelDrain Extractor
+    private suspend fun extractPixelDrainDirect(
+        url: String,
+        serverName: String,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val fileId = when {
+                url.contains("/u/") -> url.substringAfter("/u/").substringBefore("?").substringBefore("/")
+                url.contains("/file/") -> url.substringAfter("/file/").substringBefore("?").substringBefore("/")
+                else -> Regex("""pixeldrain\.com/(?:u|file)/([a-zA-Z0-9]+)""").find(url)?.groupValues?.getOrNull(1)
+            }
+            if (!fileId.isNullOrBlank()) {
+                val directStreamUrl = "https://pixeldrain.com/api/file/$fileId"
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - $serverName PixelDrain",
+                        url = directStreamUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = "https://pixeldrain.com/"
+                    }
+                )
+            }
+        } catch (_: Exception) {}
+    }
+
+    // Anichin Stream Extractor
     private suspend fun extractAnichinStream(
         streamUrl: String,
         refererUrl: String,
@@ -599,13 +949,14 @@ class Anichin(val context: Context) : MainAPI() {
             val res = app.get(streamUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl))
             val text = res.text
 
-            // Check if page contains nested iframes
             val doc = res.document
             doc.select("iframe[src]").forEach { ifr ->
                 val innerSrc = toAbsoluteUrl(ifr.attr("src"))
                 if (innerSrc.isNotBlank() && !innerSrc.contains("cbox", true) && !innerSrc.startsWith("about:") && !innerSrc.startsWith("javascript:")) {
                     if (innerSrc.contains("video=") || innerSrc.contains("dailymotion")) {
                         extractDailymotionDirect(innerSrc, streamUrl, serverName, callback)
+                    } else if (innerSrc.contains("ok.ru")) {
+                        extractOkRuDirect(innerSrc, streamUrl, serverName, callback)
                     } else {
                         try {
                             loadExtractor(innerSrc, streamUrl, subtitleCallback, callback)
@@ -614,7 +965,6 @@ class Anichin(val context: Context) : MainAPI() {
                 }
             }
 
-            // 1. Direct HLS in HTML
             val hlsMatch = Regex("""/hls/([a-zA-Z0-9_-]+\.m3u8)""").find(text)
             if (hlsMatch != null) {
                 val fullHls = "https://anichin.stream/hls/${hlsMatch.groupValues[1]}"
@@ -631,7 +981,6 @@ class Anichin(val context: Context) : MainAPI() {
                 return
             }
 
-            // Direct m3u8 urls in scripts / text
             Regex("""(https?:[^"'\s<>]+\.m3u8[^"'\s<>]*)""").findAll(text).forEach { m ->
                 val cleanUrl = m.groupValues[1].replace("\\/", "/")
                 callback(
@@ -646,7 +995,7 @@ class Anichin(val context: Context) : MainAPI() {
                 )
             }
 
-            // 2. Unpack packer script
+            // Unpack packer script
             if (text.contains("eval(function(p,a,c,k,e,d)")) {
                 val pPattern = Regex("""\}\('(.*?)',\s*(\d+),\s*(\d+),\s*'([^']+)'\.split\('\|'\)""")
                 val pMatch = pPattern.find(text)
@@ -686,29 +1035,6 @@ class Anichin(val context: Context) : MainAPI() {
                         )
                     }
                 }
-            }
-        } catch (_: Exception) {}
-    }
-
-    private suspend fun extractRumbleDirect(rumbleUrl: String, refererUrl: String, serverName: String, callback: (ExtractorLink) -> Unit) {
-        try {
-            val res = app.get(rumbleUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl))
-            val text = res.text
-
-            val mp4Regex = Regex("(https?:[^\"'\\s]+\\.(mp4|m3u8)[^\"'\\s]*)")
-            mp4Regex.findAll(text).forEach { m ->
-                val cleanUrl = m.groupValues[1].replace("\\/", "/")
-                val isM3u8 = cleanUrl.contains(".m3u8", true)
-                callback(
-                    newExtractorLink(
-                        source = this.name,
-                        name = "${this.name} - Rumble ${if (isM3u8) "HLS" else "MP4"}",
-                        url = cleanUrl,
-                        type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = "https://rumble.com/"
-                    }
-                )
             }
         } catch (_: Exception) {}
     }
