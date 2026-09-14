@@ -58,6 +58,10 @@ open class AsiaStream : ExtractorApi() {
     override var mainUrl = "https://watch.asiastream.cc"
     override val requiresReferer = true
 
+    companion object {
+        const val EXTRACTOR_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+
     override suspend fun getUrl(
         url: String,
         referer: String?,
@@ -69,7 +73,7 @@ open class AsiaStream : ExtractorApi() {
             app.get(
                 url,
                 headers = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "User-Agent" to EXTRACTOR_UA,
                     "Referer" to ref
                 ),
                 timeout = 15
@@ -78,43 +82,117 @@ open class AsiaStream : ExtractorApi() {
             return
         }
 
+        val defaultHeaders = mapOf(
+            "User-Agent" to EXTRACTOR_UA,
+            "Referer" to "https://watch.asiastream.cc/",
+            "Origin" to "https://watch.asiastream.cc"
+        )
+
         // 1. Parse sniff(slug, uid, md5, ...)
         val sniffMatch = Regex("""sniff\s*\(\s*"[^"]+"\s*,\s*"(\d+)"\s*,\s*"([a-f0-9]+)"""").find(html)
+            ?: Regex("""m3u8/(\d+)/([a-f0-9]+)/master\.txt""").find(html)
+
         if (sniffMatch != null) {
             val (uid, md5) = sniffMatch.destructured
-            val m3u8Url = "$mainUrl/m3u8/$uid/$md5/master.txt?s=1&cache=1"
-            generateM3u8(
-                source = name,
-                streamUrl = m3u8Url,
-                referer = url,
-                headers = mapOf("Referer" to url)
-            ).forEach(callback)
-            return
+            val masterUrl = "$mainUrl/m3u8/$uid/$md5/master.txt?s=1&cache=1"
+
+            val masterContent = try {
+                app.get(
+                    masterUrl,
+                    headers = defaultHeaders,
+                    timeout = 15
+                ).text
+            } catch (_: Exception) {
+                ""
+            }
+
+            if (masterContent.startsWith("#EXTM3U")) {
+                // Adaptive master playlist link
+                callback.invoke(
+                    newExtractorLink(
+                        source = name,
+                        name = "$name (Auto)",
+                        url = masterUrl,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "https://watch.asiastream.cc/"
+                        this.quality = Qualities.Auto.value
+                        this.headers = defaultHeaders
+                    }
+                )
+
+                // Parse individual streams from master.txt
+                val lines = masterContent.lines()
+                var currentQuality = Qualities.P720.value
+                var currentLabel = "720p"
+
+                for (line in lines) {
+                    val trimmed = line.trim()
+                    if (trimmed.startsWith("#EXT-X-STREAM-INF", ignoreCase = true)) {
+                        val resMatch = Regex("""RESOLUTION=(\d+x\d+)""").find(trimmed)
+                        val height = resMatch?.groupValues?.get(1)?.split("x")?.getOrNull(1)?.toIntOrNull()
+                        if (height != null) {
+                            currentLabel = "${height}p"
+                            currentQuality = when {
+                                height >= 1080 -> Qualities.P1080.value
+                                height >= 720 -> Qualities.P720.value
+                                height >= 480 -> Qualities.P480.value
+                                height >= 360 -> Qualities.P360.value
+                                else -> Qualities.P240.value
+                            }
+                        }
+                    } else if (trimmed.startsWith("http")) {
+                        callback.invoke(
+                            newExtractorLink(
+                                source = name,
+                                name = "$name $currentLabel",
+                                url = trimmed,
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = "https://watch.asiastream.cc/"
+                                this.quality = currentQuality
+                                this.headers = defaultHeaders
+                            }
+                        )
+                    }
+                }
+
+                // Fallback generator
+                runCatching {
+                    generateM3u8(
+                        source = name,
+                        streamUrl = masterUrl,
+                        referer = "https://watch.asiastream.cc/",
+                        headers = defaultHeaders
+                    ).forEach(callback)
+                }
+                return
+            }
         }
 
-        // 2. Direct regex in HTML
-        val directMatch = Regex("""m3u8/(\d+)/([a-f0-9]+)/master\.txt""").find(html)
-        if (directMatch != null) {
-            val (uid, md5) = directMatch.destructured
-            val m3u8Url = "$mainUrl/m3u8/$uid/$md5/master.txt?s=1&cache=1"
-            generateM3u8(
-                source = name,
-                streamUrl = m3u8Url,
-                referer = url,
-                headers = mapOf("Referer" to url)
-            ).forEach(callback)
-            return
-        }
-
-        // 3. Fallback to m3u8 search
-        val m3u8Regex = Regex("""(https?://[^\s"'<>]+\.(?:m3u8|txt)[^\s"'<>]*)""")
+        // 2. Direct .m3u8 regex in HTML
+        val m3u8Regex = Regex("""(https?://[^\s"'<>]+\.m3u8[^\s"'<>]*)""")
         m3u8Regex.findAll(html).forEach { match ->
-            generateM3u8(
-                source = name,
-                streamUrl = match.groupValues[1],
-                referer = url,
-                headers = mapOf("Referer" to url)
-            ).forEach(callback)
+            val m3u8 = match.groupValues[1]
+            callback.invoke(
+                newExtractorLink(
+                    source = name,
+                    name = "$name Direct",
+                    url = m3u8,
+                    type = ExtractorLinkType.M3U8
+                ) {
+                    this.referer = url
+                    this.headers = defaultHeaders
+                }
+            )
+            runCatching {
+                generateM3u8(
+                    source = name,
+                    streamUrl = m3u8,
+                    referer = url,
+                    headers = defaultHeaders
+                ).forEach(callback)
+            }
         }
     }
 }
@@ -409,21 +487,25 @@ open class StreamP2PExtractor : ExtractorApi() {
                     val added = mutableSetOf<String>()
 
                     if (cfNative.isNotBlank() && added.add(cfNative)) {
-                        generateM3u8(
-                            source = "$name (P2P)",
-                            streamUrl = cfNative,
-                            referer = "https://$host/",
-                            headers = mapOf("Referer" to "https://$host/")
-                        ).forEach(callback)
+                        runCatching {
+                            generateM3u8(
+                                source = "$name (P2P)",
+                                streamUrl = cfNative,
+                                referer = "https://$host/",
+                                headers = mapOf("Referer" to "https://$host/")
+                            ).forEach(callback)
+                        }
                     }
 
                     if (source.isNotBlank() && added.add(source)) {
-                        generateM3u8(
-                            source = "$name (Direct)",
-                            streamUrl = source,
-                            referer = "https://$host/",
-                            headers = mapOf("Referer" to "https://$host/")
-                        ).forEach(callback)
+                        runCatching {
+                            generateM3u8(
+                                source = "$name (Direct)",
+                                streamUrl = source,
+                                referer = "https://$host/",
+                                headers = mapOf("Referer" to "https://$host/")
+                            ).forEach(callback)
+                        }
                     }
 
                     if (mp4.isNotBlank() && added.add(mp4)) {

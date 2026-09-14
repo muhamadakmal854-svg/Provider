@@ -486,11 +486,14 @@ class MaxMovie21 : MainAPI() {
                 }
             }
 
-            // Download buttons & other server links
-            pageDoc.select(".gmr-download-list a, .download-btn, a[href*='download'], a[href*='drive'], a[href*='player']").forEach { btn ->
+            // Download buttons & other external video server links (exclude internal pages)
+            pageDoc.select(".gmr-download-list a, .download-btn, a[href*='download'], a[href*='drive'], a[href*='stream']").forEach { btn ->
                 val href = btn.attr("href").trim()
-                if (href.isNotBlank() && !href.startsWith("#") && !href.startsWith("javascript:") && !href.contains("/tag/")) {
-                    candidates.add(fixUrl(href))
+                val fixed = fixUrlNull(href)
+                if (fixed != null && fixed.isNotBlank() && !fixed.startsWith("#") && !fixed.startsWith("javascript:") && !fixed.contains("/tag/") && !fixed.contains("/category/")) {
+                    if (!fixed.startsWith(mainUrl) || fixed.contains(".mp4") || fixed.contains(".m3u8")) {
+                        candidates.add(fixed)
+                    }
                 }
             }
         }
@@ -510,13 +513,17 @@ class MaxMovie21 : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        val cleanUrl = url.trim()
+        if (cleanUrl.isBlank() || cleanUrl == "$mainUrl/" || cleanUrl.contains("wp-json") || cleanUrl.contains("google.com/analytics")) return false
+        if (cleanUrl.startsWith(mainUrl) && !cleanUrl.contains(".m3u8") && !cleanUrl.contains(".mp4")) return false
+
         var handled = false
-        val lower = url.lowercase()
+        val lower = cleanUrl.lowercase()
 
         // 1. AsiaStream (watch.asiastream.cc)
         if (lower.contains("asiastream")) {
             runCatching {
-                AsiaStream().getUrl(url, referer, subtitleCallback) { l ->
+                AsiaStream().getUrl(cleanUrl, referer, subtitleCallback) { l ->
                     callback.invoke(l)
                     handled = true
                 }
@@ -527,7 +534,7 @@ class MaxMovie21 : MainAPI() {
         // 2. StreamP2P / PlayerP2P / LivePlayerP2P / Ewa
         if (lower.contains("playerp2p") || lower.contains("strp2p") || lower.contains("rpmvid") || lower.contains("p2pstream")) {
             runCatching {
-                StreamP2PExtractor().getUrl(url, referer, subtitleCallback) { l ->
+                StreamP2PExtractor().getUrl(cleanUrl, referer, subtitleCallback) { l ->
                     callback.invoke(l)
                     handled = true
                 }
@@ -538,7 +545,7 @@ class MaxMovie21 : MainAPI() {
         // 3. AbyssCDN / AbyssPlayer / Hydrax / Sora
         if (lower.contains("abysscdn.com") || lower.contains("abyssplayer.com") || lower.contains("abyss.to")) {
             runCatching {
-                AbyssPlayer().getUrl(url, referer, subtitleCallback) { l ->
+                AbyssPlayer().getUrl(cleanUrl, referer, subtitleCallback) { l ->
                     callback.invoke(l)
                     handled = true
                 }
@@ -549,7 +556,7 @@ class MaxMovie21 : MainAPI() {
         // 4. VidHide / Morencius / Callistanise
         if (lower.contains("vidhide") || lower.contains("morencius.com") || lower.contains("callistanise.com")) {
             runCatching {
-                VidHideExtractor().getUrl(url, referer, subtitleCallback) { l ->
+                VidHideExtractor().getUrl(cleanUrl, referer, subtitleCallback) { l ->
                     callback.invoke(l)
                     handled = true
                 }
@@ -560,7 +567,7 @@ class MaxMovie21 : MainAPI() {
         // 5. EfekStream (VIP Server)
         if (lower.contains("efek.stream")) {
             runCatching {
-                EfekStream().getUrl(url, referer, subtitleCallback) { l ->
+                EfekStream().getUrl(cleanUrl, referer, subtitleCallback) { l ->
                     callback.invoke(l)
                     handled = true
                 }
@@ -571,7 +578,7 @@ class MaxMovie21 : MainAPI() {
         // 6. Byseq / Filemoon
         if (lower.contains("byseqekaho.com") || lower.contains("filemoon.to") || lower.contains("filemoon.sx") || lower.contains("filemoon.in")) {
             runCatching {
-                ByseqExtractor().getUrl(url, referer, subtitleCallback) { l ->
+                ByseqExtractor().getUrl(cleanUrl, referer, subtitleCallback) { l ->
                     callback.invoke(l)
                     handled = true
                 }
@@ -582,7 +589,7 @@ class MaxMovie21 : MainAPI() {
         // 7. StreamWish / Hgcloud / Dm21 Upns
         if (lower.contains("streamwish") || lower.contains("wishembed") || lower.contains("hgcloud") || lower.contains("upns.live") || lower.contains("dwish")) {
             runCatching {
-                StreamWishExtractor().getUrl(url, referer, subtitleCallback) { l ->
+                StreamWishExtractor().getUrl(cleanUrl, referer, subtitleCallback) { l ->
                     callback.invoke(l)
                     handled = true
                 }
@@ -593,7 +600,7 @@ class MaxMovie21 : MainAPI() {
         // 8. EmbedPyrox
         if (lower.contains("embedpyrox.xyz")) {
             runCatching {
-                EmbedPyroxExtractor().getUrl(url, referer, subtitleCallback) { l ->
+                EmbedPyroxExtractor().getUrl(cleanUrl, referer, subtitleCallback) { l ->
                     callback.invoke(l)
                     handled = true
                 }
@@ -602,18 +609,35 @@ class MaxMovie21 : MainAPI() {
         }
 
         // 9. Direct M3U8
-        if (lower.contains(".m3u8")) {
+        if (lower.contains(".m3u8") || lower.contains("master.txt")) {
+            val defaultHeaders = mapOf(
+                "User-Agent" to USER_AGENT,
+                "Referer" to referer
+            )
+            callback.invoke(
+                newExtractorLink(
+                    source = name,
+                    name = "$name (Auto)",
+                    url = cleanUrl,
+                    type = ExtractorLinkType.M3U8
+                ) {
+                    this.referer = referer
+                    this.quality = Qualities.Auto.value
+                    this.headers = defaultHeaders
+                }
+            )
             runCatching {
                 generateM3u8(
                     source = name,
-                    streamUrl = url,
-                    referer = referer
+                    streamUrl = cleanUrl,
+                    referer = referer,
+                    headers = defaultHeaders
                 ).forEach { l ->
                     callback.invoke(l)
                     handled = true
                 }
             }
-            if (handled) return true
+            return true
         }
 
         // 10. Direct MP4
@@ -622,7 +646,7 @@ class MaxMovie21 : MainAPI() {
                 newExtractorLink(
                     source = name,
                     name = "$name MP4",
-                    url = url,
+                    url = cleanUrl,
                     type = ExtractorLinkType.VIDEO
                 ) {
                     this.referer = referer
@@ -634,7 +658,7 @@ class MaxMovie21 : MainAPI() {
 
         // 11. Universal fallback to CloudStream's loadExtractor
         runCatching {
-            loadExtractor(url, referer, subtitleCallback) { l ->
+            loadExtractor(cleanUrl, referer, subtitleCallback) { l ->
                 callback.invoke(l)
                 handled = true
             }
