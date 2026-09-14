@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk -G-U-D-A-N-G- -F-I-L-M-"
+    description = "Provider untuk GUDANG FILM - Nonton Idlix, Layarkaca21 LK21 Rebahin INDOXXI"
 
     authors     = listOf("MTS")
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://www.huazai6.com/favicon.ico"
+    iconUrl     = "http://159.223.65.15/favicon.ico"
 
 }
 
