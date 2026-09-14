@@ -86,10 +86,12 @@ class Donghub : MainAPI() {
 
     private fun getPosterUrl(element: Element?): String? {
         if (element == null) return null
+        val targetEl = if (element.tagName().equals("img", true)) element else (element.selectFirst("img") ?: element)
         for (attr in listOf("data-src", "data-lazy-src", "data-cfsrc", "data-original", "data-image", "data-bg", "src")) {
-            val v = element.attr(attr).trim()
+            val v = targetEl.attr(attr).trim()
             if (v.isNotBlank() && !v.contains("data:image") && (v.startsWith("http") || v.startsWith("//"))) {
-                return if (v.startsWith("//")) "https:$v" else v
+                val fullUrl = if (v.startsWith("//")) "https:$v" else v
+                return fullUrl.replace("donghub.vip", "donghive.vip")
             }
         }
         return null
@@ -120,7 +122,7 @@ class Donghub : MainAPI() {
             val seriesTitle = cleanSeriesTitle(rawTitle)
             val displayTitle = if (seriesTitle.isNotBlank()) seriesTitle else rawTitle
 
-            val poster = getPosterUrl(img)
+            val poster = getPosterUrl(img ?: element)
 
             val isMovie = href.contains("/movie", true) || href.contains("-movie-", true)
             val type = if (isMovie) TvType.AnimeMovie else TvType.Anime
@@ -130,6 +132,10 @@ class Donghub : MainAPI() {
 
             newAnimeSearchResponse(displayTitle, href, type) {
                 this.posterUrl = poster
+                this.posterHeaders = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "$mainUrl/"
+                )
                 if (epNum != null) {
                     addDubStatus(false, epNum)
                 }
@@ -298,12 +304,30 @@ class Donghub : MainAPI() {
         // Susun episod mengikut nombor episod dari kecil ke besar (Episode 1, 2, 3...)
         val sortedEpisodes = episodes.sortedBy { it.episode ?: 0 }
 
-        return newTvSeriesLoadResponse(title, url, TvType.Anime, sortedEpisodes) {
-            this.posterUrl = poster
-            this.plot = description
-            this.year = year
-            this.showStatus = showStatus
-            this.tags = tags
+        val isMovie = sortedEpisodes.isEmpty() || url.contains("/movie", true) || url.contains("-movie-", true)
+        return if (isMovie) {
+            newMovieLoadResponse(title, url, TvType.AnimeMovie, url) {
+                this.posterUrl = poster
+                this.posterHeaders = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "$mainUrl/"
+                )
+                this.plot = description
+                this.year = year
+                this.tags = tags
+            }
+        } else {
+            newTvSeriesLoadResponse(title, url, TvType.Anime, sortedEpisodes) {
+                this.posterUrl = poster
+                this.posterHeaders = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "$mainUrl/"
+                )
+                this.plot = description
+                this.year = year
+                this.showStatus = showStatus
+                this.tags = tags
+            }
         }
     }
 
