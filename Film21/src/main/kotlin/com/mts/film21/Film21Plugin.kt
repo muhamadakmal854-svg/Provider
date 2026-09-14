@@ -7,14 +7,23 @@ import android.content.Context
 @CloudstreamPlugin
 class Film21Plugin : Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(Film21Provider())
-        registerExtractorAPI(MinochinosCom())
-        registerExtractorAPI(MorenciusCom())
-        registerExtractorAPI(PlaycinematicCom())
-        registerExtractorAPI(EmbedpyroxXyz())
-        registerExtractorAPI(AbyssplayerCom())
-        registerExtractorAPI(RpmPlayShare())
-        registerExtractorAPI(Embed4MePlay())
-        registerExtractorAPI(GoogleVideo())
+        registerMainAPI(Film21())
+        registerExtractorAPI(AbyssCdn())
+        registerExtractorAPI(AbyssPlayer())
+        registerExtractorAPI(AbyssStream())
+        registerExtractorAPI(TurboVidExtractor())
+        registerExtractorAPI(EmturbovidExtractor())
+        registerExtractorAPI(StreamWishExtractor())
+        registerExtractorAPI(MorenciusExtractor())
+        registerExtractorAPI(MinochinosExtractor())
+        registerExtractorAPI(EmbedWishExtractor())
+        registerExtractorAPI(VidHideExtractor())
+        registerExtractorAPI(VidHideProExtractor())
+        registerExtractorAPI(VidHideVipExtractor())
+        registerExtractorAPI(FileLionsExtractor())
+        registerExtractorAPI(FilemoonExtractor())
+        registerExtractorAPI(FilemoonSxExtractor())
+        registerExtractorAPI(FilemoonInExtractor())
+        registerExtractorAPI(RpmVidExtractor())
     }
 }

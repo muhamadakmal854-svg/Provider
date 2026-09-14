@@ -10,6 +10,8 @@ class DrakorKitaPlugin : Plugin() {
         registerMainAPI(DrakorKita())
         registerExtractorAPI(DrakorKitaStream())
         registerExtractorAPI(AbyssCdn())
+        registerExtractorAPI(AbyssPlayer())
+        registerExtractorAPI(DqtMyId())
         registerExtractorAPI(StbP2P())
         registerExtractorAPI(Playerupnone())
         registerExtractorAPI(FastdlP2P())

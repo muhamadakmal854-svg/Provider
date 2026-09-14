@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "http://178.128.91.191/favicon.ico"
+    iconUrl     = "https://tv14.filem21.net/favicon.ico"
 
 }
 

@@ -405,12 +405,19 @@ class DrakorKita : MainAPI() {
         val decodedScript = decodedChars.joinToString("")
         val vars = extractJsVariables(decodedScript).toMutableMap()
 
-        // Also extract initEpisodeList arguments
+        // Also extract initEpisodeList and get_link arguments
         val initEp = Regex("""initEpisodeList\s*\(\s*['"]([^'"]*)['"]\s*,\s*['"]([^'"]*)['"]\s*,\s*['"]([^'"]*)['"]\s*\)""").find(decodedScript)
         if (initEp != null) {
             vars["movie_id"] = initEp.groupValues[1]
             vars["cat"] = initEp.groupValues[2]
             vars["tag"] = initEp.groupValues[3]
+        }
+        val getLinkMatch = Regex("""get_link\s*\(\s*['"]([^'"]*)['"]\s*,\s*['"]([^'"]*)['"]\s*\)""").find(decodedScript)
+        if (getLinkMatch != null) {
+            if (vars["movie_id"].isNullOrBlank()) {
+                vars["movie_id"] = getLinkMatch.groupValues[1]
+            }
+            vars["media_type"] = getLinkMatch.groupValues[2]
         }
 
         return vars

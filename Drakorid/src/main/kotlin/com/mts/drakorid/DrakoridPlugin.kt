@@ -8,7 +8,7 @@ import android.content.Context
 
 class GembengCom : StreamWishExtractor() {
     override var name = "GembengCom"
-    override var mainUrl = "https://drakorid.cam"
+    override var mainUrl = "https://gembeng.com"
 }
 
 class PsLarinpaymentCom : StreamWishExtractor() {

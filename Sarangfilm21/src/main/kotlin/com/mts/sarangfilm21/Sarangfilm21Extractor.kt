@@ -12,7 +12,7 @@ import javax.crypto.spec.SecretKeySpec
 
 class AbyssExtractor : ExtractorApi() {
     override var name = "Abyss"
-    override var mainUrl = "https://sarangfilm.diy"
+    override var mainUrl = "https://abyssplayer.com"
     override val requiresReferer = false
 
     private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {

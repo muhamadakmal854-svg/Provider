@@ -16,7 +16,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 
 class Smoothpre: VidHidePro() {
     override var name = "EarnVids"
-    override var mainUrl = "http://45.11.57.192"
+    override var mainUrl = "https://smoothpre.com"
 }
 
 class BuzzServer : ExtractorApi() {

@@ -19,7 +19,7 @@ import java.net.URI
 
 
 class HdStream4u : VidHidePro() {
-    override var mainUrl = "https://4khdhub.one"
+    override var mainUrl = "https://hdstream4u.*"
 }
 
 class Hubstream : VidStack() {

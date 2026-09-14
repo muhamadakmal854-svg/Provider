@@ -8,7 +8,7 @@ import android.content.Context
 
 class GeoDailymotionCom : Dailymotion() {
     override var name = "GeoDailymotionCom"
-    override var mainUrl = "https://donghive.vip"
+    override var mainUrl = "https://geo.dailymotion.com"
 }
 
 class DailymotionCom : Dailymotion() {

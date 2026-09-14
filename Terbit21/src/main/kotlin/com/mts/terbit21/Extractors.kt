@@ -18,7 +18,7 @@ import javax.crypto.spec.SecretKeySpec
 
 class Sf21VidplayerLive : ExtractorApi() {
     override var name = "Sf21VidplayerLive"
-    override var mainUrl = "https://162.244.95.227"
+    override var mainUrl = "https://sf21.vidplayer.live"
     override val requiresReferer = true
 
     override suspend fun getUrl(
