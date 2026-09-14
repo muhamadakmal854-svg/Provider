@@ -493,7 +493,7 @@ class DrakorKita : MainAPI() {
                     val epNum = Regex("""(?i)\b(?:E|Ep|Episode)\s*(\d+)""").find(rawTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
                         ?: Regex("""\b(\d+)\s*$""").find(rawTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
                     if (epNum != null) {
-                        addDubStatus(dubExist = false, subExist = true, episode = epNum)
+                        addDubStatus(false, epNum)
                     }
                 }
             }
