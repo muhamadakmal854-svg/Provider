@@ -94,11 +94,12 @@ open class AsiaStream : ExtractorApi() {
 
         if (sniffMatch != null) {
             val (uid, md5) = sniffMatch.destructured
-            val masterUrl = "$mainUrl/m3u8/$uid/$md5/master.txt?s=1&cache=1"
+            val baseMasterUrl = "$mainUrl/m3u8/$uid/$md5/master.txt?s=1&cache=1"
+            val masterUrl = "$baseMasterUrl&ext=.m3u8"
 
             val masterContent = try {
                 app.get(
-                    masterUrl,
+                    baseMasterUrl,
                     headers = defaultHeaders,
                     timeout = 15
                 ).text
@@ -142,11 +143,12 @@ open class AsiaStream : ExtractorApi() {
                             }
                         }
                     } else if (trimmed.startsWith("http")) {
+                        val streamM3u8Url = if (trimmed.contains("?")) "$trimmed&ext=.m3u8" else "$trimmed?ext=.m3u8"
                         callback.invoke(
                             newExtractorLink(
                                 source = name,
                                 name = "$name $currentLabel",
-                                url = trimmed,
+                                url = streamM3u8Url,
                                 type = ExtractorLinkType.M3U8
                             ) {
                                 this.referer = "https://watch.asiastream.cc/"
@@ -155,16 +157,6 @@ open class AsiaStream : ExtractorApi() {
                             }
                         )
                     }
-                }
-
-                // Fallback generator
-                runCatching {
-                    generateM3u8(
-                        source = name,
-                        streamUrl = masterUrl,
-                        referer = "https://watch.asiastream.cc/",
-                        headers = defaultHeaders
-                    ).forEach(callback)
                 }
                 return
             }

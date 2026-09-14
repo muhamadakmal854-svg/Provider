@@ -410,7 +410,7 @@ class MaxMovie21 : MainAPI() {
         doc.select("a[href*='?player='], a[href*='&player='], a[href*='?server='], a[href*='&server='], .gmr-player-nav a").forEach { btn ->
             val href = btn.attr("href").trim()
             val fixedHref = fixUrlNull(href)
-            if (fixedHref != null && fixedHref.isNotBlank() && !fixedHref.contains("javascript:") && !fixedHref.contains("#")) {
+            if (fixedHref != null && fixedHref.isNotBlank() && !fixedHref.contains("javascript:") && !fixedHref.contains("#") && !fixedHref.contains("youtube.com") && !fixedHref.contains("youtu.be")) {
                 pagesToScrape.add(fixedHref)
             }
         }
@@ -434,7 +434,7 @@ class MaxMovie21 : MainAPI() {
 
             pageDoc.select("iframe[src], embed[src], video[src], source[src]").forEach { el ->
                 val src = el.attr("src").ifBlank { el.attr("data-src") }.ifBlank { el.attr("data-litespeed-src") }.trim()
-                if (src.isNotBlank() && !src.contains("google.com") && !src.contains("youtube.com") && !src.contains("a-ads.com") && !src.contains("twitter.com") && !src.contains("whatsapp.com") && !src.contains("t.me")) {
+                if (src.isNotBlank() && !src.contains("google.com") && !src.contains("youtube.com") && !src.contains("youtu.be") && !src.contains("a-ads.com") && !src.contains("twitter.com") && !src.contains("whatsapp.com") && !src.contains("t.me")) {
                     candidates.add(fixUrl(src))
                 }
             }
@@ -444,7 +444,7 @@ class MaxMovie21 : MainAPI() {
             val urlRegex = Regex("""(https?://[^\s"'<>]*(?:asiastream|playerp2p|strp2p|rpmvid|vidhide|morencius|callistanise|efek\.stream|filemoon|byseq|streamwish|embedpyrox|wishembed|hgcloud|upns)[^\s"'<>]*)""", RegexOption.IGNORE_CASE)
             urlRegex.findAll(htmlText).forEach { match ->
                 val u = match.groupValues[1].replace("\\/", "/").trim()
-                if (!u.contains("wp-json") && !u.contains("twitter.com") && !u.contains("whatsapp.com") && !u.contains("t.me")) {
+                if (!u.contains("wp-json") && !u.contains("twitter.com") && !u.contains("whatsapp.com") && !u.contains("t.me") && !u.contains("youtube.com")) {
                     candidates.add(u)
                 }
             }
@@ -455,7 +455,7 @@ class MaxMovie21 : MainAPI() {
             val tabs = pageDoc.select("div.tab-content-ajax, ul.muvipro-player-tabs li a, ul.muviprop-player-tabs li a, .gmr-player-nav li a")
 
             val tabIds = tabs.map { it.attr("id").ifBlank { it.attr("href").replace("#", "") }.ifBlank { it.attr("data-tab") }.trim() }
-                .filter { it.isNotBlank() && !it.startsWith("http") && !it.startsWith("javascript:") }
+                .filter { it.isNotBlank() && !it.startsWith("http") && !it.startsWith("javascript:") && !it.contains("light") && !it.contains("comment") }
                 .ifEmpty { listOf("p1", "p2", "player1") }
 
             if (!postId.isNullOrBlank()) {
