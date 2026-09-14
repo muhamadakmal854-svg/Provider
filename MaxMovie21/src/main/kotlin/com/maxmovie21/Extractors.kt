@@ -116,7 +116,7 @@ open class AsiaStream : ExtractorApi() {
                         type = ExtractorLinkType.M3U8
                     ) {
                         this.referer = "https://watch.asiastream.cc/"
-                        this.quality = Qualities.Auto.value
+                        this.quality = Qualities.Unknown.value
                         this.headers = defaultHeaders
                     }
                 )

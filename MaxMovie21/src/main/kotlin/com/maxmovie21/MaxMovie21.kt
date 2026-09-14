@@ -622,7 +622,7 @@ class MaxMovie21 : MainAPI() {
                     type = ExtractorLinkType.M3U8
                 ) {
                     this.referer = referer
-                    this.quality = Qualities.Auto.value
+                    this.quality = Qualities.Unknown.value
                     this.headers = defaultHeaders
                 }
             )
