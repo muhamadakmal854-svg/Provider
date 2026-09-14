@@ -191,7 +191,7 @@ class Drakorid : MainAPI() {
             val epText = element.selectFirst(".ep, .bt .ep, .epx, .egg, .typez")?.text()?.trim()
             val epNum = epText?.filter { it.isDigit() }?.toIntOrNull()
 
-            newTvSeriesSearchResponse(displayTitle, href, type) {
+            newAnimeSearchResponse(displayTitle, href, type) {
                 this.posterUrl = poster
                 this.posterHeaders = mapOf(
                     "User-Agent" to USER_AGENT,
@@ -374,7 +374,6 @@ class Drakorid : MainAPI() {
             this.tags = genres
             this.showStatus = status
             this.year = year
-            this.rating = rating
             this.actors = actors.map { ActorData(Actor(it)) }
         }
     }
