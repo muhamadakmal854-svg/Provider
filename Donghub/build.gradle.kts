@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk -D-o-n-g-h-u-b-"
+    description = "Provider untuk Donghub"
 
     authors     = listOf("MTS")
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Anime", "AnimeMovie", "OVA", "Movie", "TvSeries")
 
-    iconUrl     = "https://donghub.vip/favicon.ico"
+    iconUrl     = "https://donghive.vip/favicon.ico"
 
 }
 
