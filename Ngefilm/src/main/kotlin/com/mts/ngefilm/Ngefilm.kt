@@ -42,7 +42,7 @@ class NgefilmProvider : MainAPI() {
             }
         }
         return if (url.isNotEmpty()) {
-            httpsify(url).replace(Regex("-\d+x\d+"), "")
+            httpsify(url).replace(Regex("""-\d+x\d+"""), "")
         } else null
     }
 
@@ -408,8 +408,8 @@ class NgefilmProvider : MainAPI() {
             ))
 
             val doc = response.text
-            val videoId = url.substringAfter("/e/").substringBefore("?").substringBefore(""").substringBefore("'")
-            val packedRegex = Regex("""eval\(function\(p,a,c,k,e,d.*?\.split\('\|'\)\)""")
+            val videoId = url.substringAfter("/e/").split('?', '&', '"', '\'').firstOrNull() ?: ""
+            val packedRegex = Regex("""eval\(function\(p,a,c,k,e,d.*?\)\)""")
             val packedCode = packedRegex.find(doc)?.value
 
             if (packedCode != null) {
