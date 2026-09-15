@@ -5,18 +5,17 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 
 @CloudstreamPlugin
-class Pusatfilm21Plugin : Plugin() {
+class Pusatfilm21Plugin: Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(Pusatfilm21Provider())
+        registerMainAPI(Pusatfilm21())
         registerExtractorAPI(KotakajaibMe())
-        registerExtractorAPI(EmturbovidCom())
-        registerExtractorAPI(PlayhydraxCom())
+        registerExtractorAPI(Playhydrax())
+        registerExtractorAPI(AbyssPlayer())
+        registerExtractorAPI(AbyssTo())
+        registerExtractorAPI(Gdriveplayer())
+        registerExtractorAPI(Emturbovid())
         registerExtractorAPI(PlaycinematicCom())
         registerExtractorAPI(EmbedpyroxXyz())
-        registerExtractorAPI(MorenciusCom())
-        registerExtractorAPI(AbyssplayerCom())
-        registerExtractorAPI(RpmPlayShare())
-        registerExtractorAPI(Embed4MePlay())
-        registerExtractorAPI(GoogleVideo())
+        registerExtractorAPI(MasukestinExtractor())
     }
 }

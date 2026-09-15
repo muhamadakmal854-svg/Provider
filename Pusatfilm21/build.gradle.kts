@@ -1,4 +1,4 @@
-version = 1
+version = 11
 
 cloudstream {
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://v4.pusatfilm21info.com/favicon.ico"
+    iconUrl     = "https://v4.pusatfilm21info.net/favicon.ico"
 
 }
 
