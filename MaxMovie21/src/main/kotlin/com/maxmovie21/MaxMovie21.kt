@@ -442,7 +442,7 @@ class MaxMovie21 : MainAPI() {
 
             // Regex scan pada seluruh HTML halaman untuk URL player
             val htmlText = pageDoc.html()
-            val urlRegex = Regex("""(https?://[^\s"'<>]*(?:asiastream|playerp2p|strp2p|rpmvid|vidhide|morencius|callistanise|efek\.stream|filemoon|byseq|streamwish|embedpyrox|wishembed|hgcloud|upns)[^\s"'<>]*)""", RegexOption.IGNORE_CASE)
+            val urlRegex = Regex("""(https?://[^\s"'<>]*(?:asiastream|playerp2p|strp2p|rpmvid|vidhide|morencius|callistanise|efek\.stream|filemoon|byseq|streamwish|embedpyrox|wishembed|hgcloud|upns|playmogo|fembed)[^\s"'<>]*)""", RegexOption.IGNORE_CASE)
             urlRegex.findAll(htmlText).forEach { match ->
                 val u = match.groupValues[1].replace("\\/", "/").trim()
                 if (!u.contains("wp-json") && !u.contains("twitter.com") && !u.contains("whatsapp.com") && !u.contains("t.me") && !u.contains("youtube.com")) {

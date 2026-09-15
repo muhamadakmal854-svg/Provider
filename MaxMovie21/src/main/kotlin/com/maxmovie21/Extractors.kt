@@ -88,26 +88,20 @@ open class AsiaStream : ExtractorApi() {
             "Origin" to "https://watch.asiastream.cc"
         )
 
-        // 1. Parse sniff(slug, uid, md5, ...)
-        val sniffMatch = Regex("""sniff\s*\(\s*"[^"]+"\s*,\s*"(\d+)"\s*,\s*"([a-f0-9]+)"""").find(html)
-            ?: Regex("""m3u8/(\d+)/([a-f0-9]+)/master\.txt""").find(html)
+        // 1. Parse sniff(slug, uid, md5, poster, suba, s, cache, autostart)
+        val sniffMatch = Regex("""sniff\s*\(\s*"[^"]+"\s*,\s*"(\d+)"\s*,\s*"([a-f0-9]+)"(?:[^)]*?,\s*(\d+)\s*,\s*(\d+))?""").find(html)
+            ?: Regex("""m3u8/(\d+)/([a-f0-9]+)/master\.(?:txt|m3u8)""").find(html)
 
         if (sniffMatch != null) {
-            val (uid, md5) = sniffMatch.destructured
-            val masterM3u8Url = "$mainUrl/m3u8/$uid/$md5/master.m3u8?s=1&cache=1"
-            val masterTxtUrl = "$mainUrl/m3u8/$uid/$md5/master.txt?s=1&cache=1"
+            val uid = sniffMatch.groupValues[1]
+            val md5 = sniffMatch.groupValues[2]
+            val s = sniffMatch.groupValues.getOrNull(3)?.ifBlank { "1" } ?: "1"
+            val cache = sniffMatch.groupValues.getOrNull(4)?.ifBlank { "1" } ?: "1"
 
-            // 1. Generate M3U8 links using CloudStream's native helper
-            runCatching {
-                generateM3u8(
-                    source = name,
-                    streamUrl = masterM3u8Url,
-                    referer = "https://watch.asiastream.cc/",
-                    headers = defaultHeaders
-                ).forEach(callback)
-            }
+            val masterM3u8Url = "$mainUrl/m3u8/$uid/$md5/master.m3u8?s=$s&cache=$cache"
+            val masterTxtUrl = "$mainUrl/m3u8/$uid/$md5/master.txt?s=$s&cache=$cache"
 
-            // 2. Fetch master manifest to parse individual quality streams
+            // Fetch master manifest content
             val masterContent = try {
                 app.get(
                     masterM3u8Url,
@@ -125,21 +119,7 @@ open class AsiaStream : ExtractorApi() {
             }
 
             if (masterContent.startsWith("#EXTM3U")) {
-                // Adaptive master playlist link with native .m3u8 extension in URI path
-                callback.invoke(
-                    newExtractorLink(
-                        source = name,
-                        name = "$name (Auto)",
-                        url = masterM3u8Url,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "https://watch.asiastream.cc/"
-                        this.quality = Qualities.Unknown.value
-                        this.headers = defaultHeaders
-                    }
-                )
-
-                // Parse individual streams from master manifest
+                var emittedChild = false
                 val lines = masterContent.lines()
                 var currentQuality = Qualities.P720.value
                 var currentLabel = "720p"
@@ -160,11 +140,13 @@ open class AsiaStream : ExtractorApi() {
                             }
                         }
                     } else if (trimmed.startsWith("http")) {
+                        // Append .m3u8 so ExoPlayer infers C.CONTENT_TYPE_HLS instead of C.CONTENT_TYPE_OTHER
+                        val streamM3u8Url = if (trimmed.endsWith(".m3u8")) trimmed else "$trimmed.m3u8"
                         callback.invoke(
                             newExtractorLink(
                                 source = name,
                                 name = "$name $currentLabel",
-                                url = trimmed,
+                                url = streamM3u8Url,
                                 type = ExtractorLinkType.M3U8
                             ) {
                                 this.referer = "https://watch.asiastream.cc/"
@@ -172,9 +154,25 @@ open class AsiaStream : ExtractorApi() {
                                 this.headers = defaultHeaders
                             }
                         )
+                        emittedChild = true
                     }
                 }
-                return
+
+                // Also provide the master adaptive M3U8 link as Auto
+                callback.invoke(
+                    newExtractorLink(
+                        source = name,
+                        name = "$name (Auto)",
+                        url = masterM3u8Url,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "https://watch.asiastream.cc/"
+                        this.quality = Qualities.Unknown.value
+                        this.headers = defaultHeaders
+                    }
+                )
+
+                if (emittedChild) return
             }
         }
 
