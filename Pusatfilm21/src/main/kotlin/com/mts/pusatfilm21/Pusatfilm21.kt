@@ -364,18 +364,32 @@ class Pusatfilm21 : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data, headers = mapOf("User-Agent" to UA_BROWSER)).document
-        val pageHtml = document.html()
+        val iframes = mutableListOf<String>()
 
-        // 1. Kumpulkan iframe player dari halaman
-        val iframes = document.select(".gmr-embed-responsive iframe, #pembed iframe, iframe")
-            .mapNotNull { it.attr("src").ifBlank { it.attr("data-src") } }
-            .filter { it.isNotBlank() && !it.contains("googletagmanager") && !it.contains("googleads") }
-            .toMutableList()
+        if (data.contains("kotakajaib.me") || data.contains("playhydrax.com") || data.contains("emturbovid.com")) {
+            iframes.add(data)
+        } else {
+            val document = app.get(data, headers = mapOf("User-Agent" to UA_BROWSER)).document
+            val pageHtml = document.html()
 
-        // Tambah juga regex iframe sekiranya tersembunyi dalam script
-        Regex("""https?://kotakajaib\.me/(?:embed|file)/[a-zA-Z0-9]+""").findAll(pageHtml).forEach {
-            iframes.add(it.value)
+            // 1. Kumpulkan iframe player dari halaman
+            document.select(".gmr-embed-responsive iframe, #pembed iframe, iframe").forEach { ifr ->
+                val src = ifr.attr("src").ifBlank { ifr.attr("data-src") }
+                if (src.isNotBlank() && !src.contains("googletagmanager") && !src.contains("googleads")) {
+                    iframes.add(src)
+                }
+            }
+
+            // Regex iframe sekiranya tersembunyi
+            Regex("""https?://kotakajaib\.me/(?:embed|file)/[a-zA-Z0-9]+""").findAll(pageHtml).forEach {
+                iframes.add(it.value)
+            }
+            Regex("""https?://playhydrax\.com/\?v=[a-zA-Z0-9_-]+""").findAll(pageHtml).forEach {
+                iframes.add(it.value)
+            }
+            Regex("""https?://emturbovid\.com/t/[a-zA-Z0-9_-]+""").findAll(pageHtml).forEach {
+                iframes.add(it.value)
+            }
         }
 
         coroutineScope {
@@ -408,17 +422,6 @@ class Pusatfilm21 : MainAPI() {
                     }
                 }
             }.awaitAll()
-        }
-
-        // 2. Sandaran pautan langsung dalam teks halaman
-        Regex("""https?://playhydrax\.com/\?v=[a-zA-Z0-9_-]+""").findAll(pageHtml).forEach { m ->
-            Playhydrax().getUrl(m.value, data, subtitleCallback, callback)
-        }
-        Regex("""https?://emturbovid\.com/t/[a-zA-Z0-9_-]+""").findAll(pageHtml).forEach { m ->
-            Emturbovid().getUrl(m.value, data, subtitleCallback, callback)
-        }
-        Regex("""https?://(?:player\.|play\.)?abyssplayer\.com/[a-zA-Z0-9_-]+""").findAll(pageHtml).forEach { m ->
-            AbyssPlayer().getUrl(m.value, data, subtitleCallback, callback)
         }
 
         return true

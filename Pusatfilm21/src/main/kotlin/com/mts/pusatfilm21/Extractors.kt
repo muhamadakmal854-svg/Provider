@@ -1,19 +1,20 @@
 package com.mts.pusatfilm21
 
 import android.util.Base64
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.USER_AGENT
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.extractors.StreamWishExtractor
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.utils.getAndUnpack
-import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.security.MessageDigest
 import javax.crypto.Cipher
@@ -22,14 +23,18 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * Extractor untuk AbyssCDN / Hydrax / Sora player.
- * Melakukan dekripsi blok AES-CTR dan menghasilkan link MP4 Sora terus yang boleh dimainkan.
- * Menyokong playhydrax.com, abyssplayer.com, dan abyss.to.
+ * 1. Kaedah Utama: Menghubungi API enc-dec.app untuk mendapatkan direct video/mp4 stream Sora (1080p, 720p, 480p, 360p).
+ * 2. Kaedah Sandaran: Penyahsulitan tempatan AES-CTR menggunakan Jackson ObjectMapper tanpa ralat aksara kawalan JSON.
  */
 open class AbyssCdn(
     override val name: String = "Hydrax",
     override val mainUrl: String = "https://playhydrax.com"
 ) : ExtractorApi() {
     override val requiresReferer = false
+
+    companion object {
+        private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 
     private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
         val spec = SecretKeySpec(key, "AES")
@@ -50,86 +55,127 @@ open class AbyssCdn(
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        runCatching {
-            val cleanUrl = url.replace("\\", "").trim()
-            val domain = try {
-                val u = java.net.URL(cleanUrl)
-                "${u.protocol}://${u.host}/"
-            } catch (_: Exception) { "$mainUrl/" }
+        val cleanUrl = url.replace("\\", "").trim()
+        val domain = try {
+            val u = java.net.URL(cleanUrl)
+            "${u.protocol}://${u.host}/"
+        } catch (_: Exception) { "$mainUrl/" }
 
-            val response = app.get(
+        val pageHtml = runCatching {
+            app.get(
                 cleanUrl,
                 headers = mapOf(
-                    "User-Agent" to USER_AGENT,
+                    "User-Agent" to UA,
                     "Referer" to (referer ?: domain)
                 )
-            )
-            val pageHtml = response.text
+            ).text
+        }.getOrNull() ?: return
 
-            // 1. Direct m3u8 in page if present
-            val unpacked = runCatching { getAndUnpack(pageHtml) }.getOrDefault("")
-            val m3u8Regex = Regex("""https?://[^'"\s<>]+\.m3u8[^'"\s<>]*""")
-            m3u8Regex.findAll(unpacked.ifBlank { pageHtml }).forEach { match ->
-                generateM3u8(name, match.value, domain).forEach(callback)
-            }
+        // 1. Direct m3u8 dalam page jika ada
+        val unpacked = runCatching { getAndUnpack(pageHtml) }.getOrDefault("")
+        Regex("""https?://[^'"\s<>]+\.m3u8[^'"\s<>]*""").findAll(unpacked.ifBlank { pageHtml }).forEach { match ->
+            generateM3u8(name, match.value, domain).forEach(callback)
+        }
 
-            // 2. Decrypt datas block using AES-CTR algorithm
-            val base64Str = Regex("""const\s+datas\s*=\s*"([^"]+)"""").find(pageHtml)?.groupValues?.get(1) ?: return@runCatching
-            val decodedBytes = Base64.decode(base64Str, Base64.DEFAULT)
-            val latin1Str = String(decodedBytes, Charsets.ISO_8859_1)
-            val json = JSONObject(latin1Str)
-            val slug = json.optString("slug")
-            val userId = json.opt("user_id")?.toString().orEmpty()
-            val md5Id = json.opt("md5_id")?.toString().orEmpty()
-            val media = json.optString("media")
+        // Cari blok data terenkripsi
+        val encrypted = Regex("""const\s+datas\s*=\s*"([^"]+)"""").find(pageHtml)?.groupValues?.get(1) ?: return
 
-            if (slug.isBlank() || media.isBlank() || userId.isBlank() || md5Id.isBlank()) return@runCatching
+        var soraCount = 0
 
-            val keyStr = "$userId:$slug:$md5Id"
-            val keyBytesStr = md5(keyStr.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-            val key = keyBytesStr.toByteArray(Charsets.UTF_8)
-            val iv = key.sliceArray(0 until 16)
-
-            val mediaCiphertext = media.toByteArray(Charsets.ISO_8859_1)
-            val decryptedMediaBytes = decryptAesCtr(mediaCiphertext, key, iv)
-            val decryptedMediaStr = String(decryptedMediaBytes, Charsets.UTF_8)
-            val mediaJson = JSONObject(decryptedMediaStr)
-
-            // Emit MP4 direct sources
-            val mp4 = mediaJson.optJSONObject("mp4")
-            val sources = mp4?.optJSONArray("sources")
-            if (sources != null) {
+        // Kaedah 1: enc-dec.app API untuk mendapatkan pautan langsung Sora (video/mp4)
+        runCatching {
+            val response = app.post(
+                "https://enc-dec.app/api/dec-abyss",
+                headers = mapOf(
+                    "User-Agent" to UA,
+                    "Origin" to "https://playhydrax.com",
+                    "Referer" to "https://playhydrax.com/"
+                ),
+                requestBody = """{"text":"$encrypted"}""".trimIndent()
+                    .toRequestBody("application/json; charset=utf-8".toMediaType())
+            ).text
+            val json = JSONObject(response).optJSONObject("result")
+            val sources = json?.optJSONArray("sources")
+            if (sources != null && sources.length() > 0) {
                 for (i in 0 until sources.length()) {
                     val src = sources.optJSONObject(i) ?: continue
-                    val label = src.optString("label", "HD")
-                    val srcUrl = src.optString("url", "")
-                    val srcPath = src.optString("path", "")
-                    if (srcUrl.isBlank() || srcPath.isBlank()) continue
-
-                    val finalStreamUrl = if (srcUrl.endsWith("/")) "$srcUrl$srcPath" else "$srcUrl/$srcPath"
-
-                    callback.invoke(
-                        newExtractorLink(
-                            source = name,
-                            name = "$name $label",
-                            url = finalStreamUrl,
-                            type = ExtractorLinkType.VIDEO
-                        ) {
-                            this.referer = domain
-                            this.headers = mapOf(
-                                "Referer" to domain,
-                                "User-Agent" to USER_AGENT
+                    if (src.optBoolean("status", true)) {
+                        val srcUrl = src.optString("url")
+                        val type = src.optString("type", "HD")
+                        if (srcUrl.isNotBlank()) {
+                            callback.invoke(
+                                newExtractorLink(
+                                    source = name,
+                                    name = "$name $type",
+                                    url = srcUrl,
+                                    type = ExtractorLinkType.VIDEO
+                                ) {
+                                    this.referer = "https://playhydrax.com/"
+                                    this.headers = mapOf(
+                                        "Referer" to "https://playhydrax.com/",
+                                        "User-Agent" to UA
+                                    )
+                                    this.quality = parseQuality(type)
+                                }
                             )
-                            this.quality = parseQuality(label)
+                            soraCount++
                         }
-                    )
+                    }
                 }
             }
+        }
 
-            // Emit HLS if present
-            val hlsUrl = mediaJson.optString("hls", "")
-            if (hlsUrl.isNotBlank()) {
-                generateM3u8(name, hlsUrl, domain).forEach(callback)
+        // Kaedah 2: Penyahsulitan tempatan AES-CTR (Sandaran kukuh sekiranya enc-dec gagal atau tidak lengkap)
+        runCatching {
+            val decodedBytes = Base64.decode(encrypted, Base64.DEFAULT)
+            val latin1Str = String(decodedBytes, Charsets.ISO_8859_1)
+
+            val mapper = ObjectMapper()
+            val jsonNode = mapper.readTree(latin1Str)
+            val slug = jsonNode.get("slug")?.asText().orEmpty()
+            val userId = jsonNode.get("user_id")?.asText().orEmpty()
+            val md5Id = jsonNode.get("md5_id")?.asText().orEmpty()
+            val media = jsonNode.get("media")?.asText().orEmpty()
+
+            if (slug.isNotBlank() && userId.isNotBlank() && md5Id.isNotBlank() && media.isNotBlank()) {
+                val keyStr = "$userId:$slug:$md5Id"
+                val keyBytesStr = md5(keyStr.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+                val key = keyBytesStr.toByteArray(Charsets.UTF_8)
+                val iv = key.sliceArray(0 until 16)
+
+                val mediaCiphertext = media.toByteArray(Charsets.ISO_8859_1)
+                val decryptedMediaBytes = decryptAesCtr(mediaCiphertext, key, iv)
+                val decryptedMediaStr = String(decryptedMediaBytes, Charsets.UTF_8)
+                val decNode = mapper.readTree(decryptedMediaStr)
+
+                val sources = decNode.get("mp4")?.get("sources")
+                if (sources != null && sources.isArray) {
+                    for (src in sources) {
+                        val label = src.get("label")?.asText() ?: "HD"
+                        val srcUrl = src.get("url")?.asText().orEmpty()
+                        val srcPath = src.get("path")?.asText().orEmpty()
+                        if (srcUrl.isBlank() || srcPath.isBlank()) continue
+
+                        val rawStream = if (srcUrl.endsWith("/")) "$srcUrl$srcPath" else "$srcUrl/$srcPath"
+                        val finalStreamUrl = if (rawStream.contains(".mp4") || rawStream.contains(".m3u8")) rawStream else "$rawStream#.mp4"
+
+                        callback.invoke(
+                            newExtractorLink(
+                                source = name,
+                                name = if (soraCount > 0) "$name $label (Backup)" else "$name $label",
+                                url = finalStreamUrl,
+                                type = ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = "https://playhydrax.com/"
+                                this.headers = mapOf(
+                                    "Referer" to "https://playhydrax.com/",
+                                    "User-Agent" to UA
+                                )
+                                this.quality = parseQuality(label)
+                            }
+                        )
+                    }
+                }
             }
         }
     }
@@ -169,7 +215,7 @@ class KotakajaibMe : ExtractorApi() {
             app.get(
                 cleanUrl,
                 headers = mapOf(
-                    "User-Agent" to USER_AGENT,
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                     "Referer" to (referer ?: "https://v4.pusatfilm21info.net/")
                 )
             ).document
@@ -178,7 +224,7 @@ class KotakajaibMe : ExtractorApi() {
         // 1. Baca atribut data-frame pada .server-item dan mana-mana elemen bertag data-frame
         val frameItems = doc.select(".server-item, [data-frame]")
         for (item in frameItems) {
-            val rawB64 = item.attr("data-frame")
+            val rawB64 = item.attr("data-frame").trim()
             if (rawB64.isBlank()) continue
             val decoded = runCatching {
                 String(Base64.decode(rawB64, Base64.DEFAULT), Charsets.UTF_8).trim()
@@ -223,7 +269,6 @@ class KotakajaibMe : ExtractorApi() {
 
 /**
  * Extractor untuk Gdriveplayer (gdriveplayer.to)
- * Membuka kunci skrip terenkripsi XOR (var k=..., b=atob(...)) dan mengekstrak pautan MP4 / HLS.
  */
 class Gdriveplayer : ExtractorApi() {
     override var name = "GDPlayer"
@@ -241,7 +286,7 @@ class Gdriveplayer : ExtractorApi() {
             app.get(
                 cleanUrl,
                 headers = mapOf(
-                    "User-Agent" to USER_AGENT,
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                     "Referer" to (referer ?: "https://kotakajaib.me/")
                 )
             ).text
@@ -262,14 +307,12 @@ class Gdriveplayer : ExtractorApi() {
                 }
                 val decScript = decoded.toString()
 
-                // Ekstrak HLS jika ada
                 val hlsMatch = Regex("""HLS\s*=\s*"([^"]+)"""").find(decScript)?.groupValues?.get(1)
                 if (!hlsMatch.isNullOrBlank()) {
                     val fullHls = if (hlsMatch.startsWith("//")) "https:$hlsMatch" else hlsMatch
                     generateM3u8(name, fullHls, "$mainUrl/").forEach(callback)
                 }
 
-                // Ekstrak MP4BASE jika ada
                 val mp4Base = Regex("""MP4BASE\s*=\s*"([^"]+)"""").find(decScript)?.groupValues?.get(1)
                 if (!mp4Base.isNullOrBlank()) {
                     val baseFixed = if (mp4Base.startsWith("//")) "https:$mp4Base" else mp4Base
@@ -291,7 +334,6 @@ class Gdriveplayer : ExtractorApi() {
             }
         }
 
-        // Direct m3u8 fallback regex
         Regex("""https?://[^'"\s<>]+\.m3u8[^'"\s<>]*""").findAll(pageHtml).forEach { m ->
             generateM3u8(name, m.value, "$mainUrl/").forEach(callback)
         }
