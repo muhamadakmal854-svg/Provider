@@ -8,5 +8,9 @@ import android.content.Context
 class MiranimePlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(Miranime())
+        registerExtractorAPI(AbyssPlayer())
+        registerExtractorAPI(AbyssTo())
+        registerExtractorAPI(Luluvid())
+        registerExtractorAPI(KrakenfilesExtractor())
     }
 }

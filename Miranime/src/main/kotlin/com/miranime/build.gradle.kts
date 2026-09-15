@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "id"
 
-    description = "Provider untuk Miranime"
+    description = "Miranime | Nonton Anime Sub Indo Terlengkap (Gaya Netflix)"
 
     authors     = listOf("MTS")
 
@@ -21,4 +21,3 @@ android {
     namespace = "com.miranime"
 
 }
-
