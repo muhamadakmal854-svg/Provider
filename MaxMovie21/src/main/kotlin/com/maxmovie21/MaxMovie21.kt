@@ -276,7 +276,8 @@ class MaxMovie21 : MainAPI() {
 
         val poster = getPosterUrl(doc.selectFirst("figure img, .gmr-poster-img img, .poster img, .cover img, img.wp-post-image, img.attachment-large, .thumb img"))
 
-        val plot = doc.selectFirst(".entry-content p, .description p, [itemprop='description'], .desc p, .synopsis, .gmr-movie-content")?.text()?.trim()
+        val rawPlot = doc.selectFirst(".entry-content p, .description p, [itemprop='description'], .desc p, .synopsis, .gmr-movie-content")?.text()?.trim()
+        val plot = rawPlot?.substringBefore("TONTON JUGA")?.substringBefore("Tonton juga")?.substringBefore("Tonton Juga")?.trim()
 
         // Extract metadata fields
         var year: Int? = null
@@ -610,6 +611,7 @@ class MaxMovie21 : MainAPI() {
 
         // 9. Direct M3U8
         if (lower.contains(".m3u8") || lower.contains("master.txt")) {
+            val fixedM3u8 = cleanUrl.replace("master.txt", "master.m3u8")
             val defaultHeaders = mapOf(
                 "User-Agent" to USER_AGENT,
                 "Referer" to referer
@@ -618,7 +620,7 @@ class MaxMovie21 : MainAPI() {
                 newExtractorLink(
                     source = name,
                     name = "$name (Auto)",
-                    url = cleanUrl,
+                    url = fixedM3u8,
                     type = ExtractorLinkType.M3U8
                 ) {
                     this.referer = referer
@@ -629,7 +631,7 @@ class MaxMovie21 : MainAPI() {
             runCatching {
                 generateM3u8(
                     source = name,
-                    streamUrl = cleanUrl,
+                    streamUrl = fixedM3u8,
                     referer = referer,
                     headers = defaultHeaders
                 ).forEach { l ->

@@ -94,26 +94,43 @@ open class AsiaStream : ExtractorApi() {
 
         if (sniffMatch != null) {
             val (uid, md5) = sniffMatch.destructured
-            val baseMasterUrl = "$mainUrl/m3u8/$uid/$md5/master.txt?s=1&cache=1"
-            val masterUrl = "$baseMasterUrl&ext=.m3u8"
+            val masterM3u8Url = "$mainUrl/m3u8/$uid/$md5/master.m3u8?s=1&cache=1"
+            val masterTxtUrl = "$mainUrl/m3u8/$uid/$md5/master.txt?s=1&cache=1"
 
+            // 1. Generate M3U8 links using CloudStream's native helper
+            runCatching {
+                generateM3u8(
+                    source = name,
+                    streamUrl = masterM3u8Url,
+                    referer = "https://watch.asiastream.cc/",
+                    headers = defaultHeaders
+                ).forEach(callback)
+            }
+
+            // 2. Fetch master manifest to parse individual quality streams
             val masterContent = try {
                 app.get(
-                    baseMasterUrl,
+                    masterM3u8Url,
                     headers = defaultHeaders,
                     timeout = 15
-                ).text
+                ).text.ifBlank {
+                    app.get(
+                        masterTxtUrl,
+                        headers = defaultHeaders,
+                        timeout = 15
+                    ).text
+                }
             } catch (_: Exception) {
                 ""
             }
 
             if (masterContent.startsWith("#EXTM3U")) {
-                // Adaptive master playlist link
+                // Adaptive master playlist link with native .m3u8 extension in URI path
                 callback.invoke(
                     newExtractorLink(
                         source = name,
                         name = "$name (Auto)",
-                        url = masterUrl,
+                        url = masterM3u8Url,
                         type = ExtractorLinkType.M3U8
                     ) {
                         this.referer = "https://watch.asiastream.cc/"
@@ -122,7 +139,7 @@ open class AsiaStream : ExtractorApi() {
                     }
                 )
 
-                // Parse individual streams from master.txt
+                // Parse individual streams from master manifest
                 val lines = masterContent.lines()
                 var currentQuality = Qualities.P720.value
                 var currentLabel = "720p"
@@ -143,12 +160,11 @@ open class AsiaStream : ExtractorApi() {
                             }
                         }
                     } else if (trimmed.startsWith("http")) {
-                        val streamM3u8Url = if (trimmed.contains("?")) "$trimmed&ext=.m3u8" else "$trimmed?ext=.m3u8"
                         callback.invoke(
                             newExtractorLink(
                                 source = name,
                                 name = "$name $currentLabel",
-                                url = streamM3u8Url,
+                                url = trimmed,
                                 type = ExtractorLinkType.M3U8
                             ) {
                                 this.referer = "https://watch.asiastream.cc/"
