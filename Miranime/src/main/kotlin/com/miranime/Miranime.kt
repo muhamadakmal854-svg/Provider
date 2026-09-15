@@ -143,8 +143,15 @@ class Miranime : MainAPI() {
     )
 
     private fun isExcludedLink(href: String): Boolean {
-        val path = href.removePrefix(mainUrl).trim()
-        if (path.isBlank() || path == "/" || path.startsWith("#") || path.startsWith("javascript:")) return true
+        val cleanHref = href.trim()
+        if (cleanHref.isBlank() || cleanHref == "#" || cleanHref.startsWith("#") || cleanHref.startsWith("javascript:", true)) return true
+
+        val path = cleanHref.removePrefix(mainUrl).trim()
+        if (path.isBlank() || path == "/" || path == "/#" || path.startsWith("/#") || path.startsWith("#") || path.startsWith("javascript:", true)) return true
+
+        val slug = path.removePrefix("/").removeSuffix("/").substringAfterLast("/")
+        if (slug.isBlank() || slug == "#" || slug.startsWith("#")) return true
+
         val excludedPrefixes = listOf(
             "/genre", "/genres", "/daftar", "/ongoing", "/completed",
             "/contact", "/privacy", "/dmca", "/jadwal", "/masuk",
@@ -156,38 +163,73 @@ class Miranime : MainAPI() {
     private fun toSearchResult(element: Element): SearchResponse? {
         return try {
             val a = if (element.tagName().equals("a", true)) element else element.selectFirst("a[href]") ?: return null
-            val href = toAbsoluteUrl(a.attr("href"))
+            val rawHref = a.attr("href").trim()
+            if (rawHref.isBlank() || rawHref == "#" || rawHref.startsWith("#") || rawHref.startsWith("javascript:", true)) return null
+
+            val href = toAbsoluteUrl(rawHref)
             if (href.isBlank() || isExcludedLink(href)) return null
 
-            val img = a.selectFirst("img") ?: element.selectFirst("img")
+            var img = a.selectFirst("img") ?: element.selectFirst("img")
+            // Jika butang hero slider tanpa img, cari img daripada container slide
+            if (img == null && (a.selectFirst("button") != null || a.text().trim().equals("Detail", true) || a.text().trim().equals("Tonton Sekarang", true))) {
+                for (parent in a.parents()) {
+                    val pImg = parent.selectFirst("img")
+                    if (pImg != null && !pImg.attr("src").contains("Logo", true)) {
+                        img = pImg
+                        break
+                    }
+                    if (parent.tagName().equals("body", true)) break
+                }
+            }
+
+            val slug = href.removeSuffix("/").substringAfterLast("/")
+            if (slug.isBlank() || slug == "#" || slug.startsWith("#")) return null
+
             var rawTitle = img?.attr("alt")?.trim().orEmpty()
+            if (rawTitle.equals("Miranime", true) || rawTitle.contains("Logo", true)) {
+                rawTitle = ""
+            }
             if (rawTitle.isBlank()) {
                 rawTitle = a.attr("title").trim()
             }
             if (rawTitle.isBlank()) {
-                rawTitle = element.selectFirst("h2, h3, h4, .title, p")?.text()?.trim().orEmpty()
-            }
-            if (rawTitle.isBlank()) {
-                rawTitle = a.text().trim()
+                rawTitle = element.selectFirst("h1, h2, h3, h4, .title, p")?.text()?.trim().orEmpty()
             }
 
-            rawTitle = rawTitle.lines().firstOrNull()?.trim() ?: ""
-            if (rawTitle.isBlank() || rawTitle.equals("Detail", true) || rawTitle.equals("Tonton Sekarang", true)) {
-                val slug = href.removeSuffix("/").substringAfterLast("/")
+            val textAll = a.text().trim()
+            val isBadgeOnly = (textAll.contains("Ep", ignoreCase = true) && (textAll.contains("TV", ignoreCase = true) || textAll.contains("/"))) || rawTitle.length < 2 || rawTitle == "#"
+            if (rawTitle.isBlank() || rawTitle == "#" || rawTitle.equals("Detail", true) || rawTitle.equals("Tonton Sekarang", true) || isBadgeOnly) {
                 rawTitle = slug.replace("-sub-indo", "", ignoreCase = true)
                     .replace("-subtitle-indonesia", "", ignoreCase = true)
                     .replace("-", " ")
                     .split(" ")
+                    .filter { it.isNotBlank() }
                     .joinToString(" ") { it.replaceFirstChar { char -> char.uppercase() } }
             }
 
-            val poster = getPosterUrl(img ?: element)
+            if (rawTitle.isBlank() || rawTitle == "#") return null
+
+            var poster = getPosterUrl(img ?: element)
+            // Fallback poster mengikut penamaan rasmi Miranime /covers/{slug}.jpg
+            if (poster.isNullOrBlank() && slug.isNotBlank() && slug != "#") {
+                poster = "$mainUrl/covers/$slug.jpg"
+            }
 
             val isMovie = href.contains("/movie", true) || href.contains("-movie-", true)
             val type = if (isMovie) TvType.AnimeMovie else TvType.Anime
 
-            val epText = element.selectFirst(".badge, .ep, [class*='badge'], span, div")?.text()?.trim()
-            val epNum = Regex("""\b(\d+)\b""").find(epText.orEmpty())?.groupValues?.getOrNull(1)?.toIntOrNull()
+            // Ekstrak nombor episod secara tepat dari badge (cth: "Ep 3", bukan "325")
+            var epNum: Int? = null
+            for (el in a.select("span, div, [data-slot='badge']")) {
+                val t = el.text().trim()
+                if (t.startsWith("Ep", ignoreCase = true)) {
+                    val m = Regex("""Ep\D*(\d+)\b""", RegexOption.IGNORE_CASE).find(t)
+                    if (m != null) {
+                        epNum = m.groupValues.getOrNull(1)?.toIntOrNull()
+                        break
+                    }
+                }
+            }
 
             newAnimeSearchResponse(rawTitle, href, type) {
                 this.posterUrl = poster
@@ -218,7 +260,9 @@ class Miranime : MainAPI() {
 
         val cards = doc.select("a[href]").mapNotNull {
             toSearchResult(it)
-        }.distinctBy { it.url }
+        }.groupBy { it.url }.map { (_, list) ->
+            list.firstOrNull { !it.posterUrl.isNullOrBlank() } ?: list.first()
+        }.filter { it.name.isNotBlank() && it.name != "#" && !it.url.endsWith("/#") }
 
         return if (cards.isNotEmpty()) {
             newHomePageResponse(request.name, cards, hasNext = cards.size >= 10)
@@ -239,7 +283,9 @@ class Miranime : MainAPI() {
 
         return doc.select("a[href]").mapNotNull {
             toSearchResult(it)
-        }.distinctBy { it.url }
+        }.groupBy { it.url }.map { (_, list) ->
+            list.firstOrNull { !it.posterUrl.isNullOrBlank() } ?: list.first()
+        }.filter { it.name.isNotBlank() && it.name != "#" && !it.url.endsWith("/#") }
     }
 
     // ─── DETAIL & CARD EPISOD BESERTA TARIKH RILIS ───────────────────────────────
