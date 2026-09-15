@@ -14,6 +14,7 @@ import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.httpsify
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import com.lagradost.cloudstream3.utils.loadExtractor
 import org.json.JSONObject
 import java.security.MessageDigest
 import javax.crypto.Cipher
@@ -327,3 +328,99 @@ class EmbedpyroxXyz : ExtractorApi() {
         }
     }
 }
+
+/**
+ * Extractor untuk PlayCDN (P2P player yang digunakan oleh NontonDrama / LK21)
+ * Menghubungi /verify/$slug dan menghasilkan pelbagai resolusi stream m3u8 (1080p, 720p, 480p, 360p)
+ */
+open class PlaycdnExtractor : ExtractorApi() {
+    override val name = "PlayCDN"
+    override val mainUrl = "https://playcdn.de"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.replace("\\", "").trim()
+        val slug = cleanUrl.substringAfter("playcdn.de/").substringBefore("?").substringBefore("/").substringBefore("#")
+        if (slug.isBlank()) return
+
+        runCatching {
+            val verifyRes = app.get(
+                "$mainUrl/verify/$slug",
+                headers = mapOf(
+                    "Referer" to cleanUrl,
+                    "User-Agent" to USER_AGENT
+                )
+            ).text
+            val json = JSONObject(verifyRes)
+            val fileUrl = json.optString("fileUrl")
+            if (fileUrl.isNotBlank()) {
+                listOf("1080", "720", "480", "360").forEach { qual ->
+                    val qualM3u8 = fileUrl.replace(Regex("""/\d+\.m3u8"""), "/$qual.m3u8")
+                    callback.invoke(
+                        newExtractorLink(
+                            source = name,
+                            name = "$name ${qual}p",
+                            url = qualM3u8,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "$mainUrl/"
+                            this.quality = qual.toIntOrNull() ?: Qualities.Unknown.value
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Extractor untuk Videonode (iframe3 router / proxy player)
+ * Menghantar POST request ke api.php untuk mendapatkan embed URL sebenar
+ */
+open class VideonodeExtractor : ExtractorApi() {
+    override val name = "Videonode"
+    override val mainUrl = "https://videonode.de"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.replace("\\", "").trim()
+        val host = when {
+            cleanUrl.contains("/turbovip/") -> "turbovip"
+            cleanUrl.contains("/hydrax/") -> "hydrax"
+            cleanUrl.contains("/cast/") -> "cast"
+            cleanUrl.contains("/p2p/") -> "p2p"
+            else -> cleanUrl.substringAfter("/iframe/").substringAfter("/iframe3/").substringBefore("/")
+        }
+        val id = cleanUrl.removeSuffix("/").substringAfterLast("/").substringBefore("?").substringBefore("#")
+        if (host.isBlank() || id.isBlank()) return
+
+        val res = runCatching {
+            app.post(
+                "$mainUrl/api.php",
+                data = mapOf("host" to host, "id" to id),
+                headers = mapOf(
+                    "Referer" to cleanUrl,
+                    "Origin" to mainUrl,
+                    "User-Agent" to USER_AGENT,
+                    "Content-Type" to "application/x-www-form-urlencoded"
+                )
+            ).text
+        }.getOrNull() ?: return
+
+        val embedUrl = runCatching { JSONObject(res).optString("embedUrl") }.getOrNull()
+        if (!embedUrl.isNullOrBlank()) {
+            loadExtractor(embedUrl, cleanUrl, subtitleCallback, callback)
+        }
+    }
+}
+

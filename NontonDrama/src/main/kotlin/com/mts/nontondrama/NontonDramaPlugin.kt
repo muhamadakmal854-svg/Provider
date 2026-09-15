@@ -18,5 +18,7 @@ class NontonDramaPlugin: Plugin() {
         registerExtractorAPI(KrakenfilesExtractor())
         registerExtractorAPI(PlaycinematicCom())
         registerExtractorAPI(EmbedpyroxXyz())
+        registerExtractorAPI(PlaycdnExtractor())
+        registerExtractorAPI(VideonodeExtractor())
     }
 }

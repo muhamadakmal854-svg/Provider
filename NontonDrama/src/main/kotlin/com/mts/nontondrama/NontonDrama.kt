@@ -372,7 +372,7 @@ class NontonDramaProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         try {
-            val document = try {
+            var document = try {
                 app.get(data, interceptor = wpRedisInterceptor).document
             } catch (_: Exception) {
                 try {
@@ -387,29 +387,54 @@ class NontonDramaProvider : MainAPI() {
                 }
             } ?: return false
 
+            if (document.title().contains("Just a moment", true)) {
+                for (mirror in listOf("tv12.lk21official.cc", "tv8.nontondrama.my", "tv1.nontondrama.my", "tv2.nontondrama.my", "tv3.nontondrama.my")) {
+                    val mirrorUrl = data.replace("tv4.nontondrama.my", mirror)
+                    val altDoc = runCatching {
+                        app.get(mirrorUrl, interceptor = wpRedisInterceptor).document
+                    }.getOrNull()
+                    if (altDoc != null && !altDoc.title().contains("Just a moment", true)) {
+                        document = altDoc
+                        break
+                    }
+                }
+            }
+
             val extractedUrls = mutableSetOf<String>()
 
             // 1. Scan player list and dropdown options
-            val linkElements = document.select("#player-list li a, #player-select option, .player-options a")
+            val linkElements = document.select(
+                "#player-list li a, #player-select option, .player-options a, select#player-select option, select.mirror option, .gmr-player-nav a"
+            )
             linkElements.forEach { element ->
                 val embedUrl = element.attr("data-url")
                     .ifBlank { element.attr("href") }
                     .ifBlank { element.attr("value") }
                 
-                if (embedUrl.isNotBlank() && embedUrl != "#" && !embedUrl.startsWith("javascript:")) {
+                if (embedUrl.isNotBlank() && embedUrl != "#" && !embedUrl.startsWith("javascript:") && !embedUrl.contains("google.com") && !embedUrl.contains("facebook.com")) {
                     extractedUrls.add(embedUrl)
                 }
             }
 
             // 2. Scan player iframes
-            document.select("iframe#main-player, .main-player iframe, div.player-area iframe").forEach { iframe ->
+            document.select("iframe#main-player, .main-player iframe, div.player-area iframe, .embed-container iframe, iframe[src]").forEach { iframe ->
                 val src = iframe.attr("src").ifBlank { iframe.attr("data-src") }
-                if (src.isNotBlank() && src != "#") {
+                if (src.isNotBlank() && src != "#" && !src.startsWith("javascript:") && !src.contains("google.com") && !src.contains("cloudflare.com")) {
                     extractedUrls.add(src)
                 }
             }
 
-            // 3. Process each unique embed / player URL
+            // 3. Scan whole HTML for videonode, playcdn, turbovid, abyss, gn1r5n links
+            val html = document.html()
+            val regex = Regex("""https?://(?:videonode\.de|playcdn\.de|[a-z0-9\-\.]*(?:turbovid|emturbovid|abyss|gn1r5n))[^\s"'<>]+""", RegexOption.IGNORE_CASE)
+            regex.findAll(html).forEach { match ->
+                val u = match.value.replace("\\/", "/").trim()
+                if (!u.contains("google.com") && !u.contains("cloudflare.com") && !u.endsWith(".js") && !u.endsWith(".css")) {
+                    extractedUrls.add(u)
+                }
+            }
+
+            // 4. Process each unique embed / player URL
             extractedUrls.forEach { embedUrl ->
                 resolveAndExtract(embedUrl, data, subtitleCallback, callback)
             }
@@ -428,48 +453,127 @@ class NontonDramaProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ) {
         val cleanUrl = if (rawUrl.startsWith("//")) "https:$rawUrl" else rawUrl
+
+        // A. If Videonode or intermediate iframe router, call api.php to get real embed URL
+        if (cleanUrl.contains("videonode.de") || cleanUrl.contains("/iframe3/") || cleanUrl.contains("/iframe/")) {
+            val host = when {
+                cleanUrl.contains("/turbovip/") -> "turbovip"
+                cleanUrl.contains("/hydrax/") -> "hydrax"
+                cleanUrl.contains("/cast/") -> "cast"
+                cleanUrl.contains("/p2p/") -> "p2p"
+                else -> cleanUrl.substringAfter("/iframe/").substringAfter("/iframe3/").substringBefore("/")
+            }
+            val id = cleanUrl.removeSuffix("/").substringAfterLast("/").substringBefore("?").substringBefore("#")
+
+            if (host.isNotBlank() && id.isNotBlank()) {
+                val realEmbedUrl = runCatching {
+                    val res = app.post(
+                        "https://videonode.de/api.php",
+                        data = mapOf("host" to host, "id" to id),
+                        headers = mapOf(
+                            "Referer" to cleanUrl,
+                            "Origin" to "https://videonode.de",
+                            "User-Agent" to USER_AGENT,
+                            "Content-Type" to "application/x-www-form-urlencoded"
+                        )
+                    ).text
+                    JSONObject(res).optString("embedUrl")
+                }.getOrNull()
+
+                if (!realEmbedUrl.isNullOrBlank()) {
+                    resolveRealEmbed(realEmbedUrl, pageUrl, subtitleCallback, callback)
+                    return
+                }
+            }
+        }
+
+        // B. Otherwise resolve directly
+        resolveRealEmbed(cleanUrl, pageUrl, subtitleCallback, callback)
+    }
+
+    private suspend fun resolveRealEmbed(
+        rawUrl: String,
+        pageUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = if (rawUrl.startsWith("//")) "https:$rawUrl" else rawUrl
         val id = cleanUrl.removeSuffix("/").substringAfterLast("/").substringBefore("?").substringBefore("#")
 
         when {
-            // Turbovip (turbovidhls / emturbovid) -> Direct Master M3U8 & Player Extractors
-            cleanUrl.contains("/turbovip/") -> {
+            // 1. Turbovip (emturbovid / turbovidhls)
+            cleanUrl.contains("turbovi") || cleanUrl.contains("turbovid") -> {
                 if (id.isNotBlank()) {
                     val cdnMaster = "https://cdn4.turboviplay.com/data3/$id/$id.m3u8"
                     runCatching {
-                        M3u8Helper.generateM3u8(name, cdnMaster, "https://turbovidhls.com/").forEach(callback)
+                        M3u8Helper.generateM3u8(
+                            "$name Turbovip",
+                            cdnMaster,
+                            "https://turbovidhls.com/"
+                        ).forEach(callback)
+                    }
+                    loadExtractor("https://emturbovid.com/t/$id", "https://emturbovid.com/", subtitleCallback, callback)
+                    loadExtractor("https://turbovidhls.com/t/$id", "https://turbovidhls.com/", subtitleCallback, callback)
+                }
+            }
+
+            // 2. PlayCDN (P2P player with multiple resolutions)
+            cleanUrl.contains("playcdn.de") -> {
+                val slug = cleanUrl.substringAfter("playcdn.de/").substringBefore("?").substringBefore("/").substringBefore("#")
+                if (slug.isNotBlank()) {
+                    runCatching {
+                        val verifyRes = app.get(
+                            "https://playcdn.de/verify/$slug",
+                            headers = mapOf(
+                                "Referer" to cleanUrl,
+                                "User-Agent" to USER_AGENT
+                            )
+                        ).text
+                        val json = JSONObject(verifyRes)
+                        val fileUrl = json.optString("fileUrl")
+                        if (fileUrl.isNotBlank()) {
+                            listOf("1080", "720", "480", "360").forEach { q ->
+                                val qUrl = fileUrl.replace(Regex("""/\d+\.m3u8"""), "/$q.m3u8")
+                                callback.invoke(
+                                    newExtractorLink(
+                                        source = "$name P2P",
+                                        name = "$name P2P ${q}p",
+                                        url = qUrl,
+                                        type = ExtractorLinkType.M3U8
+                                    ) {
+                                        this.referer = "https://playcdn.de/"
+                                        this.quality = q.toIntOrNull() ?: Qualities.Unknown.value
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
-                loadExtractor("https://turbovidhls.com/t/$id", "https://turbovidhls.com/", subtitleCallback, callback)
-                loadExtractor("https://emturbovid.com/t/$id", "https://emturbovid.com/", subtitleCallback, callback)
             }
 
-            // Hydrax / Abyss -> AES-CTR Decrypted MP4 Stream
-            cleanUrl.contains("/hydrax/") -> {
-                loadExtractor("https://abyssplayer.com/$id", "https://abyssplayer.com/", subtitleCallback, callback)
-                loadExtractor("https://abyss.to/$id", "https://abyss.to/", subtitleCallback, callback)
-            }
-
-            // Cast -> Gn1r5n / StreamWish
-            cleanUrl.contains("/cast/") -> {
-                loadExtractor("https://gn1r5n.org/e/$id", "https://playeriframe.sbs/", subtitleCallback, callback)
-            }
-
+            // 3. Hydrax / Abyss (AES-CTR Decrypted MP4 Stream)
             cleanUrl.contains("abyss") -> {
                 loadExtractor(cleanUrl, "https://abyssplayer.com/", subtitleCallback, callback)
+                if (id.isNotBlank() && id != cleanUrl) {
+                    loadExtractor("https://abyssplayer.com/$id", "https://abyssplayer.com/", subtitleCallback, callback)
+                    loadExtractor("https://abyss.to/$id", "https://abyss.to/", subtitleCallback, callback)
+                }
             }
 
-            cleanUrl.contains("turbovi") -> {
-                loadExtractor(cleanUrl, "https://turbovidhls.com/", subtitleCallback, callback)
+            // 4. Cast (Gn1r5n / StreamWish)
+            cleanUrl.contains("gn1r5n") || cleanUrl.contains("wish") -> {
+                loadExtractor(cleanUrl, "https://videonode.de/", subtitleCallback, callback)
+                if (id.isNotBlank() && id != cleanUrl) {
+                    loadExtractor("https://gn1r5n.org/e/$id", "https://gn1r5n.org/", subtitleCallback, callback)
+                }
             }
 
             cleanUrl.contains("krakenfiles.com") -> {
                 loadExtractor(cleanUrl, pageUrl, subtitleCallback, callback)
             }
 
-            // playeriframe.sbs is an expired parking domain, skip direct calls
-            cleanUrl.contains("playeriframe.sbs") -> {
-                // skipped
-            }
+            // Skip expired domain
+            cleanUrl.contains("playeriframe.sbs") -> {}
 
             else -> {
                 loadExtractor(cleanUrl, pageUrl, subtitleCallback, callback)
