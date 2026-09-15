@@ -293,21 +293,22 @@ class Pusatfilm21 : MainAPI() {
         val allEpLinks = mutableListOf<Element>()
         if (seasonWraps.isNotEmpty()) {
             seasonWraps.forEach { wrap ->
-                wrap.select("a.button.s-eps, a[href*='/eps/']").forEach { epEl ->
+                wrap.select("a.button.s-eps[href*='/eps/'], a[href*='/eps/']").forEach { epEl ->
                     if (!epEl.text().equals("Info", true) && !epEl.attr("href").contains("/tv/")) {
                         allEpLinks.add(epEl)
                     }
                 }
             }
         } else {
-            parentDoc.select(".gmr-listseries a, .button.s-eps, a[href*='/eps/']").forEach { epEl ->
+            parentDoc.select(".gmr-listseries a[href*='/eps/'], a.button.s-eps[href*='/eps/'], a[href*='/eps/']").forEach { epEl ->
                 if (!epEl.text().equals("Info", true) && !epEl.attr("href").contains("/tv/")) {
                     allEpLinks.add(epEl)
                 }
             }
         }
 
-        val isSeries = allEpLinks.isNotEmpty() || url.contains("/tv/") || url.contains("/eps/")
+        val isTvPage = url.contains("/tv/") || url.contains("/eps/") || url.contains("/series/") || parentDoc.select("body.single-tv, article[itemtype*='TVSeries']").isNotEmpty()
+        val isSeries = allEpLinks.isNotEmpty() && isTvPage
         val type = if (isSeries) TvType.TvSeries else TvType.Movie
 
         if (isSeries) {
