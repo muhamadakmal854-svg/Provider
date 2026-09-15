@@ -1,4 +1,4 @@
-version = 1
+version = 11
 
 cloudstream {
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://new37.ngefilm.site/favicon.ico"
+    iconUrl     = "https://new39.ngefilm.site/favicon.ico"
 
 }
 

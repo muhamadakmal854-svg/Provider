@@ -8,5 +8,21 @@ import android.content.Context
 class NgefilmPlugin: Plugin() {
     override fun load(context: Context) {
         registerMainAPI(NgefilmProvider())
+        registerExtractorAPI(AbyssplayerCom())
+        registerExtractorAPI(PlayerAbyssplayerCom())
+        registerExtractorAPI(PlayAbyssplayerCom())
+        registerExtractorAPI(MorenciusCom())
+        registerExtractorAPI(PlaycinematicCom())
+        registerExtractorAPI(EmbedpyroxXyz())
+        registerExtractorAPI(RpmPlayShare())
+        registerExtractorAPI(Embed4MePlay())
+        registerExtractorAPI(GoogleVideo())
+        registerExtractorAPI(Ratu89Com())
+        registerExtractorAPI(Gratu89Com())
+        registerExtractorAPI(HalalhomecookingCom())
+        registerExtractorAPI(New38NgefilmSite())
+        registerExtractorAPI(New39NgefilmSite())
+        registerExtractorAPI(VideonodeExtractor())
+        registerExtractorAPI(PlaycdnExtractor())
     }
 }
