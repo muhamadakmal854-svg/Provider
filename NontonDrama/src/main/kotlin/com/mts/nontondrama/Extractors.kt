@@ -73,7 +73,7 @@ open class AbyssCdn(
                 generateM3u8(name, match.value, domain).forEach(callback)
             }
 
-            // 2. Decrypt datas block using Sora stream algorithm
+            // 2. Decrypt datas block using AES-CTR algorithm
             val base64Str = Regex("const\\s+datas\\s*=\\s*\"([^\"]+)\"").find(pageHtml)?.groupValues?.get(1) ?: return@runCatching
             val decodedBytes = Base64.decode(base64Str, Base64.DEFAULT)
             val latin1Str = String(decodedBytes, Charsets.ISO_8859_1)
@@ -90,56 +90,22 @@ open class AbyssCdn(
             val key = keyBytesStr.toByteArray(Charsets.UTF_8)
             val iv = key.sliceArray(0 until 16)
 
-            val mediaCiphertext = try {
-                Base64.decode(media, Base64.DEFAULT)
-            } catch (_: Exception) {
-                media.toByteArray(Charsets.ISO_8859_1)
-            }
+            val mediaCiphertext = media.toByteArray(Charsets.ISO_8859_1)
             val decryptedMediaBytes = decryptAesCtr(mediaCiphertext, key, iv)
             val decryptedMediaStr = String(decryptedMediaBytes, Charsets.UTF_8)
             val mediaJson = JSONObject(decryptedMediaStr)
 
             val mp4 = mediaJson.optJSONObject("mp4") ?: return@runCatching
             val sources = mp4.optJSONArray("sources") ?: return@runCatching
-            val domainsObj = if (mp4.has("domains")) mp4.optJSONObject("domains") else if (mediaJson.has("domains")) mediaJson.optJSONObject("domains") else null
-            val domainsArr = if (mp4.has("domains")) mp4.optJSONArray("domains") else if (mediaJson.has("domains")) mediaJson.optJSONArray("domains") else null
 
             for (i in 0 until sources.length()) {
                 val src = sources.optJSONObject(i) ?: continue
-                val size = src.optLong("size", 0L)
-                val resId = src.optInt("res_id", 0)
                 val label = src.optString("label", "HD")
-                val sub = src.optString("sub")
+                val srcUrl = src.optString("url", "")
+                val srcPath = src.optString("path", "")
+                if (srcUrl.isBlank() || srcPath.isBlank()) continue
 
-                var hostDomain = ""
-                if (domainsObj != null && sub.isNotBlank()) {
-                    hostDomain = domainsObj.optString(sub, "")
-                } else if (domainsArr != null && sub.isNotBlank()) {
-                    for (j in 0 until domainsArr.length()) {
-                        val dStr = domainsArr.optString(j)
-                        if (dStr.startsWith(sub)) {
-                            hostDomain = dStr
-                            break
-                        }
-                    }
-                }
-                if (hostDomain.isBlank() && sub.isNotBlank()) {
-                    hostDomain = "$sub.sssrr.org"
-                }
-                if (hostDomain.isBlank() || size <= 0L) continue
-
-                val pathStr = "/mp4/$md5Id/$resId/$size?v=$slug"
-                val sizeStr = size.toString()
-                val digitBytes = sizeStr.map { it.toString().toInt().toByte() }.toByteArray()
-                val sizeHashHex = md5(digitBytes).joinToString("") { "%02x".format(it) }
-                val pathKey = sizeHashHex.toByteArray(Charsets.UTF_8)
-                val pathIv = pathKey.sliceArray(0 until 16)
-                val pathBytes = pathStr.toByteArray(Charsets.UTF_8)
-                val encryptedPathBytes = decryptAesCtr(pathBytes, pathKey, pathIv)
-                val b64Once = Base64.encodeToString(encryptedPathBytes, Base64.NO_WRAP)
-                val b64Twice = Base64.encodeToString(b64Once.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-                val cleanPath = b64Twice.replace("=", "").replace("\n", "").replace("\r", "")
-                val finalStreamUrl = "https://$hostDomain/sora/$size/$cleanPath"
+                val finalStreamUrl = if (srcUrl.endsWith("/")) "$srcUrl$srcPath" else "$srcUrl/$srcPath"
 
                 callback.invoke(
                     newExtractorLink(
@@ -148,7 +114,11 @@ open class AbyssCdn(
                         url = finalStreamUrl,
                         type = ExtractorLinkType.VIDEO
                     ) {
-                        this.referer = cleanUrl
+                        this.referer = domain
+                        this.headers = mapOf(
+                            "Referer" to domain,
+                            "User-Agent" to USER_AGENT
+                        )
                         this.quality = parseQuality(label)
                     }
                 )
@@ -188,30 +158,39 @@ open class TurbovidExtractor(
     ) {
         runCatching {
             val cleanUrl = url.replace("\\", "").trim()
-            val id = cleanUrl.substringAfterLast("/")
+            val id = cleanUrl.removeSuffix("/").substringAfterLast("/").substringBefore("?").substringBefore("#")
             val domain = try {
                 val u = java.net.URL(cleanUrl)
                 "${u.protocol}://${u.host}/"
             } catch (_: Exception) { "$mainUrl/" }
 
-            val response = app.get(
-                cleanUrl,
-                headers = mapOf(
-                    "User-Agent" to USER_AGENT,
-                    "Referer" to (referer ?: domain)
-                )
-            )
-            val html = response.text
-
-            val m3u8Regex = Regex("""https?://[^'"\s<>]+\.m3u8[^'"\s<>]*""")
-            val foundM3u8 = m3u8Regex.findAll(html).map { it.value }.toSet()
-            if (foundM3u8.isNotEmpty()) {
-                foundM3u8.forEach { m3u8Url ->
-                    generateM3u8(name, m3u8Url, domain).forEach(callback)
-                }
-            } else if (id.isNotBlank()) {
+            // 1. Direct master M3U8 from CDN (cdn4.turboviplay.com)
+            if (id.isNotBlank()) {
                 val directM3u8 = "https://cdn4.turboviplay.com/data3/$id/$id.m3u8"
-                generateM3u8(name, directM3u8, domain).forEach(callback)
+                runCatching {
+                    generateM3u8(name, directM3u8, domain).forEach(callback)
+                }
+            }
+
+            // 2. Scan player page for any embedded m3u8
+            val pageHtml = runCatching {
+                app.get(
+                    cleanUrl,
+                    headers = mapOf(
+                        "User-Agent" to USER_AGENT,
+                        "Referer" to (referer ?: domain)
+                    )
+                ).text
+            }.getOrDefault("")
+
+            if (pageHtml.isNotBlank()) {
+                val m3u8Regex = Regex("""https?://[^'"\s<>]+\.m3u8[^'"\s<>]*""")
+                val foundM3u8 = m3u8Regex.findAll(pageHtml).map { it.value }.toSet()
+                foundM3u8.forEach { m3u8Url ->
+                    if (!m3u8Url.contains("/data3/$id/$id.m3u8")) {
+                        generateM3u8(name, m3u8Url, domain).forEach(callback)
+                    }
+                }
             }
         }
     }

@@ -375,50 +375,43 @@ class NontonDramaProvider : MainAPI() {
             val document = try {
                 app.get(data, interceptor = wpRedisInterceptor).document
             } catch (_: Exception) {
-                app.get(data).document
-            }
+                try {
+                    val altUrl = data.replace("tv4.nontondrama.my", "tv12.lk21official.cc")
+                    app.get(altUrl, interceptor = wpRedisInterceptor).document
+                } catch (_: Exception) {
+                    try {
+                        app.get(data, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$mainUrl/")).document
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+            } ?: return false
 
-            val linkElements = document.select("#player-list li a, #player-select option, .player-options a, select#player-select option")
-            
+            val extractedUrls = mutableSetOf<String>()
+
+            // 1. Scan player list and dropdown options
+            val linkElements = document.select("#player-list li a, #player-select option, .player-options a")
             linkElements.forEach { element ->
                 val embedUrl = element.attr("data-url")
                     .ifBlank { element.attr("href") }
                     .ifBlank { element.attr("value") }
                 
                 if (embedUrl.isNotBlank() && embedUrl != "#" && !embedUrl.startsWith("javascript:")) {
-                    resolveAndExtract(embedUrl, data, subtitleCallback, callback)
+                    extractedUrls.add(embedUrl)
                 }
             }
 
-            // Also check main-player iframe
+            // 2. Scan player iframes
             document.select("iframe#main-player, .main-player iframe, div.player-area iframe").forEach { iframe ->
-                val src = iframe.attr("src")
+                val src = iframe.attr("src").ifBlank { iframe.attr("data-src") }
                 if (src.isNotBlank() && src != "#") {
-                    resolveAndExtract(src, data, subtitleCallback, callback)
+                    extractedUrls.add(src)
                 }
             }
 
-            // Also scan download button (dadadidi.de)
-            document.select("a[href*='dadadidi.de'], a.btn:contains(DOWNLOAD)").forEach { a ->
-                val dlUrl = a.attr("href")
-                if (dlUrl.isNotBlank() && dlUrl.startsWith("http")) {
-                    runCatching {
-                        val dlDoc = app.get(dlUrl, headers = mapOf("Referer" to data)).document
-                        dlDoc.select("a[href]").forEach { dlLink ->
-                            val href = dlLink.attr("href")
-                            if (href.endsWith(".mp4", true) || href.endsWith(".m3u8", true)) {
-                                callback.invoke(
-                                    newExtractorLink(
-                                        source = name,
-                                        name = "$name Direct Video",
-                                        url = href,
-                                        type = if (href.contains(".m3u8", true)) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
+            // 3. Process each unique embed / player URL
+            extractedUrls.forEach { embedUrl ->
+                resolveAndExtract(embedUrl, data, subtitleCallback, callback)
             }
 
             return true
@@ -435,29 +428,47 @@ class NontonDramaProvider : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ) {
         val cleanUrl = if (rawUrl.startsWith("//")) "https:$rawUrl" else rawUrl
-        val id = cleanUrl.substringAfterLast("/")
+        val id = cleanUrl.removeSuffix("/").substringAfterLast("/").substringBefore("?").substringBefore("#")
 
         when {
-            // Turbovip (turbovidhls / emturbovid) -> Direct Master M3U8
+            // Turbovip (turbovidhls / emturbovid) -> Direct Master M3U8 & Player Extractors
             cleanUrl.contains("/turbovip/") -> {
-                loadExtractor("https://turbovidhls.com/t/$id", pageUrl, subtitleCallback, callback)
-                loadExtractor("https://emturbovid.com/t/$id", pageUrl, subtitleCallback, callback)
+                if (id.isNotBlank()) {
+                    val cdnMaster = "https://cdn4.turboviplay.com/data3/$id/$id.m3u8"
+                    runCatching {
+                        M3u8Helper.generateM3u8(name, cdnMaster, "https://turbovidhls.com/").forEach(callback)
+                    }
+                }
+                loadExtractor("https://turbovidhls.com/t/$id", "https://turbovidhls.com/", subtitleCallback, callback)
+                loadExtractor("https://emturbovid.com/t/$id", "https://emturbovid.com/", subtitleCallback, callback)
             }
 
-            // Hydrax / Abyss -> AES-CTR Decrypted Sora Stream
+            // Hydrax / Abyss -> AES-CTR Decrypted MP4 Stream
             cleanUrl.contains("/hydrax/") -> {
-                loadExtractor("https://abyssplayer.com/$id", "https://playeriframe.sbs/", subtitleCallback, callback)
-                loadExtractor("https://abyss.to/$id", "https://playeriframe.sbs/", subtitleCallback, callback)
+                loadExtractor("https://abyssplayer.com/$id", "https://abyssplayer.com/", subtitleCallback, callback)
+                loadExtractor("https://abyss.to/$id", "https://abyss.to/", subtitleCallback, callback)
             }
 
-            // Cast -> Gn1r5n / StreamWish (needs playeriframe.sbs referer)
+            // Cast -> Gn1r5n / StreamWish
             cleanUrl.contains("/cast/") -> {
                 loadExtractor("https://gn1r5n.org/e/$id", "https://playeriframe.sbs/", subtitleCallback, callback)
             }
 
-            // P2P -> Hownetwork
-            cleanUrl.contains("/p2p/") -> {
-                loadExtractor("https://cloud.hownetwork.xyz/video.php?id=$id", "https://playeriframe.sbs/", subtitleCallback, callback)
+            cleanUrl.contains("abyss") -> {
+                loadExtractor(cleanUrl, "https://abyssplayer.com/", subtitleCallback, callback)
+            }
+
+            cleanUrl.contains("turbovi") -> {
+                loadExtractor(cleanUrl, "https://turbovidhls.com/", subtitleCallback, callback)
+            }
+
+            cleanUrl.contains("krakenfiles.com") -> {
+                loadExtractor(cleanUrl, pageUrl, subtitleCallback, callback)
+            }
+
+            // playeriframe.sbs is an expired parking domain, skip direct calls
+            cleanUrl.contains("playeriframe.sbs") -> {
+                // skipped
             }
 
             else -> {
