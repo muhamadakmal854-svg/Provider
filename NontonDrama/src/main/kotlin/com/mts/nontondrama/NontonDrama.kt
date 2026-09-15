@@ -287,7 +287,7 @@ class NontonDramaProvider : MainAPI() {
             ?.let { Regex("""\b(19\d\d|20\d\d)\b""").find(it)?.groupValues?.get(1)?.toIntOrNull() }
             ?: Regex("""\b(19\d\d|20\d\d)\b""").find(rawTitle)?.groupValues?.get(1)?.toIntOrNull()
 
-        val rating = parentSeriesDoc.selectFirst(".rating span[itemprop='ratingValue']")?.text()?.toRatingInt()
+        val ratingText = parentSeriesDoc.selectFirst(".rating span[itemprop='ratingValue']")?.text()?.trim()
 
         // 2. Extract release date from episode or series page
         val dateText = document.selectFirst(".detail p:contains(Release)")?.text()?.replace("Release:", "")?.trim()
@@ -361,7 +361,7 @@ class NontonDramaProvider : MainAPI() {
             this.posterUrl = poster
             this.plot = plot
             this.year = year
-            this.rating = rating
+            this.score = Score.from10(ratingText)
         }
     }
 
