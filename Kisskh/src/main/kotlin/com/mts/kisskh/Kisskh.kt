@@ -366,7 +366,7 @@ class Kisskh : MainAPI() {
             // 1.1 Direct HLS M3U8 Stream
             if (mainVideoUrl.isNotEmpty()) {
                 generateM3u8(
-                    name = name,
+                    source = name,
                     streamUrl = mainVideoUrl,
                     referer = "$mainUrl/",
                     headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
