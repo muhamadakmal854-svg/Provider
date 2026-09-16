@@ -1,4 +1,4 @@
-version = 1
+version = 12
 
 cloudstream {
 

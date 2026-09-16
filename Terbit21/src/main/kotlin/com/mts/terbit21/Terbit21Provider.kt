@@ -5,6 +5,10 @@ import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import android.util.Log
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class Terbit21Provider : MainAPI() {
     override var mainUrl = "https://162.244.95.227"
@@ -15,39 +19,33 @@ class Terbit21Provider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "" to "Terbaru",
-        "on-going/" to "Ongoing Series",
-        "film-action-terbaru/" to "Action",
-        "tv/" to "Drama",
-        "drama-korea/" to "Drama Korea",
-        "country/australia/" to "Australia",
-        "country/china/" to "China",
-        "country/korea/" to "Korea",
-        "country/canada/" to "Canada",
-        "country/ireland/" to "Ireland",
-        "country/new-zealand/" to "New Zealand",
-        "country/usa/" to "Usa",
-        "country/united-kingdom/" to "United Kingdom",
-        "country/thailand/" to "Thailand",
-        "country/Japan/" to "Japan",
-        "country/India/" to "India",
-        "semi/" to "18+",
-        "kebijakan-privasi/" to "Privasi",
-        "pasang-iklan/" to "Pasang Iklan",
-        "west-series/" to "West Series",
-        "completed/" to "Completed",
-        "batch/" to "Batch",
-        "adventure/" to "Adventure",
-        "year/2025/" to "2025",
-        "year/2024/" to "2024",
-        "year/2023/" to "2023",
-        "year/2022/" to "2022",
-        "year/2021/" to "2021",
-        "year/2020/" to "2020",
-        "year/2019/" to "2019",
-        "year/2018/" to "2018",
-        "year/2017/" to "2017",
-        "year/2016/" to "2016"
+        "" to "🍿 Sedang Tayang (Terbaru)",
+        "on-going/" to "🔥 Serial TV Sedang Tayang (Ongoing)",
+        "drama-korea/" to "🌸 Drama Korea (K-Drama Pilihan)",
+        "west-series/" to "🎬 Serial Barat (West Series Populer)",
+        "film-action-terbaru/" to "💥 Film Aksi & Laga (Action Box Office)",
+        "adventure/" to "🗺️ Petualangan Seru (Adventure)",
+        "comedy/" to "😂 Komedi Mengocok Perut (Comedy)",
+        "crime/" to "🕵️ Kriminal & Penyelidikan (Crime)",
+        "fantasy/" to "🧙 Fantasi & Sihir (Fantasy)",
+        "mystery/" to "🔍 Misteri & Teka-Teki (Mystery)",
+        "romance/" to "💖 Romansa & Cinta (Romance)",
+        "science-fiction/" to "🚀 Fiksi Ilmiah (Sci-Fi Movies)",
+        "thriller/" to "⚡ Ketegangan Memuncak (Thriller)",
+        "animation/" to "🎨 Animasi Terbaik (Animation)",
+        "country/korea/" to "🇰🇷 Sinema Korea (Korean Movies)",
+        "country/japan/" to "🇯🇵 Sinema Jepang (Japanese Movies)",
+        "country/china/" to "🇨🇳 Sinema Mandarin (Chinese Movies)",
+        "country/usa/" to "🇺🇸 Hollywood Box Office (USA)",
+        "country/thailand/" to "🇹🇭 Sinema Thailand",
+        "country/india/" to "🇮🇳 Sinema Bollywood (India)",
+        "country/indonesia/" to "🇮🇩 Sinema Indonesia",
+        "completed/" to "🏆 Serial TV Tamat (Binge-Watch)",
+        "batch/" to "📦 Serial TV Lengkap (Batch)",
+        "year/2026/" to "✨ Rilisan Terkini (2026)",
+        "year/2025/" to "🌟 Film Terbaik (2025)",
+        "year/2024/" to "⭐ Film Terpopuler (2024)",
+        "year/2023/" to "💫 Koleksi Nostalgia (2023)"
     )
 
     override suspend fun getMainPage(
@@ -92,7 +90,7 @@ class Terbit21Provider : MainAPI() {
             .split("Full Movie")[0]
             .split("Full Episode")[0]
             .trim()
-            
+
         if (title.isBlank() || href.isBlank()) return null
 
         val isSeries = href.contains("/tv/") || href.contains("/series/") || href.contains("/serial-tv/") || href.contains("full-episode", true) || title.contains("Season", true)
@@ -110,116 +108,164 @@ class Terbit21Provider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/?s=${query.replace(" ", "+")}"
-        val document = app.get(searchUrl).document
-        return document.select("article.item-infinite, div.gmr-box-item, article.post").mapNotNull {
+        val document = app.get(searchUrl, timeout = 30).document
+        return document.select("article.item-infinite, div.gmr-box-item, article.post, article.item").mapNotNull {
             it.toSearchResult()
         }
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url).document
-        val title = document.selectFirst("h1.entry-title, .title-content")?.text()?.trim() ?: throw Exception("Title not found")
+        val document = app.get(url, timeout = 30).document
+        val rawTitle = document.selectFirst("h1.entry-title, .title-content")?.text()?.trim() ?: throw Exception("Title not found")
+        val title = rawTitle
+            .removePrefix("Permalink ke: ")
+            .removePrefix("Permalink to: ")
+            .removePrefix("Download ")
+            .split("Sub Indo")[0]
+            .split("Full Movie")[0]
+            .split("Full Episode")[0]
+            .trim()
+
         val poster = document.selectFirst(".gmr-poster-img img, .poster img")?.let { i ->
             listOf("data-src", "data-lazy-src", "src").map { i.attr(it) }.firstOrNull { it.isNotBlank() }
         }?.let { fixUrlNull(it) }
 
         val plot = document.selectFirst(".entry-content p, .synopsis p")?.text()?.trim()
+        val year = document.selectFirst(".gmr-moviedata strong:contains(Year:) + a, .gmr-moviedata a[href*='/year/'], time[itemprop='dateCreated']")?.text()?.trim()?.toIntOrNull()
+        val scoreText = document.selectFirst(".gmr-rating-item, span[itemprop='ratingValue'], .rating")?.text()?.trim()
+        val scoreVal = scoreText?.replace(Regex("[^0-9.]"), "")?.toDoubleOrNull()
 
-        val isSeries = url.contains("/tv/") || url.contains("/series/") ||
-            (document.selectFirst(".muvipro-player-tabs, ul.player-nav") == null &&
-             document.select("a.gmr-numpost").isNotEmpty())
+        // Precise Series detection: only URLs with /tv/, /series/, /serial-tv/ or pages with .gmr-listseries containing episode links
+        val isSeries = url.contains("/tv/") || url.contains("/series/") || url.contains("/serial-tv/") ||
+            document.select(".gmr-listseries a[href*='/eps/'], .gmr-listseries a.button-shadow").isNotEmpty()
 
         if (isSeries) {
             val episodes = mutableListOf<Episode>()
 
-            // Method 1: gmr-numpost links on page
-            val epsElements = document.select("a.gmr-numpost")
-            if (epsElements.isNotEmpty()) {
-                epsElements.forEachIndexed { index, element ->
-                    val epUrl = element.attr("href")
-                    val epNum = element.text().trim().toIntOrNull() ?: (index + 1)
-                    episodes.add(newEpisode(epUrl) {
-                        this.episode = epNum
-                        this.name = "Episode $epNum"
-                    })
-                }
-            }
-
-            // Method 2: gmr-listepisode / list-episode links on page
-            if (episodes.isEmpty()) {
-                val listEps = document.select(".gmr-listepisode a, .list-episode a")
-                listEps.forEachIndexed { index, element ->
-                    val epUrl = element.attr("href")
-                    val epNum = element.text().trim().replace(Regex("[^0-9]"), "").toIntOrNull() ?: (index + 1)
-                    episodes.add(newEpisode(epUrl) {
-                        this.episode = epNum
-                        this.name = element.text().trim()
-                    })
-                }
-            }
-
-            // Method 3: WP REST API - /wp-json/wp/v2/episode/?parent={postId}
-            if (episodes.isEmpty()) {
-                try {
-                    val bodyClasses = document.selectFirst("body")?.classNames() ?: emptySet()
-                    val postId = bodyClasses.firstOrNull { it.startsWith("postid-") }?.removePrefix("postid-")
-                    if (!postId.isNullOrBlank()) {
-                        var page = 1
-                        var keepFetching = true
-                        while (keepFetching) {
-                            val restUrl = "$mainUrl/wp-json/wp/v2/episode/?parent=$postId&per_page=100&page=$page&orderby=date&order=asc"
-                            val restResp = app.get(restUrl, timeout = 20)
-                            if (restResp.code != 200) break
-                            val jsonArr = org.json.JSONArray(restResp.text)
-                            if (jsonArr.length() == 0) break
-                            for (i in 0 until jsonArr.length()) {
-                                val ep = jsonArr.getJSONObject(i)
-                                val epLink = ep.optString("link", "")
-                                val epSlug = ep.optString("slug", "")
-                                val epRendTitle = ep.optJSONObject("title")?.optString("rendered", epSlug) ?: epSlug
-                                val epNumMatch = Regex("episode[- _]*(\\d+)", RegexOption.IGNORE_CASE).find(epSlug)
-                                val epNum = epNumMatch?.groupValues?.get(1)?.toIntOrNull() ?: (i + 1)
-                                if (epLink.isNotBlank()) {
-                                    episodes.add(newEpisode(epLink) {
-                                        this.episode = epNum
-                                        this.name = epRendTitle.trim()
-                                    })
-                                }
+            // 1. Fetch dates via WP REST API search (fast, reliable metadata)
+            val dateMap = mutableMapOf<String, Long>()
+            try {
+                val cleanTitle = title.replace(Regex("(?i)season.*|\\(.*?\\)"), "").trim()
+                val encTitle = URLEncoder.encode(cleanTitle, "UTF-8")
+                val restUrl = "$mainUrl/wp-json/wp/v2/episode/?search=$encTitle&per_page=100"
+                val restResp = app.get(restUrl, timeout = 15)
+                if (restResp.isSuccessful && restResp.text.startsWith("[")) {
+                    val arr = org.json.JSONArray(restResp.text)
+                    val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ROOT)
+                    for (i in 0 until arr.length()) {
+                        val epObj = arr.getJSONObject(i)
+                        val slug = epObj.optString("slug", "").trim()
+                        val link = epObj.optString("link", "").trim()
+                        val dateStr = epObj.optString("date", "").trim()
+                        if (dateStr.isNotBlank()) {
+                            val timeMillis = try { isoFormat.parse(dateStr)?.time } catch (_: Exception) { null }
+                            if (timeMillis != null) {
+                                if (slug.isNotBlank()) dateMap[slug] = timeMillis
+                                val normLink = fixUrl(link).trimEnd('/')
+                                dateMap[normLink] = timeMillis
+                                val slugFromLink = normLink.substringAfterLast("/")
+                                dateMap[slugFromLink] = timeMillis
                             }
-                            keepFetching = jsonArr.length() == 100
-                            page++
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e("Terbit21Provider", "REST episode fetch error: ${e.message}")
+                }
+            } catch (_: Exception) {}
+
+            // 2. Parse episode elements from .gmr-listseries
+            val listSeriesElements = document.select(".gmr-listseries a").filter {
+                !it.hasClass("gmr-all-serie") && !it.text().contains("View All", true)
+            }
+
+            if (listSeriesElements.isNotEmpty()) {
+                listSeriesElements.forEachIndexed { index, el ->
+                    val epHref = fixUrlNull(el.attr("href")) ?: return@forEachIndexed
+                    val epText = el.text().trim()
+                    val titleAttr = el.attr("title").removePrefix("Permalink to ").removePrefix("Permalink ke: ").trim()
+
+                    val seasonNum = Regex("""(?i)S(\d+)""").find(epText)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                    val epNum = Regex("""(?i)Eps?(\d+)""").find(epText)?.groupValues?.get(1)?.toIntOrNull()
+                        ?: Regex("""(?i)episode[- ]*(\d+)""").find(epHref)?.groupValues?.get(1)?.toIntOrNull()
+                        ?: (index + 1)
+
+                    val epSlug = epHref.trimEnd('/').substringAfterLast('/')
+                    val epDateMillis = dateMap[epSlug] ?: dateMap[epHref.trimEnd('/')]
+                    val dateFormatted = epDateMillis?.let {
+                        SimpleDateFormat("dd MMM yyyy", Locale.ROOT).format(Date(it))
+                    }
+
+                    val epName = if (!dateFormatted.isNullOrBlank()) {
+                        "Episode $epNum • $dateFormatted"
+                    } else if (titleAttr.isNotBlank()) {
+                        titleAttr
+                    } else {
+                        "Episode $epNum"
+                    }
+
+                    episodes.add(newEpisode(epHref) {
+                        this.name = epName
+                        this.episode = epNum
+                        this.season = seasonNum
+                        this.posterUrl = poster
+                        if (epDateMillis != null) {
+                            this.date = epDateMillis
+                        }
+                        if (!dateFormatted.isNullOrBlank()) {
+                            this.description = "Tarikh Rilis: $dateFormatted"
+                        }
+                    })
                 }
             }
 
-            // Method 4: Fallback - scan /eps/ listing
+            // Fallback: gmr-numpost or gmr-listepisode
             if (episodes.isEmpty()) {
-                try {
-                    val slug = url.trimEnd('/').substringAfterLast("/")
-                    val epsDoc = app.get("$mainUrl/eps/?parent=$slug", timeout = 15).document
-                    epsDoc.select("article a[href*='/eps/'], .entry-title a[href*='/eps/']").forEachIndexed { index, el ->
-                        val epUrl = el.attr("href")
-                        if (epUrl.isNotBlank()) {
-                            episodes.add(newEpisode(epUrl) {
-                                this.episode = index + 1
-                                this.name = el.text().ifBlank { "Episode ${index + 1}" }
-                            })
-                        }
+                val fallbackEps = document.select("a.gmr-numpost, .gmr-listepisode a, .list-episode a")
+                fallbackEps.forEachIndexed { index, el ->
+                    val epHref = fixUrlNull(el.attr("href")) ?: return@forEachIndexed
+                    val epText = el.text().trim()
+                    val epNum = epText.replace(Regex("[^0-9]"), "").toIntOrNull() ?: (index + 1)
+                    val epSlug = epHref.trimEnd('/').substringAfterLast('/')
+                    val epDateMillis = dateMap[epSlug] ?: dateMap[epHref.trimEnd('/')]
+                    val dateFormatted = epDateMillis?.let {
+                        SimpleDateFormat("dd MMM yyyy", Locale.ROOT).format(Date(it))
                     }
-                } catch (e: Exception) { }
+
+                    val epName = if (!dateFormatted.isNullOrBlank()) {
+                        "Episode $epNum • $dateFormatted"
+                    } else {
+                        "Episode $epNum"
+                    }
+
+                    episodes.add(newEpisode(epHref) {
+                        this.name = epName
+                        this.episode = epNum
+                        this.season = 1
+                        this.posterUrl = poster
+                        if (epDateMillis != null) {
+                            this.date = epDateMillis
+                        }
+                        if (!dateFormatted.isNullOrBlank()) {
+                            this.description = "Tarikh Rilis: $dateFormatted"
+                        }
+                    })
+                }
             }
 
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.sortedBy { it.episode ?: 0 }) {
                 this.posterUrl = poster
                 this.plot = plot
+                this.year = year
+                if (scoreVal != null) {
+                    this.score = Score.from10(scoreVal)
+                }
             }
         } else {
             return newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = plot
+                this.year = year
+                if (scoreVal != null) {
+                    this.score = Score.from10(scoreVal)
+                }
             }
         }
     }
@@ -248,39 +294,41 @@ class Terbit21Provider : MainAPI() {
                 ).firstOrNull { it.isNotBlank() && !it.equals("about:blank", true) && !it.startsWith("javascript", true) }
             }
 
-            // 1. All direct iframes on the page
+            val candidateUrls = mutableListOf<String>()
+
+            // 1. Direct iframes on the page
             doc.select("iframe").forEach { iframe ->
                 val src = iframe.getIframeSrc()
                 if (!src.isNullOrBlank()) {
-                    val fixedSrc = fixUrl(src)
-                    if (!fixedSrc.contains("youtube.com") && !fixedSrc.contains("youtu.be")) {
-                        if (loadExtractor(fixedSrc, data, subtitleCallback, callback)) found = true
+                    val fixed = fixUrl(src)
+                    if (!fixed.contains("youtube.com") && !fixed.contains("youtu.be")) {
+                        candidateUrls.add(fixed)
                     }
                 }
             }
 
-            // 2. Server tab links (MuviPro/GMR - separate page per server)
+            // 2. Server sub-page / tab links (e.g. ?player=2, ?player=3, .gmr-server-wrap a)
             val serverTabLinks = mutableListOf<String>()
-            doc.select(".gmr-server-wrap a, ul.muvipro-player-tabs a, ul.gmr-player-tabs a, .gmr-player-nav a, ul#gmr-tab a").forEach { a ->
-                val href = a.attr("href")
-                if (href.isNotBlank() && !href.startsWith("#")
-                    && href != "javascript:void(0)"
-                    && !href.contains("youtube.com")
-                    && !href.contains("youtu.be")
-                    && href != data) {
+            doc.select(".gmr-server-wrap a, ul.muvipro-player-tabs a, ul.gmr-player-tabs a, .gmr-player-nav a, ul#gmr-tab a, a[href*='?player='], a[href*='&player=']").forEach { a ->
+                val href = a.attr("href").trim()
+                if (href.isNotBlank() && !href.startsWith("#") && !href.startsWith("javascript", true)
+                    && !href.contains("youtube.com") && !href.contains("youtu.be")) {
                     val resolved = fixUrl(href)
-                    if (resolved.isNotBlank() && resolved != data) serverTabLinks.add(resolved)
+                    if (resolved != data) {
+                        serverTabLinks.add(resolved)
+                    }
                 }
             }
-            serverTabLinks.distinct().take(6).forEach { tabUrl ->
+
+            serverTabLinks.distinct().take(8).forEach { tabUrl ->
                 try {
                     val tabDoc = app.get(tabUrl, timeout = 20, headers = mapOf("Referer" to data)).document
                     tabDoc.select("iframe").forEach { iframe ->
                         val src = iframe.getIframeSrc()
                         if (!src.isNullOrBlank()) {
-                            val fixedSrc = fixUrl(src)
-                            if (!fixedSrc.contains("youtube.com") && !fixedSrc.contains("youtu.be")) {
-                                if (loadExtractor(fixedSrc, tabUrl, subtitleCallback, callback)) found = true
+                            val fixed = fixUrl(src)
+                            if (!fixed.contains("youtube.com") && !fixed.contains("youtu.be")) {
+                                candidateUrls.add(fixed)
                             }
                         }
                     }
@@ -293,6 +341,7 @@ class Terbit21Provider : MainAPI() {
             val postId = doc.selectFirst("div.gmr-server-wrap[data-id], div[data-id]")?.attr("data-id")
                 ?: doc.selectFirst("body")?.classNames()
                     ?.firstOrNull { it.startsWith("postid-") }?.removePrefix("postid-")
+
             if (!postId.isNullOrBlank()) {
                 doc.select("ul.muvipro-player-tabs a[href^='#p'], ul.nav-tabs a[href^='#p']").forEach { a ->
                     val tabName = a.attr("href").removePrefix("#").trim()
@@ -308,7 +357,7 @@ class Terbit21Provider : MainAPI() {
                             if (!tabSrc.isNullOrBlank()) {
                                 val fixedSrc = fixUrl(tabSrc)
                                 if (!fixedSrc.contains("youtube.com")) {
-                                    if (loadExtractor(fixedSrc, data, subtitleCallback, callback)) found = true
+                                    candidateUrls.add(fixedSrc)
                                 }
                             }
                         } catch (e: Exception) {
@@ -318,36 +367,66 @@ class Terbit21Provider : MainAPI() {
                 }
             }
 
-            // 4. Dooplay/Muvipro [data-post][data-nume] AJAX buttons (fallback)
-            if (!found) {
-                doc.select("[data-post][data-nume]").take(8).forEach { btn ->
-                    val post = btn.attr("data-post").ifEmpty { btn.attr("data-id") }
-                    val nume = btn.attr("data-nume").ifEmpty { "1" }
-                    val type = btn.attr("data-type").ifEmpty { "movie" }
-                    if (post.isNotBlank()) {
-                        listOf("doo_player_ajax", "dt_player_ajax", "zt_main_ajax").forEach { act ->
-                            try {
-                                val res = app.post(
-                                    "$mainUrl/wp-admin/admin-ajax.php",
-                                    data = mapOf("action" to act, "post" to post, "nume" to nume, "type" to type),
-                                    headers = mapOf("Referer" to data, "X-Requested-With" to "XMLHttpRequest")
-                                ).text
-                                if (res.isNotBlank() && res != "0" && res != "false") {
-                                    val embedUrl = if (res.trim().startsWith("{")) {
-                                        val j = org.json.JSONObject(res)
-                                        j.optString("embed_url", j.optString("url", j.optString("src", "")))
-                                    } else {
-                                        Jsoup.parse(res).selectFirst("iframe")?.attr("src") ?: ""
-                                    }
-                                    if (embedUrl.startsWith("http") || embedUrl.startsWith("//")) {
-                                        val fixedEmbed = fixUrl(embedUrl)
-                                        if (!fixedEmbed.contains("youtube.com")) {
-                                            if (loadExtractor(fixedEmbed, data, subtitleCallback, callback)) found = true
-                                        }
-                                    }
-                                }
-                            } catch (_: Exception) {}
+            // 4. Process all candidate URLs through specialized extractors
+            candidateUrls.distinct().forEach { embedUrl ->
+                try {
+                    when {
+                        embedUrl.contains("sf21.rpmvid.com") -> {
+                            Sf21RpmvidCom().getUrl(embedUrl, data, subtitleCallback) {
+                                found = true
+                                callback(it)
+                            }
                         }
+                        embedUrl.contains("sf21.vidplayer.live") -> {
+                            Sf21VidplayerLive().getUrl(embedUrl, data, subtitleCallback) {
+                                found = true
+                                callback(it)
+                            }
+                        }
+                        embedUrl.contains("abyssplayer.com") -> {
+                            PlayerAbyssplayerCom().getUrl(embedUrl, data, subtitleCallback) {
+                                found = true
+                                callback(it)
+                            }
+                        }
+                        embedUrl.contains("morencius.com") -> {
+                            MorenciusCom().getUrl(embedUrl, data, subtitleCallback) {
+                                found = true
+                                callback(it)
+                            }
+                        }
+                        embedUrl.contains("hgcloud.to") || embedUrl.contains("masukestin.com") -> {
+                            HgcloudTo().getUrl(embedUrl, data, subtitleCallback) {
+                                found = true
+                                callback(it)
+                            }
+                        }
+                        embedUrl.contains("embedpyrox.xyz") -> {
+                            EmbedpyroxXyz().getUrl(embedUrl, data, subtitleCallback) {
+                                found = true
+                                callback(it)
+                            }
+                        }
+                        else -> {
+                            if (loadExtractor(embedUrl, data, subtitleCallback, callback)) {
+                                found = true
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("Terbit21Provider", "Error extracting candidate [$embedUrl]: ${e.message}")
+                }
+            }
+
+            // 5. Fallback: check page HTML for unpacked JS or direct m3u8 if no links found yet
+            if (!found) {
+                val pageHtml = doc.html()
+                val m3u8Regex = Regex("""https?://[^\s"']+\.m3u8[^\s"']*""", RegexOption.IGNORE_CASE)
+                m3u8Regex.findAll(pageHtml).forEach { m ->
+                    val videoUrl = m.value.trim()
+                    generateM3u8(name, videoUrl, data).forEach { link ->
+                        found = true
+                        callback(link)
                     }
                 }
             }

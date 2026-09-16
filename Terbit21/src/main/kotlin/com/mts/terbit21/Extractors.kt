@@ -9,6 +9,7 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import java.security.MessageDigest
@@ -16,157 +17,20 @@ import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-class Sf21VidplayerLive : ExtractorApi() {
-    override var name = "Sf21VidplayerLive"
-    override var mainUrl = "https://sf21.vidplayer.live"
-    override val requiresReferer = true
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val doc = app.get(url, referer = referer ?: mainUrl).document
-
-        // Use for() loops for suspend functions - forEach{} breaks suspend context
-        for (el in doc.select("video source[src], video[src], source[src]")) {
-            val src = el.attr("src").trim()
-            if (src.isNotBlank() && (src.startsWith("http") || src.startsWith("//"))) {
-                val u = if (src.startsWith("//")) "https:$src" else src
-                try { loadExtractor(u, url, subtitleCallback, callback) } catch (_: Exception) {}
-            }
-        }
-
-        for (ifr in doc.select("iframe[src], iframe[data-src]")) {
-            val s1 = ifr.attr("src").trim()
-            val src = if (s1.isNotBlank()) s1 else ifr.attr("data-src").trim()
-            if (src.isNotBlank() && (src.startsWith("http") || src.startsWith("//"))) {
-                val u = if (src.startsWith("//")) "https:$src" else src
-                try { loadExtractor(u, url, subtitleCallback, callback) } catch (_: Exception) {}
-            }
-        }
-
-        // Regex is not suspend - forEach is OK here
-        for (script in doc.select("script")) {
-            val content = script.data()
-            if (content.isBlank()) continue
-            val rx = Regex("""https?://\S+\.(?:mp4|m3u8|webm)\S*""")
-            rx.findAll(content).forEach { m ->
-                val videoUrl = m.value
-                callback(
-                    newExtractorLink(
-                        source = name, name = name, url = videoUrl,
-                        type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = url
-                        this.quality = Qualities.Unknown.value
-                    }
-                )
-            }
-
-            val rxGoogle = Regex("""https?://[^\s"\']+/videoplayback[^\s"\']*""")
-            rxGoogle.findAll(content).forEach { m ->
-                val videoUrl = m.value
-                callback(
-                    newExtractorLink(
-                        source = name, name = name, url = videoUrl,
-                        type = ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = url
-                        this.quality = Qualities.Unknown.value
-                    }
-                )
-            }
-        }
-    }
-}
-
-class Sf21RpmvidCom : ExtractorApi() {
+open class Sf21RpmvidCom : ExtractorApi() {
     override var name = "Sf21RpmvidCom"
     override var mainUrl = "https://sf21.rpmvid.com"
     override val requiresReferer = true
 
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val doc = app.get(url, referer = referer ?: mainUrl).document
-
-        // Use for() loops for suspend functions - forEach{} breaks suspend context
-        for (el in doc.select("video source[src], video[src], source[src]")) {
-            val src = el.attr("src").trim()
-            if (src.isNotBlank() && (src.startsWith("http") || src.startsWith("//"))) {
-                val u = if (src.startsWith("//")) "https:$src" else src
-                try { loadExtractor(u, url, subtitleCallback, callback) } catch (_: Exception) {}
-            }
-        }
-
-        for (ifr in doc.select("iframe[src], iframe[data-src]")) {
-            val s1 = ifr.attr("src").trim()
-            val src = if (s1.isNotBlank()) s1 else ifr.attr("data-src").trim()
-            if (src.isNotBlank() && (src.startsWith("http") || src.startsWith("//"))) {
-                val u = if (src.startsWith("//")) "https:$src" else src
-                try { loadExtractor(u, url, subtitleCallback, callback) } catch (_: Exception) {}
-            }
-        }
-
-        // Regex is not suspend - forEach is OK here
-        for (script in doc.select("script")) {
-            val content = script.data()
-            if (content.isBlank()) continue
-            val rx = Regex("""https?://\S+\.(?:mp4|m3u8|webm)\S*""")
-            rx.findAll(content).forEach { m ->
-                val videoUrl = m.value
-                callback(
-                    newExtractorLink(
-                        source = name, name = name, url = videoUrl,
-                        type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = url
-                        this.quality = Qualities.Unknown.value
-                    }
-                )
-            }
-
-            val rxGoogle = Regex("""https?://[^\s"\']+/videoplayback[^\s"\']*""")
-            rxGoogle.findAll(content).forEach { m ->
-                val videoUrl = m.value
-                callback(
-                    newExtractorLink(
-                        source = name, name = name, url = videoUrl,
-                        type = ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = url
-                        this.quality = Qualities.Unknown.value
-                    }
-                )
-            }
-        }
+    protected fun decryptAes128Cbc(hexCipher: String, keyStr: String, ivStr: String): String {
+        val keySpec = SecretKeySpec(keyStr.toByteArray(Charsets.UTF_8), "AES")
+        val ivSpec = IvParameterSpec(ivStr.toByteArray(Charsets.UTF_8))
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+        val cipherBytes = hexCipher.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val decryptedBytes = cipher.doFinal(cipherBytes)
+        return String(decryptedBytes, Charsets.UTF_8)
     }
-}
-
-class New13Savefilm21InfoCom : StreamWishExtractor() {
-    override var name = "New13Savefilm21InfoCom"
-    override var mainUrl = "https://new13.savefilm21info.com"
-}
-
-class S3Bk21Net : StreamWishExtractor() {
-    override var name = "S3Bk21Net"
-    override var mainUrl = "https://s3.bk21.net"
-}
-
-class FileditchfilesMe : StreamWishExtractor() {
-    override var name = "FileditchfilesMe"
-    override var mainUrl = "https://fileditchfiles.me"
-}
-
-class EmbedpyroxXyz : ExtractorApi() {
-    override var name = "EmbedpyroxXyz"
-    override var mainUrl = "https://embedpyrox.xyz"
-    override val requiresReferer = true
 
     override suspend fun getUrl(
         url: String,
@@ -175,77 +39,141 @@ class EmbedpyroxXyz : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val cleanUrl = url.replace(92.toChar().toString(), "")
-        val id = cleanUrl.substringAfter("/video/").substringBefore("/").substringBefore("?")
-        if (id.isEmpty()) return
+        val id = if (cleanUrl.contains("#")) {
+            cleanUrl.substringAfter("#").substringBefore("&").substringBefore("/").trim()
+        } else if (cleanUrl.contains("/e/")) {
+            cleanUrl.substringAfter("/e/").substringBefore("&").substringBefore("/").trim()
+        } else {
+            cleanUrl.trimEnd('/').substringAfterLast("/").substringBefore("?").substringBefore("#").trim()
+        }
 
-        val ajaxUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
-        val response = app.post(
-            url = ajaxUrl,
-            data = mapOf("hash" to id, "r" to (referer ?: "")),
-            headers = mapOf(
-                "X-Requested-With" to "XMLHttpRequest",
-                "Referer" to cleanUrl,
-                "Origin" to mainUrl,
-                "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
-            )
-        )
-        if (!response.isSuccessful) return
-        val text = response.text
-        val json = runCatching { org.json.JSONObject(text) }.getOrNull()
-        if (json != null) {
-            val refHeader = mapOf("Referer" to mainUrl, "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            if (json.has("securedLink")) {
-                val s1 = json.getString("securedLink").replace(92.toChar().toString() + "/", "/")
-                if (s1.isNotBlank()) {
-                    callback(newExtractorLink(name, "$name - Server 1", s1, ExtractorLinkType.M3U8) {
-                        this.referer = mainUrl
-                        this.headers = refHeader
-                    })
+        var found = false
+        if (id.isNotBlank()) {
+            try {
+                val refHost = try { java.net.URI(referer ?: mainUrl).host ?: "162.244.95.227" } catch (_: Exception) { "162.244.95.227" }
+                val videoApiUrl = "$mainUrl/api/v1/video?id=$id&w=1920&h=1080&r=$refHost"
+                val res = app.get(
+                    videoApiUrl,
+                    headers = mapOf(
+                        "Referer" to "$mainUrl/#$id",
+                        "Origin" to mainUrl,
+                        "User-Agent" to USER_AGENT,
+                        "Accept" to "*/*"
+                    ),
+                    timeout = 15
+                )
+                if (res.isSuccessful && res.text.isNotBlank()) {
+                    val decrypted = decryptAes128Cbc(res.text, "kiemtienmua911ca", "1234567890oiuytr")
+                    val json = org.json.JSONObject(decrypted)
+
+                    // 1. cfNative (Cloudflare Master M3U8)
+                    val cfNative = json.optString("cfNative", "").trim()
+                    if (cfNative.isNotBlank()) {
+                        generateM3u8(name, cfNative, "$mainUrl/").forEach { link ->
+                            found = true
+                            callback(link)
+                        }
+                        callback(
+                            newExtractorLink(
+                                source = name,
+                                name = "$name - Cloudflare",
+                                url = cfNative,
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = "$mainUrl/"
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                        found = true
+                    }
+
+                    // 2. source (Direct IP Master M3U8)
+                    val source = json.optString("source", "").trim()
+                    if (source.isNotBlank() && source != cfNative) {
+                        generateM3u8(name, source, "$mainUrl/").forEach { link ->
+                            found = true
+                            callback(link)
+                        }
+                        callback(
+                            newExtractorLink(
+                                source = name,
+                                name = "$name - Direct",
+                                url = source,
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = "$mainUrl/"
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                        found = true
+                    }
                 }
+            } catch (e: Exception) {
+                android.util.Log.e(name, "API decrypt error: ${e.message}")
             }
-            if (json.has("videoSource")) {
-                val s2 = json.getString("videoSource").replace(92.toChar().toString() + "/", "/")
-                if (s2.isNotBlank()) {
-                    callback(newExtractorLink(name, "$name - Server 2", s2, if (s2.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
-                        this.referer = mainUrl
-                        this.headers = refHeader
-                    })
+        }
+
+        // Fallback: parse HTML for direct sources, scripts, or iframes
+        if (!found) {
+            try {
+                val doc = app.get(cleanUrl, referer = referer ?: mainUrl).document
+                for (el in doc.select("video source[src], video[src], source[src]")) {
+                    val src = el.attr("src").trim()
+                    if (src.isNotBlank() && (src.startsWith("http") || src.startsWith("//"))) {
+                        val u = if (src.startsWith("//")) "https:$src" else src
+                        try { loadExtractor(u, cleanUrl, subtitleCallback, callback) } catch (_: Exception) {}
+                    }
                 }
-            }
-            if (json.has("hlsVideoTiktok")) {
-                val s3 = json.getString("hlsVideoTiktok").replace(92.toChar().toString() + "/", "/")
-                if (s3.isNotBlank()) {
-                    callback(newExtractorLink(name, "$name - Server 3", s3, ExtractorLinkType.M3U8) {
-                        this.referer = mainUrl
-                        this.headers = refHeader
-                    })
+                for (ifr in doc.select("iframe[src], iframe[data-src]")) {
+                    val s1 = ifr.attr("src").trim()
+                    val src = if (s1.isNotBlank()) s1 else ifr.attr("data-src").trim()
+                    if (src.isNotBlank() && (src.startsWith("http") || src.startsWith("//"))) {
+                        val u = if (src.startsWith("//")) "https:$src" else src
+                        try { loadExtractor(u, cleanUrl, subtitleCallback, callback) } catch (_: Exception) {}
+                    }
                 }
-            }
+                for (script in doc.select("script")) {
+                    val content = script.data()
+                    if (content.isBlank()) continue
+                    val rx = Regex("""https?://\S+\.(?:mp4|m3u8|webm)\S*""")
+                    rx.findAll(content).forEach { m ->
+                        val videoUrl = m.value
+                        callback(
+                            newExtractorLink(
+                                source = name, name = name, url = videoUrl,
+                                type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = cleanUrl
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                    }
+                }
+            } catch (_: Exception) {}
         }
     }
 }
 
-class MorenciusCom : StreamWishExtractor() {
-    override var name = "MorenciusCom"
-    override var mainUrl = "https://morencius.com"
+class Sf21VidplayerLive : Sf21RpmvidCom() {
+    override var name = "Sf21VidplayerLive"
+    override var mainUrl = "https://sf21.vidplayer.live"
 }
 
-class AbyssplayerCom : ExtractorApi() {
+open class AbyssplayerCom : ExtractorApi() {
     override var name = "AbyssplayerCom"
     override var mainUrl = "https://abyssplayer.com"
     override val requiresReferer = true
 
     private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
-        val spec = javax.crypto.spec.SecretKeySpec(key, "AES")
-        val parameterSpec = javax.crypto.spec.IvParameterSpec(iv)
-        val cipher = javax.crypto.Cipher.getInstance("AES/CTR/NoPadding")
-        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, spec, parameterSpec)
+        val spec = SecretKeySpec(key, "AES")
+        val parameterSpec = IvParameterSpec(iv)
+        val cipher = Cipher.getInstance("AES/CTR/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, spec, parameterSpec)
         return cipher.doFinal(ciphertext)
     }
 
     private fun md5(input: ByteArray): ByteArray {
-        val md = java.security.MessageDigest.getInstance("MD5")
+        val md = MessageDigest.getInstance("MD5")
         return md.digest(input)
     }
 
@@ -257,7 +185,8 @@ class AbyssplayerCom : ExtractorApi() {
     ) {
         try {
             val cleanUrl = url.replace(92.toChar().toString(), "")
-            val pageHtml = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: mainUrl))).text
+            val ref = referer ?: mainUrl
+            val pageHtml = app.get(cleanUrl, headers = mapOf("Referer" to ref)).text
 
             val rx = Regex("const datas\\s*=\\s*\"([^\"]+)\"")
             val base64Str = rx.find(pageHtml)?.groupValues?.get(1) ?: return
@@ -328,7 +257,220 @@ class AbyssplayerCom : ExtractorApi() {
                 )
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e(name, "Abyss decrypt error: ${e.message}")
+        }
+    }
+}
+
+class PlayerAbyssplayerCom : AbyssplayerCom() {
+    override var name = "PlayerAbyssplayerCom"
+    override var mainUrl = "https://player.abyssplayer.com"
+}
+
+class MorenciusCom : StreamWishExtractor() {
+    override var name = "MorenciusCom"
+    override var mainUrl = "https://morencius.com"
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        var found = false
+        try {
+            super.getUrl(url, referer, subtitleCallback) { link ->
+                found = true
+                callback(link)
+            }
+        } catch (_: Exception) {}
+
+        if (!found) {
+            try {
+                val cleanUrl = url.replace(92.toChar().toString(), "")
+                val resp = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: mainUrl), "User-Agent" to USER_AGENT)).text
+                val m3u8Regex = Regex("""https?://[^\s"']+\.m3u8[^\s"']*""", RegexOption.IGNORE_CASE)
+                m3u8Regex.findAll(resp).forEach { m ->
+                    val m3u8 = m.value.trim()
+                    generateM3u8(name, m3u8, cleanUrl).forEach(callback)
+                    callback(
+                        newExtractorLink(name, name, m3u8, ExtractorLinkType.M3U8) {
+                            this.referer = cleanUrl
+                            this.quality = Qualities.Unknown.value
+                        }
+                    )
+                    found = true
+                }
+                if (!found && resp.contains("eval(function(p,a,c,k,e,d)")) {
+                    val unpacked = getAndUnpack(resp)
+                    m3u8Regex.findAll(unpacked).forEach { m ->
+                        val m3u8 = m.value.trim()
+                        generateM3u8(name, m3u8, cleanUrl).forEach(callback)
+                        callback(
+                            newExtractorLink(name, name, m3u8, ExtractorLinkType.M3U8) {
+                                this.referer = cleanUrl
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+}
+
+class New13Savefilm21InfoCom : StreamWishExtractor() {
+    override var name = "New13Savefilm21InfoCom"
+    override var mainUrl = "https://new13.savefilm21info.com"
+}
+
+class S3Bk21Net : StreamWishExtractor() {
+    override var name = "S3Bk21Net"
+    override var mainUrl = "https://s3.bk21.net"
+}
+
+class FileditchfilesMe : StreamWishExtractor() {
+    override var name = "FileditchfilesMe"
+    override var mainUrl = "https://fileditchfiles.me"
+}
+
+class HgcloudTo : StreamWishExtractor() {
+    override var name = "HgcloudTo"
+    override var mainUrl = "https://hgcloud.to"
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.replace("/e/", "/#").replace(92.toChar().toString(), "")
+        val id = cleanUrl.substringAfter("#").substringBefore("&").substringBefore("/").trim()
+        var found = false
+        if (id.isNotBlank()) {
+            try {
+                val refHost = try { java.net.URI(referer ?: mainUrl).host ?: "162.244.95.227" } catch (_: Exception) { "162.244.95.227" }
+                val videoApiUrl = "$mainUrl/api/v1/video?id=$id&w=1920&h=1080&r=$refHost"
+                val res = app.get(
+                    videoApiUrl,
+                    headers = mapOf(
+                        "Referer" to "$mainUrl/#$id",
+                        "Origin" to mainUrl,
+                        "User-Agent" to USER_AGENT,
+                        "Accept" to "*/*"
+                    ),
+                    timeout = 15
+                )
+                if (res.isSuccessful && res.text.isNotBlank()) {
+                    val keySpec = SecretKeySpec("kiemtienmua911ca".toByteArray(Charsets.UTF_8), "AES")
+                    val ivSpec = IvParameterSpec("1234567890oiuytr".toByteArray(Charsets.UTF_8))
+                    val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+                    cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
+                    val cipherBytes = res.text.trim().chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                    val decrypted = String(cipher.doFinal(cipherBytes), Charsets.UTF_8)
+                    val json = org.json.JSONObject(decrypted)
+
+                    val cfNative = json.optString("cfNative", "").trim()
+                    if (cfNative.isNotBlank()) {
+                        generateM3u8(name, cfNative, "$mainUrl/").forEach(callback)
+                        callback(
+                            newExtractorLink(name, "$name - Cloudflare", cfNative, ExtractorLinkType.M3U8) {
+                                this.referer = "$mainUrl/"
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                        found = true
+                    }
+                    val source = json.optString("source", "").trim()
+                    if (source.isNotBlank() && source != cfNative) {
+                        generateM3u8(name, source, "$mainUrl/").forEach(callback)
+                        callback(
+                            newExtractorLink(name, "$name - Direct", source, ExtractorLinkType.M3U8) {
+                                this.referer = "$mainUrl/"
+                                this.quality = Qualities.Unknown.value
+                            }
+                        )
+                        found = true
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        if (!found) {
+            try {
+                super.getUrl(url, referer, subtitleCallback) { link ->
+                    found = true
+                    callback(link)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+}
+
+class MasukestinCom : StreamWishExtractor() {
+    override var name = "MasukestinCom"
+    override var mainUrl = "https://masukestin.com"
+}
+
+class EmbedpyroxXyz : ExtractorApi() {
+    override var name = "EmbedpyroxXyz"
+    override var mainUrl = "https://embedpyrox.xyz"
+    override val requiresReferer = true
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.replace(92.toChar().toString(), "")
+        val id = cleanUrl.substringAfter("/video/").substringBefore("/").substringBefore("?")
+        if (id.isEmpty()) return
+
+        val ajaxUrl = "$mainUrl/player/index.php?data=$id&do=getVideo"
+        val response = app.post(
+            url = ajaxUrl,
+            data = mapOf("hash" to id, "r" to (referer ?: "")),
+            headers = mapOf(
+                "X-Requested-With" to "XMLHttpRequest",
+                "Referer" to cleanUrl,
+                "Origin" to mainUrl,
+                "User-Agent" to USER_AGENT,
+                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
+            )
+        )
+        if (!response.isSuccessful) return
+        val text = response.text
+        val json = runCatching { org.json.JSONObject(text) }.getOrNull()
+        if (json != null) {
+            val refHeader = mapOf("Referer" to mainUrl, "User-Agent" to USER_AGENT)
+            if (json.has("securedLink")) {
+                val s1 = json.getString("securedLink").replace(92.toChar().toString() + "/", "/")
+                if (s1.isNotBlank()) {
+                    callback(newExtractorLink(name, "$name - Server 1", s1, ExtractorLinkType.M3U8) {
+                        this.referer = mainUrl
+                        this.headers = refHeader
+                    })
+                }
+            }
+            if (json.has("videoSource")) {
+                val s2 = json.getString("videoSource").replace(92.toChar().toString() + "/", "/")
+                if (s2.isNotBlank()) {
+                    callback(newExtractorLink(name, "$name - Server 2", s2, if (s2.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO) {
+                        this.referer = mainUrl
+                        this.headers = refHeader
+                    })
+                }
+            }
+            if (json.has("hlsVideoTiktok")) {
+                val s3 = json.getString("hlsVideoTiktok").replace(92.toChar().toString() + "/", "/")
+                if (s3.isNotBlank()) {
+                    callback(newExtractorLink(name, "$name - Server 3", s3, ExtractorLinkType.M3U8) {
+                        this.referer = mainUrl
+                        this.headers = refHeader
+                    })
+                }
+            }
         }
     }
 }
@@ -363,6 +505,9 @@ class RpmPlayShare : ExtractorApi() {
 
         if (videoUrl != null) {
             val isM3u8 = videoUrl.contains(".m3u8")
+            if (isM3u8) {
+                generateM3u8(this.name, videoUrl, ref).forEach(callback)
+            }
             callback.invoke(
                 newExtractorLink(
                     source = this.name,
