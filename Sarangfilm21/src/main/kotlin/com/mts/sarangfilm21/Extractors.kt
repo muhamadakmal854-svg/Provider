@@ -1,6 +1,7 @@
 package com.mts.sarangfilm21
 
 import android.util.Base64
+import android.util.Log
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.ExtractorApi
@@ -55,10 +56,12 @@ class AbyssExtractor : ExtractorApi() {
             val decodedBytes = Base64.decode(base64Str, Base64.DEFAULT)
             val latin1Str = String(decodedBytes, Charsets.ISO_8859_1)
             val json = JSONObject(latin1Str)
-            val slug = json.getString("slug")
-            val userId = json.getString("user_id")
-            val md5Id = json.getString("md5_id")
-            val media = json.getString("media")
+            val slug = json.opt("slug")?.toString() ?: ""
+            val userId = json.opt("user_id")?.toString() ?: ""
+            val md5Id = json.opt("md5_id")?.toString() ?: ""
+            val media = json.opt("media")?.toString() ?: ""
+            if (media.isBlank() || userId.isBlank() || md5Id.isBlank()) return
+
             val keyStr = "$userId:$slug:$md5Id"
             val keyBytesStr = md5(keyStr.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
             val key = keyBytesStr.toByteArray(Charsets.UTF_8)
@@ -131,7 +134,7 @@ class AbyssExtractor : ExtractorApi() {
                 )
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("AbyssExtractor", "Error in AbyssExtractor: ${e.message}")
         }
     }
 }
@@ -158,7 +161,6 @@ class SarangStreamWishExtractor : ExtractorApi() {
             val m3u8Matches = Regex("""https?://[^\s"'\]+\.m3u8[^\s"'\]*""").findAll(unpacked).map { it.value }.toList()
 
             for (m3u8 in m3u8Matches) {
-                // Dual emission: generateM3u8 + direct master link
                 runCatching {
                     generateM3u8(name, m3u8, domain).forEach { callback(it) }
                 }
@@ -175,7 +177,7 @@ class SarangStreamWishExtractor : ExtractorApi() {
                 )
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("StreamWishExtractor", "Error in StreamWishExtractor: ${e.message}")
         }
     }
 }
@@ -245,3 +247,51 @@ class VidhidehubExtractor : VidHideExtractor() {
     override var name = "Vidhidehub"
     override var mainUrl = "https://vidhidehub.com"
 }
+
+open class FilemoonExtractor(
+    override val name: String = "Filemoon",
+    override val mainUrl: String = "https://filemoon.to"
+) : ExtractorApi() {
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        runCatching {
+            val response = app.get(
+                url,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to (referer ?: "https://filemoon.sx/")
+                )
+            )
+            val html = response.text
+            val unpacked = runCatching { getAndUnpack(html) }.getOrDefault("")
+            val content = unpacked.ifBlank { html }
+
+            val m3u8Regex = Regex("""https?://[^'"\s<>]+\.m3u8[^'"\s<>]*""")
+            m3u8Regex.findAll(content).forEach { match ->
+                val m3u8 = match.value
+                runCatching {
+                    generateM3u8(name, m3u8, url).forEach(callback)
+                }
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = "$name HLS",
+                        url = m3u8,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = url
+                        this.quality = Qualities.Unknown.value
+                    }
+                )
+            }
+        }
+    }
+}
+
+class FilemoonSxExtractor : FilemoonExtractor("FilemoonSx", "https://filemoon.sx")

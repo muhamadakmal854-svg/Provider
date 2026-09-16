@@ -94,7 +94,7 @@ open class Sarangfilm21 : MainAPI() {
     private fun Element.toSearchResult(): SearchResponse? {
         val a = (if (this.tagName() == "a") this else this.selectFirst("a")) ?: return null
         val href = fixItemUrl(a.attr("href"))
-        if (href.isBlank() || href == "$mainUrl/" || href.contains("/category/") || href.contains("/genre/")) return null
+        if (href.isBlank() || href == "$mainUrl/" || href.contains("/category/") || href.contains("/genre/") || href.contains("/tag/")) return null
 
         val img = this.selectFirst("img")
         var title = cleanTitle(this.selectFirst(".entry-title, h2, h3, .title")?.text())
@@ -117,8 +117,9 @@ open class Sarangfilm21 : MainAPI() {
         if (poster.startsWith("//")) poster = "http:$poster"
         poster = poster.replace(Regex("""-\d+x\d+(\.[a-zA-Z]+)$"""), "$1")
 
-        val isTv = href.contains("/tv/") || href.contains("/series/") || href.contains("/drama") ||
-                   title.contains("Season", ignoreCase = true) || title.contains("Series", ignoreCase = true)
+        // Pengesanan tepat TV Series vs Movie
+        val isTv = href.contains("/tv/") || href.contains("/series/") ||
+                   title.contains(Regex("""(?i)\b(?:Season\s*\d+|S\d+\b|Series\b)"""))
 
         return if (isTv) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
@@ -232,10 +233,15 @@ open class Sarangfilm21 : MainAPI() {
         val actors = doc.select(".gmr-moviedata").firstOrNull { it.text().contains("Cast", true) }
             ?.select("a")?.map { ActorData(Actor(it.text().trim())) } ?: emptyList()
 
-        val epLinks = doc.select(".gmr-listseries a, a[href*='/eps/'], a.button-shadow")
-            .filter { !it.hasClass("gmr-all-serie") && !it.attr("href").contains("/tv/") }
+        // PENGESANAN TEPAT: Episod siri TV HANYA diambil dari pautan yang mengandungi '/eps/'
+        val epLinks = doc.select(".gmr-listseries a, a[href*='/eps/']")
+            .filter { a ->
+                val h = a.attr("href")
+                h.contains("/eps/") && !a.hasClass("gmr-all-serie") && !h.contains("/tv/")
+            }
             .distinctBy { it.attr("href") }
 
+        // Hanya dianggap TV jika url mengandungi /tv/ atau mempunyai episod sah dengan corak /eps/
         val isTv = fixedUrl.contains("/tv/") || epLinks.isNotEmpty()
 
         if (isTv && epLinks.isNotEmpty()) {
@@ -322,6 +328,7 @@ open class Sarangfilm21 : MainAPI() {
             }
         }
 
+        // Filem sentiasa dipulangkan sebagai MovieLoadResponse tanpa episod
         return newMovieLoadResponse(title, fixedUrl, TvType.Movie, fixedUrl) {
             this.posterUrl = rawPoster
             this.plot = plot
@@ -418,8 +425,16 @@ open class Sarangfilm21 : MainAPI() {
             if (cleanUrl.isBlank() || extractedUrls.contains(cleanUrl) || cleanUrl.startsWith("about:blank", true)) return
             extractedUrls.add(cleanUrl)
 
+            // Automatik tukar cermin domain
+            if (cleanUrl.contains("abysscdn.com")) {
+                cleanUrl = cleanUrl.replace("abysscdn.com", "abyssplayer.com")
+            }
+            if (cleanUrl.contains(".ink")) {
+                cleanUrl = cleanUrl.replace(".ink", ".icu")
+            }
+
             when {
-                cleanUrl.contains("abyssplayer.com", true) || cleanUrl.contains("abysscdn.com", true) || cleanUrl.contains("sssrr.org", true) -> {
+                cleanUrl.contains("abyssplayer.com", true) || cleanUrl.contains("abyss.to", true) || cleanUrl.contains("sssrr.org", true) -> {
                     runCatching {
                         AbyssExtractor().getUrl(cleanUrl, pageReferer, subtitleCallback, callback)
                         found = true
@@ -438,6 +453,16 @@ open class Sarangfilm21 : MainAPI() {
                 cleanUrl.contains("vidhide", true) || cleanUrl.contains("dintezuvio.com", true) || cleanUrl.contains("mevidhides.xyz", true) -> {
                     runCatching {
                         VidHideExtractor().getUrl(cleanUrl, pageReferer, subtitleCallback, callback)
+                        found = true
+                    }
+                    runCatching {
+                        loadExtractor(cleanUrl, pageReferer, subtitleCallback, callback)
+                        found = true
+                    }
+                }
+                cleanUrl.contains("filemoon", true) -> {
+                    runCatching {
+                        FilemoonExtractor().getUrl(cleanUrl, pageReferer, subtitleCallback, callback)
                         found = true
                     }
                     runCatching {
@@ -478,39 +503,58 @@ open class Sarangfilm21 : MainAPI() {
                             var targetUrl = serverUrl.trim()
                             if (targetUrl.isBlank()) continue
 
-                            // Transformasi pelayan playsobat mengikut logik rasmi
-                            when (serverKey.uppercase()) {
-                                "HYDRAX" -> {
-                                    targetUrl = targetUrl.replace(".ink", ".icu")
-                                        .replace("abysscdn.com", "abyssplayer.com")
-                                    processExtractorUrl(targetUrl, embedUrl)
-                                }
-                                "VIDHIDE" -> {
-                                    val id = targetUrl.substringAfterLast("/").substringBefore("?")
+                            // Cermin Abyss / Hydrax
+                            if (targetUrl.contains("abysscdn.com") || targetUrl.contains("abyssplayer.com") || serverKey.equals("HYDRAX", true) || serverKey.equals("SHORT", true)) {
+                                val abyssFixed = targetUrl.replace(".ink", ".icu").replace("abysscdn.com", "abyssplayer.com")
+                                processExtractorUrl(abyssFixed, embedUrl)
+                                continue
+                            }
+
+                            // Cermin VidHide
+                            if (serverKey.equals("VIDHIDE", true) || targetUrl.contains("vidhide") || targetUrl.contains("mevidhides.xyz")) {
+                                val id = targetUrl.substringAfterLast("/").substringBefore("?")
+                                if (id.isNotBlank() && id != "-") {
                                     val dintez = "https://dintezuvio.com/embed/$id"
                                     val vidhidepro = "https://vidhidepro.com/v/$id"
                                     processExtractorUrl(dintez, embedUrl)
                                     processExtractorUrl(vidhidepro, embedUrl)
-                                }
-                                "STREAMWISH" -> {
-                                    val id = targetUrl.substringAfterLast("/").substringBefore("?")
-                                    val hglink = "https://hglink.to/e/$id"
-                                    processExtractorUrl(hglink, embedUrl)
-                                }
-                                "TURBOVIP" -> {
-                                    val id = targetUrl.substringAfterLast("/").substringBefore("?")
-                                    val turbo = "https://turbovidhls.com/t/$id"
-                                    processExtractorUrl(turbo, embedUrl)
-                                }
-                                else -> {
+                                } else {
                                     processExtractorUrl(targetUrl, embedUrl)
                                 }
+                                continue
                             }
+
+                            // Cermin StreamWish
+                            if (serverKey.equals("STREAMWISH", true) || targetUrl.contains("streamwish")) {
+                                val id = targetUrl.substringAfterLast("/").substringBefore("?")
+                                val hglink = "https://hglink.to/e/$id"
+                                processExtractorUrl(hglink, embedUrl)
+                                processExtractorUrl(targetUrl, embedUrl)
+                                continue
+                            }
+
+                            // Cermin Turbovid
+                            if (serverKey.equals("TURBOVIP", true) || targetUrl.contains("turbovid")) {
+                                val id = targetUrl.substringAfterLast("/").substringBefore("?")
+                                val turbo = "https://turbovidhls.com/t/$id"
+                                processExtractorUrl(turbo, embedUrl)
+                                processExtractorUrl(targetUrl, embedUrl)
+                                continue
+                            }
+
+                            // Filemoon
+                            if (serverKey.equals("FILEMOON", true) || targetUrl.contains("filemoon")) {
+                                processExtractorUrl(targetUrl, embedUrl)
+                                continue
+                            }
+
+                            // Lain-lain pelayan
+                            processExtractorUrl(targetUrl, embedUrl)
                         }
                     }
                 }
 
-                // Fallback: cari sebarang iframe di dalam laman playsobat
+                // Fallback: periksa sebarang iframe di dalam laman playsobat
                 val embedDoc = Jsoup.parse(embedHtml)
                 embedDoc.select("iframe").forEach { ifr ->
                     val src = ifr.attr("src").ifBlank { ifr.attr("data-src") }

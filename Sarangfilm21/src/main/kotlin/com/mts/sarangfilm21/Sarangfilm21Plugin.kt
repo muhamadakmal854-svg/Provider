@@ -13,5 +13,7 @@ class Sarangfilm21Plugin : Plugin() {
         registerExtractorAPI(SarangStreamWishExtractor())
         registerExtractorAPI(VidHideExtractor())
         registerExtractorAPI(VidhidehubExtractor())
+        registerExtractorAPI(FilemoonExtractor())
+        registerExtractorAPI(FilemoonSxExtractor())
     }
 }
