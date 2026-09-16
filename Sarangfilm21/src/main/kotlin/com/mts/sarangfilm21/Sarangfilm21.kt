@@ -317,7 +317,7 @@ open class Sarangfilm21 : MainAPI() {
                 this.plot = plot
                 this.year = year
                 this.tags = tags
-                this.rating = ratingText?.toIntOrNull()
+                if (!ratingText.isNullOrBlank()) this.score = Score.from10(ratingText)
                 this.actors = actors
             }
         }
@@ -327,7 +327,7 @@ open class Sarangfilm21 : MainAPI() {
             this.plot = plot
             this.year = year
             this.tags = tags
-            this.rating = ratingText?.toIntOrNull()
+            if (!ratingText.isNullOrBlank()) this.score = Score.from10(ratingText)
             this.actors = actors
         }
     }
