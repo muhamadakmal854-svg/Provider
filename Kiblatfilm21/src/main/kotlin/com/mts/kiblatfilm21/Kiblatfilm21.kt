@@ -68,7 +68,7 @@ class Kiblatfilm21 : MainAPI() {
         "genre/horror" to "👻 Horor Mencekam (Horror)",
         "genre/mystery" to "🔍 Misteri & Teka-Teki (Mystery)",
         "genre/romance" to "💖 Romansa & Cinta (Romance)",
-        "genre/science-fiction" to "🚀 Fiksi Ilmiah (Sci-Fi)",
+        "genre/sci-fi" to "🚀 Fiksi Ilmiah (Sci-Fi)",
         "genre/thriller" to "⚡ Ketegangan Memuncak (Thriller)",
         "genre/animation" to "🎨 Animasi Terbaik (Animation)",
         "country/jp" to "🇯🇵 Sinema Jepang (Japanese Cinema)",
@@ -78,7 +78,7 @@ class Kiblatfilm21 : MainAPI() {
         "country/th" to "🇹🇭 Sinema Thailand",
         "country/in" to "🇮🇳 Sinema Bollywood (India)",
         "country/gb" to "🇬🇧 Sinema United Kingdom (British)",
-        "year" to "✨ Rilisan Terkini 2026"
+        "year/2026" to "✨ Rilisan Terkini 2026"
     )
 
     override suspend fun getMainPage(
@@ -92,19 +92,28 @@ class Kiblatfilm21 : MainAPI() {
             if (page == 1) "$mainUrl/$path" else "$mainUrl/$path?page=$page"
         }
 
-        val document = app.get(pageUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
+        val document = try {
+            app.get(pageUrl, headers = mapOf("User-Agent" to USER_AGENT), timeout = 30).document
+        } catch (e: Exception) {
+            try {
+                kotlinx.coroutines.delay(1000)
+                app.get(pageUrl, headers = mapOf("User-Agent" to USER_AGENT), timeout = 30).document
+            } catch (e2: Exception) {
+                return newHomePageResponse(request.name, emptyList())
+            }
+        }
         val home = ArrayList<SearchResponse>()
         val seenUrls = HashSet<String>()
 
-        val cardElements = document.select("a.content-card, a[href^=\"/movie/\"], a[href^=\"/series/\"]")
+        val cardElements = document.select("a.content-card, a[href^=\"/movie/\"], a[href^=\"/series/\"], a[href^=\"/drama-china/\"]")
         for (card in cardElements) {
             val href = fixUrl(card.attr("href"))
-            if (!href.contains("/movie/") && !href.contains("/series/")) continue
+            if (!href.contains("/movie/") && !href.contains("/series/") && !href.contains("/drama-china/")) continue
             if (href.endsWith("/watch") || href.contains("/episode/")) continue
             if (!seenUrls.add(href)) continue
 
             val title = card.selectFirst("h3")?.text()?.trim()
-                ?: card.selectFirst("img")?.attr("alt")?.trim()
+                ?: card.selectFirst("img")?.attr("alt")?.replace(Regex("(?i)\\s*[-–—~•|]?\\s*drama China.*"), "")?.trim()
                 ?: card.text().trim()
             if (title.isEmpty() || title.equals("Tonton", ignoreCase = true)) continue
 
@@ -115,7 +124,6 @@ class Kiblatfilm21 : MainAPI() {
 
             val isMovie = href.contains("/movie/")
             val quality = card.selectFirst(".content-badge--cyan, .content-badge")?.text()?.trim()
-            val ratingText = card.selectFirst(".tabular-nums")?.text()?.trim()
 
             if (isMovie) {
                 home.add(newMovieSearchResponse(title, href, TvType.Movie) {
@@ -140,15 +148,15 @@ class Kiblatfilm21 : MainAPI() {
         val results = ArrayList<SearchResponse>()
         val seenUrls = HashSet<String>()
 
-        val cardElements = document.select("a.content-card, a[href^=\"/movie/\"], a[href^=\"/series/\"]")
+        val cardElements = document.select("a.content-card, a[href^=\"/movie/\"], a[href^=\"/series/\"], a[href^=\"/drama-china/\"]")
         for (card in cardElements) {
             val href = fixUrl(card.attr("href"))
-            if (!href.contains("/movie/") && !href.contains("/series/")) continue
+            if (!href.contains("/movie/") && !href.contains("/series/") && !href.contains("/drama-china/")) continue
             if (href.endsWith("/watch") || href.contains("/episode/")) continue
             if (!seenUrls.add(href)) continue
 
             val title = card.selectFirst("h3")?.text()?.trim()
-                ?: card.selectFirst("img")?.attr("alt")?.trim()
+                ?: card.selectFirst("img")?.attr("alt")?.replace(Regex("(?i)\\s*[-–—~•|]?\\s*drama China.*"), "")?.trim()
                 ?: card.text().trim()
             if (title.isEmpty() || title.equals("Tonton", ignoreCase = true)) continue
 
@@ -274,61 +282,79 @@ class Kiblatfilm21 : MainAPI() {
             }
         } else {
             val episodes = ArrayList<Episode>()
-            val epLinks = document.select("a.clickable.group.block[href*=\"/episode/\"], a[href*=\"/season/\"][href*=\"/episode/\"]")
-                .filter { it.text().trim() != "Tonton" }
 
-            for (card in epLinks) {
-                val epHref = fixUrl(card.attr("href"))
-                val epTitle = card.selectFirst("h3")?.text()?.trim() ?: "Episode"
-                val epSynopsis = card.selectFirst("p")?.text()?.trim()
-                val epImg = card.selectFirst("img")?.attr("src")?.let { fixUrl(it) } ?: poster
+            if (cleanUrl.contains("/drama-china/")) {
+                // Drama China episode extraction: /drama-china/{slug}/{number}
+                val epNumMatches = Regex("""/drama-china/[^"'\s]+/(\d+)""").findAll(rawHtml).mapNotNull {
+                    it.groupValues[1].toIntOrNull()
+                }.toList()
+                val maxEp = epNumMatches.maxOrNull() ?: 1
+                for (epNum in 1..maxEp) {
+                    val epHref = "$cleanUrl/$epNum"
+                    episodes.add(newEpisode(epHref) {
+                        this.name = "Episode $epNum"
+                        this.season = 1
+                        this.episode = epNum
+                        this.posterUrl = poster
+                    })
+                }
+            } else {
+                val epLinks = document.select("a.clickable.group.block[href*=\"/episode/\"], a[href*=\"/season/\"][href*=\"/episode/\"]")
+                    .filter { it.text().trim() != "Tonton" }
 
-                // Parse season & episode numbers from URL: /season/1/episode/5
-                val seMatch = Regex("""season/(\d+)/episode/(\d+)""").find(epHref)
-                val seasonNum = seMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
-                val epNum = seMatch?.groupValues?.get(2)?.toIntOrNull() ?: 1
+                for (card in epLinks) {
+                    val epHref = fixUrl(card.attr("href"))
+                    val epTitle = card.selectFirst("h3")?.text()?.trim() ?: "Episode"
+                    val epSynopsis = card.selectFirst("p")?.text()?.trim()
+                    val epImg = card.selectFirst("img")?.attr("src")?.let { fixUrl(it) } ?: poster
 
-                // Parse release date from badge, e.g. "25 Mei 26"
-                var epDateMillis: Long? = null
-                val spans = card.select("span")
-                for (s in spans) {
-                    val txt = s.text().trim()
-                    if (Regex("""\d{1,2}\s+[a-zA-Z]+\s+\d{2,4}""").containsMatchIn(txt)) {
-                        epDateMillis = parseIndoDate(txt)
-                        break
+                    // Parse season & episode numbers from URL: /season/1/episode/5
+                    val seMatch = Regex("""season/(\d+)/episode/(\d+)""").find(epHref)
+                    val seasonNum = seMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                    val epNum = seMatch?.groupValues?.get(2)?.toIntOrNull() ?: 1
+
+                    // Parse release date from badge, e.g. "25 Mei 26"
+                    var epDateMillis: Long? = null
+                    val spans = card.select("span")
+                    for (s in spans) {
+                        val txt = s.text().trim()
+                        if (Regex("""\d{1,2}\s+[a-zA-Z]+\s+\d{2,4}""").containsMatchIn(txt)) {
+                            epDateMillis = parseIndoDate(txt)
+                            break
+                        }
                     }
+
+                    episodes.add(newEpisode(epHref) {
+                        this.name = epTitle
+                        this.season = seasonNum
+                        this.episode = epNum
+                        this.posterUrl = epImg
+                        if (epDateMillis != null) {
+                            this.date = epDateMillis
+                        }
+                        if (!epSynopsis.isNullOrBlank()) {
+                            this.description = epSynopsis
+                        }
+                    })
                 }
 
-                episodes.add(newEpisode(epHref) {
-                    this.name = epTitle
-                    this.season = seasonNum
-                    this.episode = epNum
-                    this.posterUrl = epImg
-                    if (epDateMillis != null) {
-                        this.date = epDateMillis
-                    }
-                    if (!epSynopsis.isNullOrBlank()) {
-                        this.description = epSynopsis
-                    }
-                })
-            }
-
-            // Fallback: if no episode cards found in DOM, check Next.js stream links
-            if (episodes.isEmpty()) {
-                val streamEpRegex = Regex("""(/series/[^"'\s]+/season/(\d+)/episode/(\d+))""")
-                val seen = HashSet<String>()
-                streamEpRegex.findAll(rawHtml).forEach { m ->
-                    val epPath = m.groupValues[1]
-                    val sNum = m.groupValues[2].toIntOrNull() ?: 1
-                    val eNum = m.groupValues[3].toIntOrNull() ?: 1
-                    val fullEpHref = fixUrl(epPath)
-                    if (seen.add(fullEpHref)) {
-                        episodes.add(newEpisode(fullEpHref) {
-                            this.name = "Episode $eNum"
-                            this.season = sNum
-                            this.episode = eNum
-                            this.posterUrl = poster
-                        })
+                // Fallback: if no episode cards found in DOM, check Next.js stream links
+                if (episodes.isEmpty()) {
+                    val streamEpRegex = Regex("""(/series/[^"'\s]+/season/(\d+)/episode/(\d+))""")
+                    val seen = HashSet<String>()
+                    streamEpRegex.findAll(rawHtml).forEach { m ->
+                        val epPath = m.groupValues[1]
+                        val sNum = m.groupValues[2].toIntOrNull() ?: 1
+                        val eNum = m.groupValues[3].toIntOrNull() ?: 1
+                        val fullEpHref = fixUrl(epPath)
+                        if (seen.add(fullEpHref)) {
+                            episodes.add(newEpisode(fullEpHref) {
+                                this.name = "Episode $eNum"
+                                this.season = sNum
+                                this.episode = eNum
+                                this.posterUrl = poster
+                            })
+                        }
                     }
                 }
             }
@@ -361,6 +387,24 @@ class Kiblatfilm21 : MainAPI() {
             }
 
             val pageHtml = app.get(targetUrl, headers = mapOf("User-Agent" to USER_AGENT)).text
+
+            // Check direct HTML5 video in page (e.g. drama-china or direct stream)
+            val videoRegex = Regex("""<video[^>]+src=["']([^"']+)["']""")
+            val videoSrc = videoRegex.find(pageHtml)?.groupValues?.get(1)
+            if (!videoSrc.isNullOrBlank()) {
+                callback(
+                    newExtractorLink(
+                        name = name,
+                        source = "$name Direct",
+                        url = fixUrl(videoSrc),
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = targetUrl
+                        this.headers = mapOf("Referer" to targetUrl, "User-Agent" to USER_AGENT)
+                    }
+                )
+                found = true
+            }
 
             // 1. Extract all servers from Next.js embeds JSON
             val serverRegex = Regex("""(?:\\"|")server(?:\\"|")\s*:\s*(?:\\"|")([^\\"]+)(?:\\"|")\s*,\s*(?:\\"|")url(?:\\"|")\s*:\s*(?:\\"|")([^\\"]+)(?:\\"|")""")
