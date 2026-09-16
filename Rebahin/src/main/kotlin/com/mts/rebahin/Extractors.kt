@@ -19,6 +19,8 @@ import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
+private const val BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
 /**
  * Extractor untuk Morencius (morencius.com) dan Minochinos (minochinos.com)
  */
@@ -40,23 +42,49 @@ open class MorenciusExtractor(
             "${u.protocol}://${u.host}"
         } catch (_: Exception) { mainUrl }
 
-        val res = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: "$domain/"))).text
+        val res = runCatching {
+            app.get(
+                cleanUrl,
+                headers = mapOf(
+                    "User-Agent" to BROWSER_UA,
+                    "Referer" to (referer ?: "http://143.198.83.188/")
+                ),
+                timeout = 10
+            ).text
+        }.getOrNull() ?: return
+
         val unpacked = getAndUnpack(res)
+        val m3u8Set = mutableSetOf<String>()
 
         // 1. HLS Master m3u8 dari links object
         Regex("""(?i)"(?:hls\d*|file|src)"\s*:\s*"([^"]+\.m3u8[^"]*)"""").findAll(unpacked).forEach { m ->
-            val m3u8Url = m.groupValues[1].replace("\\/", "/")
-            generateM3u8(name, m3u8Url, cleanUrl).forEach(callback)
+            m3u8Set.add(m.groupValues[1].replace("\\/", "/"))
         }
 
         // 2. Direct regex search dalam unpacked JS
         Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(unpacked).forEach { m ->
-            generateM3u8(name, m.value, cleanUrl).forEach(callback)
+            m3u8Set.add(m.value.replace("\\/", "/"))
         }
 
         // 3. Regex sandaran dalam raw HTML
         Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(res).forEach { m ->
-            generateM3u8(name, m.value, cleanUrl).forEach(callback)
+            m3u8Set.add(m.value.replace("\\/", "/"))
+        }
+
+        m3u8Set.forEach { m3u8Url ->
+            runCatching {
+                generateM3u8(name, m3u8Url, cleanUrl).forEach(callback)
+            }
+            callback.invoke(
+                newExtractorLink(
+                    source = name,
+                    name = "$name - Multi Quality",
+                    url = m3u8Url,
+                    type = ExtractorLinkType.M3U8
+                ) {
+                    this.referer = cleanUrl
+                }
+            )
         }
     }
 }
@@ -64,7 +92,82 @@ open class MorenciusExtractor(
 class MinochinosExtractor : MorenciusExtractor("Minochinos", "https://minochinos.com")
 
 /**
- * Extractor untuk Asnwish / StreamWish (asnwish.com)
+ * Extractor untuk VidHide / VidHideHub / VidHidePro
+ */
+open class VidHideExtractor(
+    override val name: String = "VidHide",
+    override val mainUrl: String = "https://vidhidepro.com"
+) : ExtractorApi() {
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.replace("\\", "").trim()
+        val hosts = listOf("vidhidepro.com", "vidhidehub.com", "vidhide.com", "vidhidepre.com")
+        val m3u8Set = mutableSetOf<String>()
+
+        for (host in hosts) {
+            val targetUrl = try {
+                val uri = java.net.URI(cleanUrl)
+                "${uri.scheme}://$host${uri.rawPath}${if (uri.rawQuery != null) "?${uri.rawQuery}" else ""}"
+            } catch (_: Exception) {
+                cleanUrl
+            }
+
+            val res = runCatching {
+                app.get(
+                    targetUrl,
+                    headers = mapOf(
+                        "User-Agent" to BROWSER_UA,
+                        "Referer" to (referer ?: "http://143.198.83.188/")
+                    ),
+                    timeout = 8
+                ).text
+            }.getOrNull() ?: continue
+
+            if (res.isNotBlank()) {
+                val unpacked = getAndUnpack(res)
+                Regex("""(?i)"(?:hls\d*|file|source|src)"\s*:\s*"([^"]+\.m3u8[^"]*)"""").findAll(unpacked).forEach { m ->
+                    m3u8Set.add(m.groupValues[1].replace("\\/", "/"))
+                }
+                Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(unpacked).forEach { m ->
+                    m3u8Set.add(m.value.replace("\\/", "/"))
+                }
+                Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(res).forEach { m ->
+                    m3u8Set.add(m.value.replace("\\/", "/"))
+                }
+
+                if (m3u8Set.isNotEmpty()) {
+                    m3u8Set.forEach { m3u8Url ->
+                        runCatching {
+                            generateM3u8(name, m3u8Url, targetUrl).forEach(callback)
+                        }
+                        callback.invoke(
+                            newExtractorLink(
+                                source = name,
+                                name = "$name - Multi Quality",
+                                url = m3u8Url,
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = targetUrl
+                            }
+                        )
+                    }
+                    break
+                }
+            }
+        }
+    }
+}
+
+class VidhidehubExtractor : VidHideExtractor("VidHideHub", "https://vidhidehub.com")
+
+/**
+ * Extractor untuk Asnwish / StreamWish
  */
 class AsnwishExtractor : ExtractorApi() {
     override val name = "StreamWish"
@@ -78,47 +181,51 @@ class AsnwishExtractor : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val cleanUrl = url.replace("\\", "").trim()
-        val res = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: mainUrl))).text
-        val unpacked = getAndUnpack(res)
-        Regex("""(?:file|source)\s*:\s*["']([^"']+\.m3u8[^"']*)["']""").find(unpacked)?.groupValues?.get(1)?.let { link ->
-            generateM3u8(name, link, cleanUrl).forEach(callback)
-        } ?: run {
+        val hosts = listOf("asnwish.com", "streamwish.to", "embedwish.com", "flaswish.com")
+
+        for (host in hosts) {
+            val targetUrl = try {
+                val uri = java.net.URI(cleanUrl)
+                "${uri.scheme}://$host${uri.rawPath}${if (uri.rawQuery != null) "?${uri.rawQuery}" else ""}"
+            } catch (_: Exception) { cleanUrl }
+
+            val res = runCatching {
+                app.get(
+                    targetUrl,
+                    headers = mapOf(
+                        "User-Agent" to BROWSER_UA,
+                        "Referer" to (referer ?: "http://143.198.83.188/")
+                    ),
+                    timeout = 8
+                ).text
+            }.getOrNull() ?: continue
+
+            val unpacked = getAndUnpack(res)
+            val m3u8Set = mutableSetOf<String>()
+
+            Regex("""(?:file|source)\s*:\s*["']([^"']+\.m3u8[^"']*)["']""").findAll(unpacked).forEach { m ->
+                m3u8Set.add(m.groupValues[1])
+            }
             Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(unpacked).forEach { m ->
-                generateM3u8(name, m.value, cleanUrl).forEach(callback)
+                m3u8Set.add(m.value)
+            }
+
+            if (m3u8Set.isNotEmpty()) {
+                m3u8Set.forEach { m3u8Url ->
+                    runCatching {
+                        generateM3u8(name, m3u8Url, targetUrl).forEach(callback)
+                    }
+                    callback.invoke(
+                        newExtractorLink(name, "$name - Multi Quality", m3u8Url, ExtractorLinkType.M3U8) {
+                            this.referer = targetUrl
+                        }
+                    )
+                }
+                break
             }
         }
     }
 }
-
-/**
- * Extractor untuk VidHide / VidHideHub
- */
-open class VidHideExtractor(
-    override val name: String = "VidHide",
-    override val mainUrl: String = "https://vidhide.com"
-) : ExtractorApi() {
-    override val requiresReferer = false
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val cleanUrl = url.replace("\\", "").trim()
-        val res = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: mainUrl))).text
-        val unpacked = getAndUnpack(res)
-        Regex("""(?:file|source)\s*:\s*["']([^"']+\.m3u8[^"']*)["']""").find(unpacked)?.groupValues?.get(1)?.let { link ->
-            generateM3u8(name, link, cleanUrl).forEach(callback)
-        } ?: run {
-            Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(unpacked).forEach { m ->
-                generateM3u8(name, m.value, cleanUrl).forEach(callback)
-            }
-        }
-    }
-}
-
-class VidhidehubExtractor : VidHideExtractor("VidHideHub", "https://vidhidehub.com")
 
 /**
  * Extractor untuk AbyssCDN / Hydrax / Sora player.
@@ -128,10 +235,6 @@ open class AbyssCdn(
     override val mainUrl: String = "https://playhydrax.com"
 ) : ExtractorApi() {
     override val requiresReferer = false
-
-    companion object {
-        private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
 
     private fun decryptAesCtr(ciphertext: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
         val spec = SecretKeySpec(key, "AES")
@@ -164,7 +267,7 @@ open class AbyssCdn(
             val apiRes = app.get(
                 "https://enc-dec.app/api/dec-abyss?url=${cleanUrl}",
                 headers = mapOf(
-                    "User-Agent" to UA,
+                    "User-Agent" to BROWSER_UA,
                     "Accept" to "application/json, text/plain, */*"
                 ),
                 timeout = 10
@@ -206,7 +309,7 @@ open class AbyssCdn(
         if (soraSuccess) return
 
         runCatching {
-            val html = app.get(cleanUrl, headers = mapOf("User-Agent" to UA, "Referer" to (referer ?: "$domain/"))).text
+            val html = app.get(cleanUrl, headers = mapOf("User-Agent" to BROWSER_UA, "Referer" to (referer ?: "$domain/"))).text
             val match = Regex("""(['"])(?:(?!\1).)*\\datas?\\?\s*[:=]\s*\\?(['"])(.*?)\2""").find(html)
                 ?: Regex("""datas\\s*[:=]\\s*['"]([^'"]+)""").find(html)
                 ?: return@runCatching
@@ -299,7 +402,7 @@ open class KotakajaibMe : ExtractorApi() {
             app.get(
                 cleanUrl,
                 headers = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "User-Agent" to BROWSER_UA,
                     "Referer" to (referer ?: "https://kotakajaib.me/")
                 )
             ).document
@@ -368,7 +471,7 @@ class Gdriveplayer : ExtractorApi() {
             app.get(
                 cleanUrl,
                 headers = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "User-Agent" to BROWSER_UA,
                     "Referer" to (referer ?: "https://kotakajaib.me/")
                 )
             ).text
@@ -455,7 +558,7 @@ open class TurbovidExtractor(
                 app.get(
                     cleanUrl,
                     headers = mapOf(
-                        "User-Agent" to USER_AGENT,
+                        "User-Agent" to BROWSER_UA,
                         "Referer" to (referer ?: domain)
                     )
                 ).text
@@ -500,7 +603,7 @@ class PlaycinematicCom : ExtractorApi() {
                     type = ExtractorLinkType.VIDEO
                 ) {
                     this.referer = cleanUrl
-                    this.headers = mapOf("User-Agent" to USER_AGENT, "Referer" to cleanUrl)
+                    this.headers = mapOf("User-Agent" to BROWSER_UA, "Referer" to cleanUrl)
                     this.quality = Qualities.P720.value
                 }
             )
@@ -531,7 +634,7 @@ class EmbedpyroxXyz : ExtractorApi() {
                 "X-Requested-With" to "XMLHttpRequest",
                 "Referer" to cleanUrl,
                 "Origin" to mainUrl,
-                "User-Agent" to USER_AGENT,
+                "User-Agent" to BROWSER_UA,
                 "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8"
             )
         )
@@ -539,7 +642,7 @@ class EmbedpyroxXyz : ExtractorApi() {
         val text = response.text
         val json = runCatching { JSONObject(text) }.getOrNull()
         if (json != null) {
-            val refHeader = mapOf("Referer" to mainUrl, "User-Agent" to USER_AGENT)
+            val refHeader = mapOf("Referer" to mainUrl, "User-Agent" to BROWSER_UA)
             if (json.has("securedLink")) {
                 val s1 = json.getString("securedLink").replace("\\/", "/")
                 if (s1.isNotBlank()) {
@@ -566,7 +669,7 @@ class MasukestinExtractor : ExtractorApi() {
     ) {
         runCatching {
             val cleanUrl = url.replace("\\", "").trim()
-            val text = app.get(cleanUrl, headers = mapOf("User-Agent" to USER_AGENT)).text
+            val text = app.get(cleanUrl, headers = mapOf("User-Agent" to BROWSER_UA)).text
             val m3u8Regex = Regex("""https?://[^'"\s<>]+\.m3u8[^'"\s<>]*""")
             m3u8Regex.findAll(text).forEach { match ->
                 generateM3u8(name, match.value, cleanUrl).forEach(callback)

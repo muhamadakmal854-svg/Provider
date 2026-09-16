@@ -316,14 +316,22 @@ open class Rebahin : MainAPI() {
             }.awaitAll()
         }
 
-        // 3. Regex scan for hidden embed links
-        Regex("""https?://(?:morencius\.com|minochinos\.com|vidhidehub\.com|vidhide\.com|asnwish\.com|bestx\.stream)/[^\s"'<>\\]+""").findAll(pageHtml).forEach {
+        // 3. Regex scan for embed links
+        Regex("""https?://(?:morencius\.com|minochinos\.com|vidhidehub\.com|vidhide\.com|vidhidepro\.com|asnwish\.com|streamwish\.to|embedwish\.com|bestx\.stream)/[^\s"'<>\\]+""").findAll(pageHtml).forEach {
             iframes.add(it.value)
         }
 
         // 4. Process all collected iframes with extractors
+        val allIframeTargets = mutableListOf<String>()
+        iframes.distinct().forEach { rawIframe ->
+            allIframeTargets.add(rawIframe)
+            if (rawIframe.contains("vidhidehub.com") || rawIframe.contains("vidhide.com")) {
+                allIframeTargets.add(rawIframe.replace("vidhidehub.com", "vidhidepro.com").replace("vidhide.com", "vidhidepro.com"))
+            }
+        }
+
         coroutineScope {
-            iframes.distinct().map { rawIframe ->
+            allIframeTargets.distinct().map { rawIframe ->
                 async {
                     val iframeUrl = fixUrl(rawIframe)
                     if (loadedUrls.add(iframeUrl)) {
@@ -371,11 +379,14 @@ open class Rebahin : MainAPI() {
             val m3u8 = m.value.replace("\\u0026", "&")
             if (loadedUrls.add(m3u8)) {
                 generateM3u8(name, m3u8, data).forEach(callback)
+                callback.invoke(
+                    newExtractorLink(name, "$name - Direct Stream", m3u8, ExtractorLinkType.M3U8) {
+                        this.referer = data
+                    }
+                )
             }
         }
 
         return loadedUrls.isNotEmpty()
     }
 }
-
-class RebahinProvider : Rebahin()

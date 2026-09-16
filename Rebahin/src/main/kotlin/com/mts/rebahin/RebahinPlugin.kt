@@ -7,8 +7,8 @@ import android.content.Context
 @CloudstreamPlugin
 class RebahinPlugin : Plugin() {
     override fun load(context: Context) {
+        // Hanya daftarkan 1 provider Rebahin tunggal (http://143.198.83.188/)
         registerMainAPI(Rebahin())
-        registerMainAPI(RebahinProvider())
         registerExtractorAPI(MorenciusExtractor())
         registerExtractorAPI(MinochinosExtractor())
         registerExtractorAPI(AsnwishExtractor())
