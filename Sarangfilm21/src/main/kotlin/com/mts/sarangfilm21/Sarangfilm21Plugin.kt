@@ -5,10 +5,13 @@ import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 
 @CloudstreamPlugin
-class Sarangfilm21Plugin: Plugin() {
+class Sarangfilm21Plugin : Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(Sarangfilm21Provider())
+        // Hanya daftarkan 1 provider Sarangfilm21 tunggal (http://154.203.167.18)
+        registerMainAPI(Sarangfilm21())
         registerExtractorAPI(AbyssExtractor())
         registerExtractorAPI(SarangStreamWishExtractor())
+        registerExtractorAPI(VidHideExtractor())
+        registerExtractorAPI(VidhidehubExtractor())
     }
 }

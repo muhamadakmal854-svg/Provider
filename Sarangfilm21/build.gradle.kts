@@ -1,4 +1,4 @@
-version = 1
+version = 11
 
 cloudstream {
 
@@ -10,9 +10,9 @@ cloudstream {
 
     status      = 1
 
-    tvTypes     = listOf("Movie", "TvSeries")
+    tvTypes     = listOf("Movie", "TvSeries", "AsianDrama")
 
-    iconUrl     = "https://sarangfilm.diy/favicon.ico"
+    iconUrl     = "http://154.203.167.18/favicon.ico"
 
 }
 
