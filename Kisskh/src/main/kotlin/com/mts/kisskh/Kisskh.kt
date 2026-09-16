@@ -361,27 +361,75 @@ class Kisskh : MainAPI() {
 
             val videoJson = JSONObject(videoRes)
             val mainVideoUrl = videoJson.optString("Video").trim()
+            val videoTmpUrl = videoJson.optString("Video_tmp").trim()
             val thirdPartyUrl = videoJson.optString("ThirdParty").trim()
+            val videoType = videoJson.optInt("Type", -1)
 
-            // 1.1 Direct HLS M3U8 Stream
-            if (mainVideoUrl.isNotEmpty()) {
-                generateM3u8(
-                    source = name,
-                    streamUrl = mainVideoUrl,
-                    referer = "$mainUrl/",
-                    headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
-                ).forEach { link ->
-                    found = true
-                    callback(link)
-                }
+            val streamCandidate = if (mainVideoUrl.isNotEmpty()) mainVideoUrl else videoTmpUrl
 
-                if (!found) {
+            // 1. Process Video Stream (HLS or Direct MP4)
+            if (streamCandidate.isNotEmpty()) {
+                val isM3u8 = videoType == 1 || streamCandidate.contains(".m3u8", ignoreCase = true)
+                val isDirect = videoType == 0 || streamCandidate.contains(".mp4", ignoreCase = true) || streamCandidate.contains(".mkv", ignoreCase = true)
+
+                if (isM3u8) {
+                    try {
+                        generateM3u8(
+                            source = name,
+                            streamUrl = streamCandidate,
+                            referer = "$mainUrl/",
+                            headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
+                        ).forEach { link ->
+                            found = true
+                            callback(link)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("Kisskh", "generateM3u8 error: ${e.message}")
+                    }
+
+                    if (!found) {
+                        callback(
+                            newExtractorLink(
+                                name = name,
+                                source = "$name Server (HLS)",
+                                url = streamCandidate,
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = "$mainUrl/"
+                                this.headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
+                            }
+                        )
+                        found = true
+                    }
+                } else if (isDirect) {
                     callback(
                         newExtractorLink(
                             name = name,
-                            source = "$name Server (HLS)",
-                            url = mainVideoUrl,
-                            type = ExtractorLinkType.M3U8
+                            source = "$name Server (Direct)",
+                            url = streamCandidate,
+                            type = ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = "$mainUrl/"
+                            this.headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
+                        }
+                    )
+                    found = true
+                } else if (videoType == 2) {
+                    try {
+                        if (loadExtractor(streamCandidate, "$mainUrl/", subtitleCallback, callback)) {
+                            found = true
+                        }
+                    } catch (e: Exception) {
+                        Log.e("Kisskh", "Third party stream error: ${e.message}")
+                    }
+                } else {
+                    // Fallback to direct video
+                    callback(
+                        newExtractorLink(
+                            name = name,
+                            source = "$name Server",
+                            url = streamCandidate,
+                            type = ExtractorLinkType.VIDEO
                         ) {
                             this.referer = "$mainUrl/"
                             this.headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT)
@@ -392,7 +440,7 @@ class Kisskh : MainAPI() {
             }
 
             // 1.2 Third-Party Provider Embeds
-            if (thirdPartyUrl.isNotEmpty()) {
+            if (thirdPartyUrl.isNotEmpty() && thirdPartyUrl != "null") {
                 try {
                     if (loadExtractor(thirdPartyUrl, "$mainUrl/", subtitleCallback, callback)) {
                         found = true
