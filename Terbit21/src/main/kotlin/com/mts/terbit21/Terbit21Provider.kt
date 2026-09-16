@@ -2,6 +2,7 @@ package com.mts.terbit21
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import android.util.Log
