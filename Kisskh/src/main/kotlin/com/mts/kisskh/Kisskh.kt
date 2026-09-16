@@ -421,14 +421,35 @@ class Kisskh : MainAPI() {
                     val subObj = subArray.getJSONObject(i)
                     val subSrc = subObj.optString("src").trim()
                     val subLabel = subObj.optString("label").trim()
-                    if (subSrc.isNotEmpty()) {
-                        subtitleCallback(
-                            SubtitleFile(
-                                subLabel.ifEmpty { "Subtitle" },
-                                subSrc
-                            )
-                        )
+                    if (subSrc.isEmpty()) continue
+
+                    val cleanPath = subSrc.substringBefore("?").substringBefore("#")
+                    val ext = cleanPath.substringAfterLast(".", "").lowercase()
+
+                    val finalSubUrl = if (ext != "srt") {
+                        try {
+                            val rawSub = app.get(
+                                subSrc,
+                                headers = mapOf("Referer" to "$mainUrl/", "User-Agent" to USER_AGENT),
+                                timeout = 15
+                            ).text
+                            val cleanSrt = KisskhSubDecryptor.decryptSubtitle(rawSub, ext)
+                            val subKey = "${epId}_${i}_${subLabel.replace(Regex("[^a-zA-Z0-9]"), "")}"
+                            KisskhSubServer.addSubtitle(subKey, cleanSrt)
+                        } catch (e: Exception) {
+                            Log.e("Kisskh", "Error decrypting subtitle [$subSrc]: ${e.message}")
+                            subSrc
+                        }
+                    } else {
+                        subSrc
                     }
+
+                    subtitleCallback(
+                        SubtitleFile(
+                            subLabel.ifEmpty { "Subtitle" },
+                            finalSubUrl
+                        )
+                    )
                 }
             } catch (e: Exception) {
                 Log.e("Kisskh", "Subtitle extraction error: ${e.message}")
