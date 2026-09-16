@@ -113,7 +113,7 @@ open class PlayerAbyssplayerCom : ExtractorApi() {
         }
     }
 
-    private fun parseSourcesJson(jsonStr: String, ref: String, callback: (ExtractorLink) -> Unit) {
+    private suspend fun parseSourcesJson(jsonStr: String, ref: String, callback: (ExtractorLink) -> Unit) {
         try {
             val json = JSONObject(jsonStr)
             val sources = json.optJSONArray("sources") ?: JSONArray()
