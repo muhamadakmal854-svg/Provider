@@ -9,6 +9,11 @@ class RebahinPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(Rebahin())
         registerMainAPI(RebahinProvider())
+        registerExtractorAPI(MorenciusExtractor())
+        registerExtractorAPI(MinochinosExtractor())
+        registerExtractorAPI(AsnwishExtractor())
+        registerExtractorAPI(VidHideExtractor())
+        registerExtractorAPI(VidhidehubExtractor())
         registerExtractorAPI(KotakajaibMe())
         registerExtractorAPI(Playhydrax())
         registerExtractorAPI(AbyssPlayer())
@@ -18,7 +23,6 @@ class RebahinPlugin : Plugin() {
         registerExtractorAPI(PlaycinematicCom())
         registerExtractorAPI(EmbedpyroxXyz())
         registerExtractorAPI(MasukestinExtractor())
-        registerExtractorAPI(VidHideExtractor())
         registerExtractorAPI(StreamP2PExtractor())
     }
 }

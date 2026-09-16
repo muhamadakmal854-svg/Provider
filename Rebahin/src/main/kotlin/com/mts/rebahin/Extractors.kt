@@ -13,8 +13,6 @@ import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.utils.getAndUnpack
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.security.MessageDigest
 import javax.crypto.Cipher
@@ -22,9 +20,108 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
+ * Extractor untuk Morencius (morencius.com) dan Minochinos (minochinos.com)
+ */
+open class MorenciusExtractor(
+    override val name: String = "Morencius",
+    override val mainUrl: String = "https://morencius.com"
+) : ExtractorApi() {
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.replace("\\", "").trim()
+        val domain = try {
+            val u = java.net.URL(cleanUrl)
+            "${u.protocol}://${u.host}"
+        } catch (_: Exception) { mainUrl }
+
+        val res = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: "$domain/"))).text
+        val unpacked = getAndUnpack(res)
+
+        // 1. HLS Master m3u8 dari links object
+        Regex("""(?i)"(?:hls\d*|file|src)"\s*:\s*"([^"]+\.m3u8[^"]*)"""").findAll(unpacked).forEach { m ->
+            val m3u8Url = m.groupValues[1].replace("\\/", "/")
+            generateM3u8(name, m3u8Url, cleanUrl).forEach(callback)
+        }
+
+        // 2. Direct regex search dalam unpacked JS
+        Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(unpacked).forEach { m ->
+            generateM3u8(name, m.value, cleanUrl).forEach(callback)
+        }
+
+        // 3. Regex sandaran dalam raw HTML
+        Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(res).forEach { m ->
+            generateM3u8(name, m.value, cleanUrl).forEach(callback)
+        }
+    }
+}
+
+class MinochinosExtractor : MorenciusExtractor("Minochinos", "https://minochinos.com")
+
+/**
+ * Extractor untuk Asnwish / StreamWish (asnwish.com)
+ */
+class AsnwishExtractor : ExtractorApi() {
+    override val name = "StreamWish"
+    override val mainUrl = "https://asnwish.com"
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.replace("\\", "").trim()
+        val res = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: mainUrl))).text
+        val unpacked = getAndUnpack(res)
+        Regex("""(?:file|source)\s*:\s*["']([^"']+\.m3u8[^"']*)["']""").find(unpacked)?.groupValues?.get(1)?.let { link ->
+            generateM3u8(name, link, cleanUrl).forEach(callback)
+        } ?: run {
+            Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(unpacked).forEach { m ->
+                generateM3u8(name, m.value, cleanUrl).forEach(callback)
+            }
+        }
+    }
+}
+
+/**
+ * Extractor untuk VidHide / VidHideHub
+ */
+open class VidHideExtractor(
+    override val name: String = "VidHide",
+    override val mainUrl: String = "https://vidhide.com"
+) : ExtractorApi() {
+    override val requiresReferer = false
+
+    override suspend fun getUrl(
+        url: String,
+        referer: String?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val cleanUrl = url.replace("\\", "").trim()
+        val res = app.get(cleanUrl, headers = mapOf("Referer" to (referer ?: mainUrl))).text
+        val unpacked = getAndUnpack(res)
+        Regex("""(?:file|source)\s*:\s*["']([^"']+\.m3u8[^"']*)["']""").find(unpacked)?.groupValues?.get(1)?.let { link ->
+            generateM3u8(name, link, cleanUrl).forEach(callback)
+        } ?: run {
+            Regex("""https?://[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*""").findAll(unpacked).forEach { m ->
+                generateM3u8(name, m.value, cleanUrl).forEach(callback)
+            }
+        }
+    }
+}
+
+class VidhidehubExtractor : VidHideExtractor("VidHideHub", "https://vidhidehub.com")
+
+/**
  * Extractor untuk AbyssCDN / Hydrax / Sora player.
- * 1. Kaedah Utama: Menghubungi API enc-dec.app untuk mendapatkan direct video/mp4 stream Sora (1080p, 720p, 480p, 360p).
- * 2. Kaedah Sandaran: Penyahsulitan tempatan AES-CTR menggunakan Jackson ObjectMapper tanpa ralat aksara kawalan JSON.
  */
 open class AbyssCdn(
     override val name: String = "Hydrax",
@@ -63,9 +160,6 @@ open class AbyssCdn(
             "https://playhydrax.com"
         }
 
-        // ==========================================
-        // KAEDAH 1: Sora API enc-dec.app (Direct MP4)
-        // ==========================================
         val soraSuccess = runCatching {
             val apiRes = app.get(
                 "https://enc-dec.app/api/dec-abyss?url=${cleanUrl}",
@@ -111,9 +205,6 @@ open class AbyssCdn(
 
         if (soraSuccess) return
 
-        // ==========================================
-        // KAEDAH 2: Local AES-CTR Decryption Fallback
-        // ==========================================
         runCatching {
             val html = app.get(cleanUrl, headers = mapOf("User-Agent" to UA, "Referer" to (referer ?: "$domain/"))).text
             val match = Regex("""(['"])(?:(?!\1).)*\\datas?\\?\s*[:=]\s*\\?(['"])(.*?)\2""").find(html)
@@ -214,7 +305,6 @@ open class KotakajaibMe : ExtractorApi() {
             ).document
         }.getOrNull() ?: return
 
-        // 1. Baca atribut data-frame pada .server-item dan mana-mana elemen bertag data-frame
         val frameItems = doc.select(".server-item, [data-frame]")
         for (item in frameItems) {
             val rawB64 = item.attr("data-frame").trim()
@@ -249,7 +339,6 @@ open class KotakajaibMe : ExtractorApi() {
             }
         }
 
-        // 2. Imbas sebarang iframe langsung dalam kotakajaib
         doc.select("iframe").forEach { ifr ->
             val src = ifr.attr("src").ifBlank { ifr.attr("data-src") }
             if (src.isNotBlank() && !src.contains("googletagmanager") && !src.contains("googleads")) {
@@ -482,26 +571,6 @@ class MasukestinExtractor : ExtractorApi() {
             m3u8Regex.findAll(text).forEach { match ->
                 generateM3u8(name, match.value, cleanUrl).forEach(callback)
             }
-        }
-    }
-}
-
-open class VidHideExtractor(
-    override val name: String = "VidHide",
-    override val mainUrl: String = "https://vidhide.com"
-) : ExtractorApi() {
-    override val requiresReferer = false
-
-    override suspend fun getUrl(
-        url: String,
-        referer: String?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val res = app.get(url, headers = mapOf("Referer" to (referer ?: mainUrl))).text
-        val packed = getAndUnpack(res)
-        Regex("""(?:file|source)\s*:\s*["']([^"']+\.m3u8[^"']*)["']""").find(packed)?.groupValues?.get(1)?.let { link ->
-            generateM3u8(name, link, url).forEach(callback)
         }
     }
 }
