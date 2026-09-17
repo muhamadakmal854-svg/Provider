@@ -29,6 +29,7 @@ class SFlix : MainAPI() {
         private const val tmdbAPI = "https://api.themoviedb.org/3"
         private const val apiKey = "31eb6ae13f030d2e334cdd978cfc72b7"
         private const val moviesApiKey = "3a67e8866ae1d2bb9e81fe7f73315a56eb3bdf5e3e755c7554c8be6910aa6b13"
+        const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
         fun getImageUrl(link: String?): String? {
             if (link.isNullOrBlank()) return null
@@ -261,38 +262,83 @@ class SFlix : MainAPI() {
         }
     }
 
+    private suspend fun fetchImdbId(id: Int, isMovie: Boolean): String? {
+        val typeStr = if (isMovie) "movie" else "tv"
+        return try {
+            app.get("$tmdbAPI/$typeStr/$id/external_ids?api_key=$apiKey").parsedSafe<ExternalIds>()?.imdb_id
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val linkData = parseJson<SFlixLinkData>(data)
-        val id = linkData.id ?: return false
-        val isMovie = linkData.type == "movie"
-        val season = linkData.season
-        val episode = linkData.episode
+        val linkData = try {
+            parseJson<SFlixLinkData>(data)
+        } catch (_: Throwable) {
+            null
+        }
+
+        val tmdbId: Int
+        val isMovie: Boolean
+        val season: Int?
+        val episode: Int?
+        var imdbId: String? = null
+
+        if (linkData != null && linkData.id != null) {
+            tmdbId = linkData.id
+            isMovie = linkData.type == "movie"
+            season = linkData.season
+            episode = linkData.episode
+            imdbId = linkData.imdbId
+        } else {
+            val isTv = data.contains("/tv") || data.contains("/serie") || data.contains("season") || data.contains("episode")
+            isMovie = !isTv
+            val idMatch = Regex("""(?:movie|tv|serie)[/-](\d+)""", RegexOption.IGNORE_CASE).find(data)?.groupValues?.get(1)?.toIntOrNull()
+                ?: Regex("""(\d{3,8})""").find(data)?.groupValues?.get(1)?.toIntOrNull()
+                ?: return false
+            tmdbId = idMatch
+            if (isTv) {
+                season = Regex("""(?:season[/-]|s=?)(\d+)""", RegexOption.IGNORE_CASE).find(data)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                episode = Regex("""(?:episode[/-]|e=?)(\d+)""", RegexOption.IGNORE_CASE).find(data)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+            } else {
+                season = null
+                episode = null
+            }
+        }
+
+        if (imdbId.isNullOrBlank()) {
+            imdbId = fetchImdbId(tmdbId, isMovie)
+        }
 
         listOf(
-            // Server 1: MoviesAPI (Vidora Ultra-Fast 1080p FHD HLS)
+            // Pelayan 1: MoviesAPI (Vidora Ultra-Fast 1080p FHD HLS)
             suspend {
-                invokeMoviesAPI(id, isMovie, season, episode, subtitleCallback, callback)
+                invokeMoviesAPI(tmdbId, isMovie, season, episode, subtitleCallback, callback)
             },
-            // Server 2: 2Embed / StreamWish
+            // Pelayan 2: SFlix Native Player (vidsrc-embed.ru / vs_src.php)
             suspend {
-                invoke2Embed(id, isMovie, season, episode, subtitleCallback, callback)
+                invokeSFlixNative(tmdbId, isMovie, season, episode, subtitleCallback, callback)
             },
-            // Server 3: SuperEmbed / MultiEmbed
+            // Pelayan 3: 2Embed & StreamWish Multi-Quality (1080p, 720p, 480p)
             suspend {
-                invokeSuperEmbed(id, isMovie, season, episode, subtitleCallback, callback)
+                invoke2Embed(tmdbId, imdbId, isMovie, season, episode, subtitleCallback, callback)
             },
-            // Server 4: VidLink
+            // Pelayan 4: MultiEmbed / SuperEmbed
             suspend {
-                invokeVidLink(id, isMovie, season, episode, subtitleCallback, callback)
+                invokeSuperEmbed(tmdbId, isMovie, season, episode, subtitleCallback, callback)
             },
-            // Server 5: VixSrc
+            // Pelayan 5: AutoEmbed
             suspend {
-                invokeVixSrc(id, isMovie, season, episode, subtitleCallback, callback)
+                invokeAutoEmbed(tmdbId, isMovie, season, episode, subtitleCallback, callback)
+            },
+            // Pelayan 6: Vidsrc.to / Vidsrc.in
+            suspend {
+                invokeVidsrcTo(tmdbId, isMovie, season, episode, subtitleCallback, callback)
             }
         ).amap { call ->
             try {
@@ -318,37 +364,66 @@ class SFlix : MainAPI() {
             "https://moviesapi.to/api/vidora/v1/tv/$tmdbId/$season/$episode"
         }
 
-        val res = app.get(
-            endpoint,
-            headers = mapOf(
-                "x-player-key" to moviesApiKey,
-                "Referer" to "https://moviesapi.to/",
-                "Origin" to "https://moviesapi.to"
-            )
-        ).parsedSafe<VidoraResponse>() ?: return
+        val res = try {
+            app.get(
+                endpoint,
+                headers = mapOf(
+                    "x-player-key" to moviesApiKey,
+                    "Referer" to "https://moviesapi.to/",
+                    "Origin" to "https://moviesapi.to",
+                    "User-Agent" to USER_AGENT
+                ),
+                timeout = 10
+            ).parsedSafe<VidoraResponse>()
+        } catch (_: Throwable) {
+            null
+        } ?: return
 
         res.sources?.forEach { src ->
             val m3u8Url = src.url ?: return@forEach
-            generateM3u8(
-                "SFlix - MoviesAPI",
-                m3u8Url,
-                "https://moviesapi.to/"
-            ).forEach(callback)
+            val serverName = "SFlix - Server 1 (MoviesAPI)"
+            val streamHeaders = mapOf(
+                "Referer" to "https://moviesapi.to/",
+                "Origin" to "https://moviesapi.to",
+                "User-Agent" to USER_AGENT
+            )
+
+            // Pancarkan terus ExtractorLink FHD 1080p dengan pengepala lengkap
+            callback.invoke(
+                newExtractorLink(
+                    serverName,
+                    "MoviesAPI [1080p FHD]",
+                    m3u8Url,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "https://moviesapi.to/"
+                    this.quality = Qualities.P1080.value
+                    this.headers = streamHeaders
+                }
+            )
+
+            // Pancarkan sub-resolusi dari m3u8 playlist jika tersedia
+            try {
+                generateM3u8(
+                    serverName,
+                    m3u8Url,
+                    referer = "https://moviesapi.to/",
+                    headers = streamHeaders
+                ).forEach(callback)
+            } catch (_: Throwable) {
+            }
 
             src.tracks?.forEach { track ->
                 val trackUrl = track.file ?: return@forEach
-                val lang = track.label ?: "Sub"
+                val lang = track.label ?: "English"
                 subtitleCallback.invoke(
-                    SubtitleFile(
-                        lang,
-                        trackUrl
-                    )
+                    SubtitleFile(lang, trackUrl)
                 )
             }
         }
     }
 
-    private suspend fun invoke2Embed(
+    private suspend fun invokeSFlixNative(
         tmdbId: Int,
         isMovie: Boolean,
         season: Int?,
@@ -356,17 +431,135 @@ class SFlix : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val url = if (isMovie) {
-            "https://www.2embed.cc/embed/$tmdbId"
+        val apiUrl = if (isMovie) {
+            "https://vidsrc-embed.ru/vs_src.php?type=movie&id=$tmdbId"
         } else {
-            "https://www.2embed.cc/embedtv/$tmdbId&s=$season&e=$episode"
+            "https://vidsrc-embed.ru/vs_src.php?type=tv&id=$tmdbId&s=$season&e=$episode"
         }
 
-        val doc = app.get(url, referer = "$mainUrl/").document
-        doc.select("iframe[src]").forEach { iframe ->
-            val src = fixUrl(iframe.attr("src"))
-            if (src.contains("stream") || src.contains("embed") || src.contains("swish") || src.contains("play")) {
-                loadExtractor(src, url, subtitleCallback, callback)
+        try {
+            val res = app.get(
+                apiUrl,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "https://vidsrc-embed.ru/"
+                ),
+                timeout = 8
+            ).parsedSafe<Map<String, String>>()
+
+            val src = res?.get("src")
+            if (!src.isNullOrBlank()) {
+                loadExtractor(src, "https://vidsrc-embed.ru/", subtitleCallback, callback)
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    private suspend fun invoke2Embed(
+        tmdbId: Int,
+        imdbId: String?,
+        isMovie: Boolean,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val urls = mutableListOf<String>()
+        if (isMovie) {
+            urls.add("https://www.2embed.cc/embed/$tmdbId")
+            if (!imdbId.isNullOrBlank()) {
+                urls.add("https://www.2embed.cc/embed/$imdbId")
+            }
+        } else {
+            urls.add("https://www.2embed.cc/embedtv/$tmdbId&s=$season&e=$episode")
+            if (!imdbId.isNullOrBlank()) {
+                urls.add("https://www.2embed.cc/embedtv/$imdbId&s=$season&e=$episode")
+            }
+        }
+
+        urls.forEach { pageUrl ->
+            try {
+                val doc = app.get(
+                    pageUrl,
+                    headers = mapOf(
+                        "User-Agent" to USER_AGENT,
+                        "Referer" to "$mainUrl/"
+                    ),
+                    timeout = 8
+                ).document
+
+                doc.select("iframe[src]").forEach { iframe ->
+                    val src = fixUrl(iframe.attr("src"))
+                    if (src.contains("swish")) {
+                        val fileCode = src.substringAfter("id=").substringBefore("&")
+                        if (fileCode.isNotBlank()) {
+                            invokeStreamWish(fileCode, subtitleCallback, callback)
+                        }
+                    } else if (src.startsWith("http") && !src.contains("2embed.cc")) {
+                        loadExtractor(src, pageUrl, subtitleCallback, callback)
+                    }
+                }
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private suspend fun invokeStreamWish(
+        fileCode: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        listOf(
+            "https://2vcdn.skin/e/$fileCode",
+            "https://streamwish.to/e/$fileCode",
+            "https://wishembed.pro/e/$fileCode"
+        ).forEach { embedUrl ->
+            try {
+                val html = app.get(
+                    embedUrl,
+                    headers = mapOf(
+                        "User-Agent" to USER_AGENT,
+                        "Referer" to "https://streamsrcs.2embed.cc/"
+                    ),
+                    timeout = 8
+                ).text
+
+                val unpacked = getAndUnpack(html)
+
+                // Ekstrak direct m3u8 stream
+                val m3u8Matches = Regex("""https?://[^\s"'<>]+\.m3u8[^\s"'<>]*""").findAll(unpacked)
+                m3u8Matches.forEach { match ->
+                    val streamUrl = match.value
+                    callback.invoke(
+                        newExtractorLink(
+                            "SFlix - StreamWish",
+                            "StreamWish (Multi Quality)",
+                            streamUrl,
+                            ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://2vcdn.skin/"
+                            this.headers = mapOf("Referer" to "https://2vcdn.skin/")
+                        }
+                    )
+                }
+
+                // Ekstrak fail sarikata VTT
+                val vttMatches = Regex("""https?://[^\s"'<>]+\.vtt[^\s"'<>]*""").findAll(unpacked)
+                vttMatches.forEach { vtt ->
+                    val vttUrl = vtt.value
+                    val label = when {
+                        vttUrl.contains("eng", ignoreCase = true) -> "English"
+                        vttUrl.contains("fre", ignoreCase = true) -> "French"
+                        vttUrl.contains("spa", ignoreCase = true) -> "Spanish"
+                        else -> "Subtitle"
+                    }
+                    subtitleCallback.invoke(
+                        SubtitleFile(label, vttUrl)
+                    )
+                }
+
+                loadExtractor(embedUrl, "https://streamsrcs.2embed.cc/", subtitleCallback, callback)
+            } catch (_: Throwable) {
             }
         }
     }
@@ -379,22 +572,33 @@ class SFlix : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val url = if (isMovie) {
-            "https://multiembed.mov/?video_id=$tmdbId&tmdb=1"
-        } else {
-            "https://multiembed.mov/?video_id=$tmdbId&tmdb=1&s=$season&e=$episode"
-        }
-
-        val doc = app.get(url, referer = "$mainUrl/").document
-        doc.select("iframe[src], a[href*='embed'], button[data-src]").forEach { el ->
-            val src = fixUrl(el.attr("src").ifBlank { el.attr("href") }.ifBlank { el.attr("data-src") })
-            if (src.startsWith("http")) {
-                loadExtractor(src, url, subtitleCallback, callback)
+        try {
+            val url = if (isMovie) {
+                "https://multiembed.mov/?video_id=$tmdbId&tmdb=1"
+            } else {
+                "https://multiembed.mov/?video_id=$tmdbId&tmdb=1&s=$season&e=$episode"
             }
+
+            val doc = app.get(
+                url,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "$mainUrl/"
+                ),
+                timeout = 8
+            ).document
+
+            doc.select("iframe[src], a[href*='embed'], button[data-src]").forEach { el ->
+                val src = fixUrl(el.attr("src").ifBlank { el.attr("href") }.ifBlank { el.attr("data-src") })
+                if (src.startsWith("http") && !src.contains("multiembed.mov")) {
+                    loadExtractor(src, url, subtitleCallback, callback)
+                }
+            }
+        } catch (_: Throwable) {
         }
     }
 
-    private suspend fun invokeVidLink(
+    private suspend fun invokeAutoEmbed(
         tmdbId: Int,
         isMovie: Boolean,
         season: Int?,
@@ -403,23 +607,32 @@ class SFlix : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ) {
         val url = if (isMovie) {
-            "https://vidlink.pro/movie/$tmdbId"
+            "https://player.autoembed.co/embed/movie/$tmdbId"
         } else {
-            "https://vidlink.pro/tv/$tmdbId/$season/$episode"
+            "https://player.autoembed.co/embed/tv/$tmdbId/$season/$episode"
         }
 
-        val text = app.get(url, referer = "$mainUrl/").text
-        val m3u8Matches = Regex("""https?://[^\\s"']+\\.m3u8[^\\s"']*""").findAll(text)
-        m3u8Matches.forEach { match ->
-            generateM3u8(
-                "SFlix - VidLink",
-                match.value,
-                "https://vidlink.pro/"
-            ).forEach(callback)
+        try {
+            val doc = app.get(
+                url,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "https://autoembed.co/"
+                ),
+                timeout = 8
+            ).document
+
+            doc.select("iframe[src]").forEach { iframe ->
+                val src = fixUrl(iframe.attr("src"))
+                if (src.startsWith("http") && !src.contains("autoembed.co")) {
+                    loadExtractor(src, url, subtitleCallback, callback)
+                }
+            }
+        } catch (_: Throwable) {
         }
     }
 
-    private suspend fun invokeVixSrc(
+    private suspend fun invokeVidsrcTo(
         tmdbId: Int,
         isMovie: Boolean,
         season: Int?,
@@ -428,15 +641,28 @@ class SFlix : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ) {
         val url = if (isMovie) {
-            "https://vixsrc.to/movie/$tmdbId"
+            "https://vidsrc.to/embed/movie/$tmdbId"
         } else {
-            "https://vixsrc.to/tv/$tmdbId/$season/$episode"
+            "https://vidsrc.to/embed/tv/$tmdbId/$season/$episode"
         }
 
-        val doc = app.get(url, referer = "$mainUrl/").document
-        doc.select("iframe[src]").forEach { iframe ->
-            val src = fixUrl(iframe.attr("src"))
-            loadExtractor(src, url, subtitleCallback, callback)
+        try {
+            val doc = app.get(
+                url,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "$mainUrl/"
+                ),
+                timeout = 8
+            ).document
+
+            doc.select("iframe[src]").forEach { iframe ->
+                val src = fixUrl(iframe.attr("src"))
+                if (src.startsWith("http")) {
+                    loadExtractor(src, url, subtitleCallback, callback)
+                }
+            }
+        } catch (_: Throwable) {
         }
     }
 
