@@ -7,23 +7,32 @@ import kotlin.math.abs
 object DotDramaCipher {
     private const val SECRET = "6f5fKnWnXB9528J4gQlAbNEWYDeMOR486u5D4ATaHgkvEcNaTk"
 
+    fun decrypt(bodyBytes: ByteArray, headerVal: String?): String? {
+        val bodyStr = String(bodyBytes, StandardCharsets.UTF_8).trim()
+        return decrypt(bodyStr, headerVal)
+    }
+
     fun decrypt(bodyStr: String, headerVal: String?): String? {
-        val cleanBody = bodyStr.trim()
+        val cleanBody = bodyStr.trim().removeSurrounding("\"")
         if (cleanBody.isEmpty()) return null
 
-        val raw = try {
-            Base64.decode(cleanBody, Base64.DEFAULT)
-        } catch (_: Exception) {
+        var raw: ByteArray? = null
+        val decoders: List<() -> ByteArray> = listOf(
+            { Base64.decode(cleanBody, Base64.DEFAULT) },
+            { Base64.decode(cleanBody, Base64.NO_WRAP) },
+            { Base64.decode(cleanBody, Base64.URL_SAFE) },
+            { java.util.Base64.getDecoder().decode(cleanBody) },
+            { java.util.Base64.getMimeDecoder().decode(cleanBody) }
+        )
+
+        for (d in decoders) {
             try {
-                Base64.decode(cleanBody, Base64.NO_WRAP)
-            } catch (_: Exception) {
-                try {
-                    java.util.Base64.getDecoder().decode(cleanBody)
-                } catch (_: Exception) {
-                    return null
-                }
-            }
-        } ?: return null
+                raw = d()
+                if (raw != null && raw.isNotEmpty()) break
+            } catch (_: Throwable) {}
+        }
+
+        if (raw == null || raw.isEmpty()) return null
 
         val header = headerVal?.trim().orEmpty()
         val combined = header + SECRET
@@ -48,7 +57,7 @@ object DotDramaCipher {
         var tempV7 = finalKeyInt
         for (i in 0 until 8) {
             key[i] = (tempV7 and 0xff).toByte()
-            tempV7 = tempV7 shr 8
+            tempV7 = tempV7 ushr 8
         }
 
         for (i in raw.indices) {
@@ -56,10 +65,12 @@ object DotDramaCipher {
         }
 
         return try {
-            String(raw, StandardCharsets.UTF_8)
+            val result = String(raw, StandardCharsets.UTF_8)
+            if (result.trim().startsWith("{")) result else null
         } catch (_: Exception) {
             null
         }
     }
 }
+
 

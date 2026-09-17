@@ -29,6 +29,8 @@ class DotDrama : MainAPI() {
         private const val APP_VERSION = "1.9.1"
         private const val TMDB_API_KEY = "b030404650f279792a8d3287232358e3"
 
+        var lastDebugStatus = "Belum memuatkan data (Initial state)"
+
         fun parseDateMillis(timestamp: Long): Long {
             return if (timestamp > 0L) timestamp else System.currentTimeMillis()
         }
@@ -57,41 +59,81 @@ class DotDrama : MainAPI() {
     }
 
     private suspend fun fetchAndDecrypt(url: String): String? {
-        return try {
-            val response = try {
-                app.get(url, headers = getHeaders(), timeout = 25)
-            } catch (e1: Exception) {
-                Log.w("DotDrama", "app.get failed for $url (${e1.message}), fallback to insecureApp")
-                insecureApp.get(url, headers = getHeaders(), timeout = 25)
-            }
+        val fullUrl = if (url.startsWith("http")) url else "$mainUrl/${url.removePrefix("/")}"
 
-            if (!response.isSuccessful) {
-                Log.e("DotDrama", "HTTP error ${response.code} for $url")
-                return null
+        val response = try {
+            app.get(fullUrl, headers = getHeaders(), timeout = 20)
+        } catch (e1: Exception) {
+            Log.w("DotDrama", "app.get failed for $fullUrl (${e1.message}), trying insecureApp")
+            try {
+                insecureApp.get(fullUrl, headers = getHeaders(), timeout = 20)
+            } catch (e2: Exception) {
+                Log.w("DotDrama", "insecureApp failed for $fullUrl (${e2.message}), trying direct IP fallback 1")
+                try {
+                    val ipUrl1 = fullUrl.replace("https://jrjp.vividshort.com", "https://47.253.96.163")
+                    val ipHeaders = getHeaders().toMutableMap().apply { put("Host", "jrjp.vividshort.com") }
+                    insecureApp.get(ipUrl1, headers = ipHeaders, timeout = 20)
+                } catch (e3: Exception) {
+                    Log.w("DotDrama", "direct IP 1 failed (${e3.message}), trying direct IP fallback 2")
+                    try {
+                        val ipUrl2 = fullUrl.replace("https://jrjp.vividshort.com", "https://47.89.159.223")
+                        val ipHeaders = getHeaders().toMutableMap().apply { put("Host", "jrjp.vividshort.com") }
+                        insecureApp.get(ipUrl2, headers = ipHeaders, timeout = 20)
+                    } catch (e4: Exception) {
+                        lastDebugStatus = "Network Error: ${e4.javaClass.simpleName} (${e4.message})"
+                        Log.e("DotDrama", "All network attempts failed for $fullUrl: ${e4.message}")
+                        return null
+                    }
+                }
             }
-
-            val headerKlow = response.headers["X-Ecurve-Klow"]
-                ?: response.headers["x-ecurve-klow"]
-                ?: response.okhttpResponse.header("X-Ecurve-Klow")
-                ?: response.okhttpResponse.header("x-ecurve-klow")
-                ?: ""
-
-            val rawBody = response.text
-            if (rawBody.isBlank()) {
-                Log.e("DotDrama", "Empty response text for $url")
-                return null
-            }
-
-            val decrypted = DotDramaCipher.decrypt(rawBody, headerKlow)
-            if (decrypted == null || !decrypted.trim().startsWith("{")) {
-                Log.e("DotDrama", "Failed to decrypt valid JSON for $url")
-                return null
-            }
-            decrypted
-        } catch (e: Exception) {
-            Log.e("DotDrama", "fetchAndDecrypt error for $url: ${e.message}")
-            null
         }
+
+        if (!response.isSuccessful) {
+            lastDebugStatus = "HTTP Error ${response.code}"
+            Log.e("DotDrama", "HTTP error ${response.code} for $fullUrl")
+            return null
+        }
+
+        var headerKlow = response.headers["X-Ecurve-Klow"]
+            ?: response.headers["x-ecurve-klow"]
+            ?: response.okhttpResponse.header("X-Ecurve-Klow")
+            ?: response.okhttpResponse.header("x-ecurve-klow")
+            ?: ""
+
+        if (headerKlow.isBlank()) {
+            for (i in 0 until response.headers.size) {
+                if (response.headers.name(i).equals("x-ecurve-klow", ignoreCase = true)) {
+                    headerKlow = response.headers.value(i)
+                    break
+                }
+            }
+        }
+
+        val rawBody = try {
+            response.text.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        } ?: try {
+            response.okhttpResponse.body?.string()?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        } ?: ""
+
+        if (rawBody.isBlank()) {
+            lastDebugStatus = "Empty response body (HTTP ${response.code})"
+            Log.e("DotDrama", "Empty response text for $fullUrl")
+            return null
+        }
+
+        val decrypted = DotDramaCipher.decrypt(rawBody, headerKlow)
+        if (decrypted == null || !decrypted.trim().startsWith("{")) {
+            lastDebugStatus = "Decrypt failed (klow=${headerKlow.take(10)}, bodyLen=${rawBody.length})"
+            Log.e("DotDrama", "Failed to decrypt valid JSON for $fullUrl")
+            return null
+        }
+
+        lastDebugStatus = "OK (decrypted len=${decrypted.length})"
+        return decrypted
     }
 
     override val mainPage = mainPageOf(
@@ -126,7 +168,7 @@ class DotDrama : MainAPI() {
         try {
             var decrypted = fetchAndDecrypt(pageUrl)
             if (decrypted == null) {
-                delay(400)
+                delay(500)
                 decrypted = fetchAndDecrypt(pageUrl)
             }
 
@@ -161,6 +203,14 @@ class DotDrama : MainAPI() {
             }
         } catch (e: Exception) {
             Log.e("DotDrama", "getMainPage error [${request.name}]: ${e.message}")
+            lastDebugStatus = "Parse Error: ${e.message}"
+        }
+
+        if (home.isEmpty()) {
+            val diagTitle = "[DotDrama v12 Status] $lastDebugStatus"
+            home.add(newMovieSearchResponse(diagTitle, "https://jrjp.vividshort.com", TvType.Movie) {
+                this.posterUrl = "https://images.placeholders.dev/?width=300&height=450&text=V12+STATUS"
+            })
         }
 
         return newHomePageResponse(request.name, home)
