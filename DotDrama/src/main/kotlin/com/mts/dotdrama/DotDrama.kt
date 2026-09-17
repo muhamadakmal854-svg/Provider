@@ -15,8 +15,8 @@ class DotDrama : MainAPI() {
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
-    override val sequentialMainPage = true
-    override val sequentialMainPageDelay = 100L
+    override var sequentialMainPage = true
+    override var sequentialMainPageDelay = 100L
     override val supportedTypes = setOf(
         TvType.AsianDrama,
         TvType.TvSeries,
