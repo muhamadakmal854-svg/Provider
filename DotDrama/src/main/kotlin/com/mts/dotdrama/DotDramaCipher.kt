@@ -7,14 +7,25 @@ import kotlin.math.abs
 object DotDramaCipher {
     private const val SECRET = "6f5fKnWnXB9528J4gQlAbNEWYDeMOR486u5D4ATaHgkvEcNaTk"
 
-    fun decrypt(bodyStr: String, headerVal: String?): String {
-        val header = headerVal?.trim() ?: ""
-        val raw = try {
-            Base64.decode(bodyStr.trim(), Base64.DEFAULT)
-        } catch (e: Exception) {
-            return bodyStr
-        }
+    fun decrypt(bodyStr: String, headerVal: String?): String? {
+        val cleanBody = bodyStr.trim()
+        if (cleanBody.isEmpty()) return null
 
+        val raw = try {
+            Base64.decode(cleanBody, Base64.DEFAULT)
+        } catch (_: Exception) {
+            try {
+                Base64.decode(cleanBody, Base64.NO_WRAP)
+            } catch (_: Exception) {
+                try {
+                    java.util.Base64.getDecoder().decode(cleanBody)
+                } catch (_: Exception) {
+                    return null
+                }
+            }
+        } ?: return null
+
+        val header = headerVal?.trim().orEmpty()
         val combined = header + SECRET
         var h = 0x811c9dc5.toInt()
         val fnvPrime = 0x01000193
@@ -44,6 +55,11 @@ object DotDramaCipher {
             raw[i] = (raw[i].toInt() xor key[i % 8].toInt()).toByte()
         }
 
-        return String(raw, StandardCharsets.UTF_8)
+        return try {
+            String(raw, StandardCharsets.UTF_8)
+        } catch (_: Exception) {
+            null
+        }
     }
 }
+

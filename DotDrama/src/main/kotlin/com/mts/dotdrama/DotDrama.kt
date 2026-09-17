@@ -4,10 +4,8 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import android.util.Log
+import kotlinx.coroutines.delay
 import java.net.URLEncoder
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.Date
 import org.json.JSONObject
 import org.json.JSONArray
 
@@ -17,6 +15,8 @@ class DotDrama : MainAPI() {
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
+    override val sequentialMainPage = true
+    override val sequentialMainPageDelay = 100L
     override val supportedTypes = setOf(
         TvType.AsianDrama,
         TvType.TvSeries,
@@ -39,7 +39,7 @@ class DotDrama : MainAPI() {
         val uuid = java.util.UUID.randomUUID().toString()
 
         return mapOf(
-            "User-Agent" to "okhttp/4.12.0",
+            "user-agent" to "okhttp/4.12.0",
             "Accept" to "application/json",
             "X-Ameal-Vage" to APP_VERSION,
             "X-Pestab" to PKG_NAME,
@@ -52,21 +52,42 @@ class DotDrama : MainAPI() {
             "X-Thote" to ts,
             "tlbootxqjrmxk" to "V2",
             "xannmddtlmlcba" to "Pixel 7",
-            "vvdyrllngkkfki" to "Google",
-            "wrctseguov" to "",
-            "xqwnegmvwrok" to "",
-            "oapgxxkf" to "",
-            "xltpbr" to ""
+            "vvdyrllngkkfki" to "Google"
         )
     }
 
     private suspend fun fetchAndDecrypt(url: String): String? {
         return try {
-            val response = app.get(url, headers = getHeaders(), timeout = 25)
-            val headerKlow = response.headers["X-Ecurve-Klow"] ?: response.headers["x-ecurve-klow"]
+            val response = try {
+                app.get(url, headers = getHeaders(), timeout = 25)
+            } catch (e1: Exception) {
+                Log.w("DotDrama", "app.get failed for $url (${e1.message}), fallback to insecureApp")
+                insecureApp.get(url, headers = getHeaders(), timeout = 25)
+            }
+
+            if (!response.isSuccessful) {
+                Log.e("DotDrama", "HTTP error ${response.code} for $url")
+                return null
+            }
+
+            val headerKlow = response.headers["X-Ecurve-Klow"]
+                ?: response.headers["x-ecurve-klow"]
+                ?: response.okhttpResponse.header("X-Ecurve-Klow")
+                ?: response.okhttpResponse.header("x-ecurve-klow")
+                ?: ""
+
             val rawBody = response.text
-            if (rawBody.isBlank()) return null
-            DotDramaCipher.decrypt(rawBody, headerKlow)
+            if (rawBody.isBlank()) {
+                Log.e("DotDrama", "Empty response text for $url")
+                return null
+            }
+
+            val decrypted = DotDramaCipher.decrypt(rawBody, headerKlow)
+            if (decrypted == null || !decrypted.trim().startsWith("{")) {
+                Log.e("DotDrama", "Failed to decrypt valid JSON for $url")
+                return null
+            }
+            decrypted
         } catch (e: Exception) {
             Log.e("DotDrama", "fetchAndDecrypt error for $url: ${e.message}")
             null
@@ -103,32 +124,39 @@ class DotDrama : MainAPI() {
 
         val home = ArrayList<SearchResponse>()
         try {
-            val decrypted = fetchAndDecrypt(pageUrl) ?: return newHomePageResponse(request.name, home)
-            val json = JSONObject(decrypted)
-            val dgiv = json.optJSONObject("dgiv") ?: return newHomePageResponse(request.name, home)
-            val lint = dgiv.optJSONArray("lint") ?: JSONArray()
+            var decrypted = fetchAndDecrypt(pageUrl)
+            if (decrypted == null) {
+                delay(400)
+                decrypted = fetchAndDecrypt(pageUrl)
+            }
 
-            for (i in 0 until lint.length()) {
-                val item = lint.getJSONObject(i)
-                val dcup = item.optString("dcup").trim()
-                if (dcup.isEmpty()) continue
+            if (decrypted != null) {
+                val json = JSONObject(decrypted)
+                val dgiv = json.optJSONObject("dgiv")
+                val lint = dgiv?.optJSONArray("lint") ?: JSONArray()
 
-                val title = item.optString("nseri").trim()
-                if (title.isEmpty()) continue
+                for (i in 0 until lint.length()) {
+                    val item = lint.getJSONObject(i)
+                    val dcup = item.optString("dcup").trim()
+                    if (dcup.isEmpty()) continue
 
-                val poster = item.optString("pday").trim().takeIf { it.isNotEmpty() }
-                val totalEp = item.optInt("ewood", 1)
+                    val title = item.optString("nseri").trim()
+                    if (title.isEmpty()) continue
 
-                val dataUrl = "$mainUrl/api/snast/gdrink?dcup=$dcup&grush=true"
+                    val poster = item.optString("pday").trim().takeIf { it.isNotEmpty() }
+                    val totalEp = item.optInt("ewood", 1)
 
-                if (totalEp <= 1) {
-                    home.add(newMovieSearchResponse(title, dataUrl, TvType.Movie) {
-                        this.posterUrl = poster
-                    })
-                } else {
-                    home.add(newTvSeriesSearchResponse(title, dataUrl, TvType.AsianDrama) {
-                        this.posterUrl = poster
-                    })
+                    val dataUrl = "$mainUrl/api/snast/gdrink?dcup=$dcup&grush=true"
+
+                    if (totalEp <= 1) {
+                        home.add(newMovieSearchResponse(title, dataUrl, TvType.Movie) {
+                            this.posterUrl = poster
+                        })
+                    } else {
+                        home.add(newTvSeriesSearchResponse(title, dataUrl, TvType.AsianDrama) {
+                            this.posterUrl = poster
+                        })
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -137,6 +165,7 @@ class DotDrama : MainAPI() {
 
         return newHomePageResponse(request.name, home)
     }
+
 
     override suspend fun search(query: String): List<SearchResponse> {
         val results = ArrayList<SearchResponse>()
@@ -392,7 +421,7 @@ class DotDrama : MainAPI() {
                             this.referer = "$mainUrl/"
                             this.headers = mapOf(
                                 "Referer" to "$mainUrl/",
-                                "User-Agent" to "okhttp/4.12.0"
+                                "user-agent" to "okhttp/4.12.0"
                             )
                             this.quality = qualityInt
                         }
@@ -412,7 +441,7 @@ class DotDrama : MainAPI() {
                             this.referer = "$mainUrl/"
                             this.headers = mapOf(
                                 "Referer" to "$mainUrl/",
-                                "User-Agent" to "okhttp/4.12.0"
+                                "user-agent" to "okhttp/4.12.0"
                             )
                             this.quality = qualityInt
                         }
