@@ -320,7 +320,11 @@ class SFlix : MainAPI() {
             suspend {
                 invokeMoviesAPI(tmdbId, isMovie, season, episode, subtitleCallback, callback)
             },
-            // Pelayan 2: SFlix Native Player (vidsrc-embed.ru / vs_src.php)
+            // Pelayan 2: VidCore / Rigel (SFlix Player Server 2 - 1080p FHD HLS)
+            suspend {
+                invokeVidCore(tmdbId, isMovie, season, episode, subtitleCallback, callback)
+            },
+            // Pelayan 3: SFlix Native Player (vidsrc-embed.ru / vs_src.php)
             suspend {
                 invokeSFlixNative(tmdbId, isMovie, season, episode, subtitleCallback, callback)
             },
@@ -420,6 +424,100 @@ class SFlix : MainAPI() {
                     SubtitleFile(lang, trackUrl)
                 )
             }
+        }
+    }
+
+    private suspend fun invokeVidCore(
+        tmdbId: Int,
+        isMovie: Boolean,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val path = if (isMovie) "movie/$tmdbId" else "tv/$tmdbId/$season/$episode"
+        val primaryUrl = "https://movish.to/player-sources/rigel/$path"
+        val fallbackUrl = "https://box-prox.jeannefrankli-n2-7-2-0-5.workers.dev/https://movish.to/player-sources/rigel/$path"
+
+        val res = try {
+            app.get(
+                primaryUrl,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "https://vidcore.net/"
+                ),
+                timeout = 10
+            ).parsedSafe<VidCoreResponse>()
+        } catch (_: Throwable) {
+            null
+        } ?: try {
+            app.get(
+                fallbackUrl,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "https://vidcore.net/"
+                ),
+                timeout = 10
+            ).parsedSafe<VidCoreResponse>()
+        } catch (_: Throwable) {
+            null
+        } ?: return
+
+        res.streams?.forEach { stream ->
+            val streamUrl = stream.url ?: return@forEach
+            if (!streamUrl.contains(".m3u8") && stream.type != "hls") return@forEach
+
+            val label = stream.label ?: "Rigel"
+            val serverName = "SFlix - Server 2 (VidCore - $label)"
+            val streamHeaders = mapOf(
+                "User-Agent" to USER_AGENT,
+                "Referer" to "https://vidcore.net/"
+            )
+
+            callback.invoke(
+                newExtractorLink(
+                    serverName,
+                    "VidCore [$label 1080p FHD]",
+                    streamUrl,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "https://vidcore.net/"
+                    this.quality = Qualities.P1080.value
+                    this.headers = streamHeaders
+                }
+            )
+
+            try {
+                generateM3u8(
+                    serverName,
+                    streamUrl,
+                    referer = "https://vidcore.net/",
+                    headers = streamHeaders
+                ).forEach(callback)
+            } catch (_: Throwable) {
+            }
+        }
+
+        res.subtitles?.forEach { sub ->
+            val fileUrl = sub.file ?: return@forEach
+            val lang = sub.label ?: "English"
+            subtitleCallback.invoke(SubtitleFile(lang, fileUrl))
+        }
+
+        val subUrl = if (isMovie) {
+            "https://sub.vdrk.site/v1/movie/$tmdbId"
+        } else {
+            "https://sub.vdrk.site/v1/tv/$tmdbId/$season/$episode"
+        }
+
+        try {
+            val subText = app.get(subUrl, headers = mapOf("User-Agent" to USER_AGENT), timeout = 6).text
+            parseJson<Array<VidCoreSubtitle>>(subText).forEach { sub ->
+                val fileUrl = sub.file ?: return@forEach
+                val lang = sub.label ?: "English"
+                subtitleCallback.invoke(SubtitleFile(lang, fileUrl))
+            }
+        } catch (_: Throwable) {
         }
     }
 
@@ -794,4 +892,25 @@ class SFlix : MainAPI() {
         @JsonProperty("title") val title: String? = null,
         @JsonProperty("sources") val sources: List<VidoraSource>? = null
     )
+
+    data class VidCoreStream(
+        @JsonProperty("url") val url: String? = null,
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("type") val type: String? = null,
+        @JsonProperty("quality") val quality: String? = null
+    )
+
+    data class VidCoreSubtitle(
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("file") val file: String? = null
+    )
+
+    data class VidCoreResponse(
+        @JsonProperty("source") val source: String? = null,
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("streams") val streams: List<VidCoreStream>? = null,
+        @JsonProperty("subtitles") val subtitles: List<VidCoreSubtitle>? = null,
+        @JsonProperty("success") val success: Boolean? = null
+    )
+
 }
