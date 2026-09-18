@@ -17,6 +17,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.preference.PreferenceManager
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -479,21 +480,23 @@ class Anichin(val context: Context) : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse? {
         val fullUrl = toAbsoluteUrl(url)
+        val isDirectEpisode = fullUrl.contains("-episode-", ignoreCase = true) || fullUrl.contains("-ep-", ignoreCase = true)
         var doc = getDocumentSmart(fullUrl) ?: return null
 
-        // If user opened an individual episode directly, navigate to parent series to load all episodes
-        if (fullUrl.contains("-episode-", true) || fullUrl.contains("-ep-", true)) {
-            val parentSeriesUrl = doc.selectFirst(".ts-breadcrumb li:nth-last-child(2) a, .naveps .nvsc a, a:contains(Semua Episode)")?.attr("href")?.let { toAbsoluteUrl(it) }
+        var parentDoc: Document? = null
+        if (isDirectEpisode) {
+            val parentSeriesUrl = doc.selectFirst(".ts-breadcrumb li:nth-last-child(2) a, .naveps .nvsc a, a:contains(Semua Episode)")
+                ?.attr("href")?.let { toAbsoluteUrl(it) }
             if (!parentSeriesUrl.isNullOrBlank() && parentSeriesUrl != fullUrl && parentSeriesUrl != "$mainUrl/") {
-                val parentDoc = getDocumentSmart(parentSeriesUrl)
-                if (parentDoc != null && parentDoc.select(".eplister ul li a, .episodelist ul li a").isNotEmpty()) {
-                    doc = parentDoc
-                }
+                parentDoc = getDocumentSmart(parentSeriesUrl)
             }
         }
 
-        val rawTitle = doc.selectFirst("h1.entry-title, h1")?.text()?.trim()
-            ?: doc.selectFirst("meta[property='og:title']")?.attr("content")?.trim()
+        val mainDoc = parentDoc ?: doc
+
+        val rawTitle = mainDoc.selectFirst("h1.entry-title, h1")?.text()?.trim()
+            ?: doc.selectFirst("h1.entry-title, h1")?.text()?.trim()
+            ?: mainDoc.selectFirst("meta[property='og:title']")?.attr("content")?.trim()
             ?: return null
 
         val title = rawTitle.replace("- Fansub Donghua Subtitle Indonesia", "", ignoreCase = true)
@@ -504,31 +507,79 @@ class Anichin(val context: Context) : MainAPI() {
             .replace("Anichin", "", ignoreCase = true)
             .trim()
 
-        val poster = getPosterUrl(doc.selectFirst(".thumb img, .poster img, img[itemprop='image'], meta[property='og:image']"))
-            ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.let { toAbsoluteUrl(it) }
+        val poster = getPosterUrl(mainDoc.selectFirst(".thumb img, .poster img, img[itemprop='image'], meta[property='og:image']"))
+            ?: mainDoc.selectFirst("meta[property='og:image']")?.attr("content")?.let { toAbsoluteUrl(it) }
             ?: ""
 
-        val plot = doc.select(".entry-content, .sinopsis, .desc, .entry-content p").joinToString("\n") {
+        val backdrop = getPosterUrl(mainDoc.selectFirst(".bigcover img, .bigcover, [style*='background-image']"))
+            ?: getPosterUrl(doc.selectFirst(".bigcover img, .bigcover, [style*='background-image']"))
+            ?: poster
+
+        val trailer = mainDoc.selectFirst("a.trailerbutton, a[href*='youtube.com'], a[href*='youtu.be'], iframe[src*='youtube.com'], [data-trailer]")?.let {
+            it.attr("href").ifBlank { it.attr("src") }.ifBlank { it.attr("data-trailer") }
+        } ?: doc.selectFirst("a.trailerbutton, a[href*='youtube.com'], a[href*='youtu.be'], iframe[src*='youtube.com'], [data-trailer]")?.let {
+            it.attr("href").ifBlank { it.attr("src") }.ifBlank { it.attr("data-trailer") }
+        } ?: Regex("""(?:https?:)?//(?:www\.)?(?:youtube\.com/(?:watch\?v=|embed/)|youtu\.be/)[a-zA-Z0-9_-]{11}""").find(mainDoc.html())?.value
+
+        val plot = mainDoc.select(".entry-content, .sinopsis, .desc, .entry-content p").joinToString("\n") {
             it.text().trim()
         }.ifBlank {
-            doc.selectFirst("meta[property='og:description']")?.attr("content")?.trim() ?: ""
+            mainDoc.selectFirst("meta[property='og:description']")?.attr("content")?.trim()
+                ?: doc.selectFirst("meta[property='og:description']")?.attr("content")?.trim()
+                ?: ""
         }
 
-        val tags = doc.select(".genxed a, a[href*='/genres/'], .set a").map { it.text().trim() }.distinct()
-        val year = doc.selectFirst(".spe span:contains(Released), .year, .meta")?.text()?.let {
-            Regex("""\b(19\d\d|20\d\d)\b""").find(it)?.groupValues?.get(1)?.toIntOrNull()
+        val tags = mainDoc.select(".genxed a, a[href*='/genres/'], .set a").map { it.text().trim() }.distinct()
+
+        val metaSpansText = mainDoc.select(".spe span, .infox .spe span").joinToString(" ") { it.text().trim() }
+        val year = Regex("""\b(19\d\d|20\d\d)\b""").find(metaSpansText)?.groupValues?.get(1)?.toIntOrNull()
+
+        // Fetch episode items with thumbnails (Cards)
+        val epThumbElements = if (doc.select(".episodelist ul li").isNotEmpty()) {
+            doc.select(".episodelist ul li")
+        } else if (parentDoc != null && parentDoc.select(".episodelist ul li").isNotEmpty()) {
+            parentDoc.select(".episodelist ul li")
+        } else {
+            // Series page opened: fetch the first episode page to extract all thumbnails
+            val firstEpHref = doc.selectFirst(".eplister ul li a, .episodelist ul li a")?.attr("href")?.let { toAbsoluteUrl(it) }
+            if (!firstEpHref.isNullOrBlank() && firstEpHref != fullUrl) {
+                val epPageDoc = getDocumentSmart(firstEpHref)
+                epPageDoc?.select(".episodelist ul li")
+            } else {
+                null
+            }
         }
 
-        // Extract Episode List
+        val thumbnailMap = mutableMapOf<String, String>()
+        val dateMap = mutableMapOf<String, String>()
+
+        if (epThumbElements != null && epThumbElements.isNotEmpty()) {
+            for (li in epThumbElements) {
+                val aTag = li.selectFirst("a") ?: continue
+                val epHref = toAbsoluteUrl(aTag.attr("href"))
+                if (epHref.isBlank()) continue
+
+                val thumbImg = getPosterUrl(li.selectFirst(".thumbnel img, img"))
+                if (!thumbImg.isNullOrBlank()) {
+                    thumbnailMap[epHref] = thumbImg
+                }
+
+                val infoText = li.selectFirst(".playinfo span, .playinfo, .epl-date")?.text()?.trim()
+                if (!infoText.isNullOrBlank()) {
+                    dateMap[epHref] = infoText
+                }
+            }
+        }
+
+        // Extract Episode List Elements
         val containerElements = doc.select(".eplister ul li a, .episodelist ul li a, #daftarepisode li a, .clps li a, .ep-list li a")
         val epElements = if (containerElements.isNotEmpty()) {
             containerElements
+        } else if (parentDoc != null && parentDoc.select(".eplister ul li a").isNotEmpty()) {
+            parentDoc.select(".eplister ul li a")
         } else {
             doc.select(".entry-content ul li a[href*='-episode-'], #content .eplister a")
         }
-
-        val backdrop = doc.selectFirst(".bigcover img, .bigcover, [style*='background-image']")?.let { getPosterUrl(it) }
-            ?: poster
 
         val rawEpisodes = epElements.mapNotNull { el ->
             val href = toAbsoluteUrl(el.attr("href"))
@@ -546,7 +597,8 @@ class Anichin(val context: Context) : MainAPI() {
             }
 
             // Extract Release Date
-            val rawDate = el.selectFirst(".epl-date, .date, .time, .metadate")?.text()?.trim().orEmpty()
+            val rawDate = dateMap[href]?.replace(Regex("""Eps\s*\d+\s*-\s*""", RegexOption.IGNORE_CASE), "")?.trim()
+                ?: el.selectFirst(".epl-date, .date, .time, .metadate")?.text()?.trim().orEmpty()
                 .ifBlank { el.parent()?.selectFirst(".epl-date, .date, .time, .metadate")?.text()?.trim().orEmpty() }
 
             val parsedDate = if (rawDate.isNotBlank()) {
@@ -561,17 +613,21 @@ class Anichin(val context: Context) : MainAPI() {
                 }
             } else null
 
-            // Extract Episode Thumbnail / Card Image
-            val epImg = getPosterUrl(el.selectFirst("img") ?: el.parent()?.selectFirst("img"))
+            // Episode Thumbnail Card
+            val epImg = thumbnailMap[href]
+                ?: getPosterUrl(el.selectFirst(".thumbnel img, img") ?: el.parent()?.selectFirst(".thumbnel img, img"))
+                ?: backdrop
 
             newEpisode(href) {
                 this.name = if (epNum != null) "Episode $epNum" else "Episode"
                 this.episode = epNum
-                this.posterUrl = (epImg ?: backdrop).ifBlank { poster.ifBlank { null } }
+                this.posterUrl = epImg.ifBlank { backdrop.ifBlank { poster.ifBlank { null } } }
                 if (parsedDate != null) {
                     this.date = parsedDate
                 }
-                this.description = if (rawDate.isNotBlank()) "Rilis: $rawDate" else null
+                if (rawDate.isNotBlank()) {
+                    this.description = "Rilis: $rawDate"
+                }
             }
         }.distinctBy { it.data }
 
@@ -580,9 +636,13 @@ class Anichin(val context: Context) : MainAPI() {
         return if (isMovie) {
             newMovieLoadResponse(title, fullUrl, TvType.AnimeMovie, fullUrl) {
                 this.posterUrl = poster
+                this.backgroundPosterUrl = backdrop.ifBlank { poster }
                 this.plot = plot
                 this.tags = tags
                 this.year = year
+                if (!trailer.isNullOrBlank()) {
+                    addTrailer(trailer)
+                }
             }
         } else {
             // Strictly sort episodes in ascending order (Episode 1, 2, ... N)
@@ -593,9 +653,13 @@ class Anichin(val context: Context) : MainAPI() {
 
             newTvSeriesLoadResponse(title, fullUrl, TvType.Anime, sortedEpisodes) {
                 this.posterUrl = poster
+                this.backgroundPosterUrl = backdrop.ifBlank { poster }
                 this.plot = plot
                 this.tags = tags
                 this.year = year
+                if (!trailer.isNullOrBlank()) {
+                    addTrailer(trailer)
+                }
             }
         }
     }
@@ -616,106 +680,108 @@ class Anichin(val context: Context) : MainAPI() {
             if (src.isBlank() || src.startsWith("javascript:") || src.startsWith("about:")) return
 
             when {
-                // 1. OK.ru (Odnoklassniki) - semak ini dahulu sebelum padanan umum anichin-player!
+                // 1. OK.ru (Odnoklassniki) - 1 Link Sahaja (In-player Multi-Quality)
                 src.contains("ok.ru") || src.contains("odnoklassniki") || src.contains("racaty.my.id/empire") || src.contains("videoplayer.vip") || (src.contains("anichin-player.web.id") && src.contains("ok=")) -> {
                     extractOkRuDirect(src, pageUrl, serverName, callback)
                     foundAny = true
                 }
-                // 2. Dailymotion & Anichin player embed
+                // 2. Dailymotion - 1 Link Sahaja (In-player Multi-Quality HLS)
                 src.contains("dailymotion.com") || src.contains("geo.dailymotion.com") || (src.contains("anichin-player.web.id") && (src.contains("url=") || src.contains("video="))) || src.contains("video=") -> {
                     extractDailymotionDirect(src, pageUrl, serverName, callback)
                     foundAny = true
                 }
-                // 3. Rumble
+                // 3. Rumble - 1 Link Sahaja (In-player Multi-Quality HLS)
                 src.contains("rumble.com") -> {
                     extractRumbleDirect(src, pageUrl, serverName, callback)
                     foundAny = true
                 }
-                // 4. TurboVIP / Turboviplay
-                src.contains("turbovidhls") || src.contains("turboviplay") -> {
+                // 4. TurboVIP
+                src.contains("turbovip.net") || src.contains("turboviplay.com") -> {
                     extractTurboVipDirect(src, pageUrl, serverName, callback)
                     foundAny = true
                 }
                 // 5. PixelDrain
                 src.contains("pixeldrain.com") -> {
-                    extractPixelDrainDirect(src, serverName, callback)
+                    extractPixelDrainDirect(src, pageUrl, serverName, callback)
                     foundAny = true
                 }
-                // 6. StreamRuby / RubyVidHub
-                src.contains("rubyvidhub.com") || src.contains("streamruby") -> {
+                // 6. StreamRuby
+                src.contains("streamruby.com") || src.contains("rubystream") -> {
                     extractStreamRubyDirect(src, pageUrl, serverName, callback)
                     foundAny = true
                 }
-                // 7. VidHide / EarnVids / Morencius
-                src.contains("morencius.com") || src.contains("vidhide") || src.contains("earnstream") || src.contains("dintezuvio") -> {
+                // 7. VidHide
+                src.contains("vidhide") || src.contains("filelions") -> {
                     extractVidHideDirect(src, pageUrl, serverName, callback)
                     foundAny = true
                 }
-                // 8. Anichin Internal Stream
-                src.contains("anichin.stream") || src.contains("rpmvid.com") -> {
-                    extractAnichinStream(src, pageUrl, serverName, subtitleCallback, callback)
+                // 8. Anichin Native Stream Player
+                src.contains("anichin.stream") -> {
+                    extractAnichinStream(src, pageUrl, serverName, callback)
                     foundAny = true
                 }
-                // 9. Generic Extractor (Playmogo, Dood, StreamWish, Filemoon, dll.)
+                // 9. Standard Cloudstream Extractor Fallback
                 else -> {
-                    try {
-                        loadExtractor(src, pageUrl, subtitleCallback, callback)
+                    val loaded = loadExtractor(src, pageUrl, subtitleCallback, callback)
+                    if (loaded) {
                         foundAny = true
+                    }
+                }
+            }
+        }
+
+        // Extract iframes from main player
+        val iframes = doc.select(".player-embed iframe, .video-content iframe, iframe[src*='http']")
+        for (iframe in iframes) {
+            val src = iframe.attr("src").ifBlank { iframe.attr("data-src") }
+            if (src.isNotBlank()) {
+                resolveStream(toAbsoluteUrl(src), "Embed")
+            }
+        }
+
+        // Extract servers from server list tab / buttons
+        val serverElements = doc.select(".server-list li, .mobius select option, select.mirror option, .mirror li, ul.mctnx li")
+        for (server in serverElements) {
+            val sName = server.text().trim().ifBlank { "Server" }
+            val postVal = server.attr("value").ifBlank { server.attr("data-post") }
+            val rawData = server.attr("data-src").ifBlank { server.attr("data-embed") }
+                .ifBlank { server.attr("href") }.ifBlank { postVal }
+
+            if (rawData.isNotBlank() && !rawData.startsWith("#")) {
+                if (rawData.startsWith("http://") || rawData.startsWith("https://") || rawData.startsWith("//")) {
+                    resolveStream(toAbsoluteUrl(rawData), sName)
+                } else if (rawData.length > 20 && !rawData.contains(" ")) {
+                    try {
+                        val decoded = String(Base64.decode(rawData, Base64.DEFAULT)).trim()
+                        if (decoded.contains("http") || decoded.contains(".php")) {
+                            val iframeSrc = Regex("src=['\"]([^'\"]+)['\"]").find(decoded)?.groupValues?.getOrNull(1) ?: decoded
+                            resolveStream(toAbsoluteUrl(iframeSrc), sName)
+                        }
                     } catch (_: Exception) {}
                 }
             }
         }
 
-        // 1. Parse Server Select / Mirror Dropdowns & Tab Options
-        val mirrorOptions = doc.select("select.mirror option, select[name='server'] option, .mirror option, ul.mirror li, .server-list li, select option, .mobius option")
-        for (opt in mirrorOptions) {
-            val rawVal = opt.attr("value").ifBlank { opt.attr("data-embed") }.ifBlank { opt.attr("data-src") }.ifBlank { opt.attr("data-content") }.ifBlank { opt.attr("href") }.trim()
-            val serverName = opt.text().trim().ifBlank { "Server" }
-            if (rawVal.isNotBlank() && !rawVal.equals("null", true) && !serverName.contains("Select Video", true) && !serverName.contains("Pilih Server", true)) {
-                try {
-                    val decodedIframe = if (rawVal.startsWith("<iframe", true)) {
-                        rawVal
-                    } else if (rawVal.length > 20 && !rawVal.startsWith("http")) {
-                        try {
-                            String(Base64.decode(rawVal, Base64.DEFAULT), Charsets.UTF_8)
-                        } catch (_: Exception) {
-                            rawVal
-                        }
-                    } else {
-                        rawVal
-                    }
-
-                    val src = Regex("""src=['"]([^'"]+)['"]""").find(decodedIframe)?.groupValues?.getOrNull(1)
-                        ?: if (decodedIframe.startsWith("http")) decodedIframe else ""
-
-                    if (src.isNotBlank() && src.startsWith("http")) {
-                        resolveStream(src, serverName)
-                    }
-                } catch (_: Exception) {}
-            }
-        }
-
-        // 2. Direct Iframes on Page
-        doc.select("iframe[src], iframe[data-src]").forEach { ifr ->
-            val src = toAbsoluteUrl(ifr.attr("src").ifBlank { ifr.attr("data-src") })
-            if (src.isNotBlank() && !src.contains("cbox", true) && !src.startsWith("about:") && !src.startsWith("javascript:")) {
-                resolveStream(src, "Player")
-            }
-        }
-
-        // 3. Download Links & External Mirrors
-        doc.select(".soradl a, .soraurlx a, .moredl a, .dlx a, a[href*='pixeldrain'], a[href*='mediafire'], a[href*='terabox']").forEach { a ->
-            val href = a.attr("href").trim()
-            if (href.startsWith("http") && !href.contains("javascript:")) {
-                val text = a.text().trim().ifBlank { "Mirror" }
-                resolveStream(href, text)
+        // Fallback: search regex in full page HTML
+        if (!foundAny) {
+            val regexPatterns = listOf(
+                Regex("""https?://(?:www\.)?ok\.ru/videoembed/\d+"""),
+                Regex("""https?://(?:www\.)?dailymotion\.com/embed/video/[a-zA-Z0-9]+"""),
+                Regex("""https?://(?:www\.)?rumble\.com/embed/[a-zA-Z0-9]+"""),
+                Regex("""https?://turbovip\.net/[a-zA-Z0-9]+"""),
+                Regex("""https?://anichin-player\.web\.id/index\.php\?[^"'\\s<>]+""")
+            )
+            for (p in regexPatterns) {
+                p.findAll(doc.html()).forEach { match ->
+                    resolveStream(match.value, "Native")
+                }
             }
         }
 
         return foundAny
     }
 
-    // Direct Dailymotion Extractor (Fixed 403 Forbidden with Session Cookies and Full Headers)
+    // Direct Dailymotion Extractor (1 Link Sahaja - Multi-Quality HLS with Session Cookies)
     private suspend fun extractDailymotionDirect(
         videoUrlOrId: String,
         refererUrl: String,
@@ -758,16 +824,15 @@ class Anichin(val context: Context) : MainAPI() {
                     streamHeaders["Cookie"] = cookieHeader
                 }
 
-                var foundHls = false
                 val jsonAutoMatch = Regex("auto.+?\"url\"\\s*:\\s*\"([^\"]+)\"").find(text)
                 val masterUrl = jsonAutoMatch?.groupValues?.getOrNull(1)?.replace("\\/", "/")
 
                 if (!masterUrl.isNullOrBlank()) {
-                    foundHls = true
+                    // 1 Link Sahaja: Multi-Quality HLS Master (Player selects quality in-player)
                     callback(
                         newExtractorLink(
                             source = this.name,
-                            name = "${this.name} - $serverName Dailymotion Auto HLS",
+                            name = "${this.name} - $serverName Dailymotion",
                             url = masterUrl,
                             type = ExtractorLinkType.M3U8
                         ) {
@@ -775,61 +840,43 @@ class Anichin(val context: Context) : MainAPI() {
                             this.headers = streamHeaders
                         }
                     )
-
-                    try {
-                        M3u8Helper.generateM3u8(
-                            source = "${this.name} - $serverName Dailymotion",
-                            streamUrl = masterUrl,
-                            referer = "https://geo.dailymotion.com/",
-                            headers = streamHeaders
-                        ).forEach(callback)
-                    } catch (_: Exception) {}
-                }
-
-                if (!foundHls) {
-                    val m3u8Regex = Regex("""https?:\\/\\/[^"'\s]+\.m3u8[^"'\s]*""")
-                    val foundM3u8s = m3u8Regex.findAll(text).map { it.value.replace("\\/", "/") }.distinct().toList()
-                    for (m3u8Url in foundM3u8s) {
+                } else {
+                    val m3u8Regex = Regex("""https?://[^\s"'<>]+\.m3u8[^\s"'<>]*""")
+                    val firstM3u8 = m3u8Regex.find(text)?.value?.replace("\\/", "/")
+                    if (!firstM3u8.isNullOrBlank()) {
                         callback(
                             newExtractorLink(
                                 source = this.name,
-                                name = "${this.name} - $serverName Dailymotion HLS",
-                                url = m3u8Url,
+                                name = "${this.name} - $serverName Dailymotion",
+                                url = firstM3u8,
                                 type = ExtractorLinkType.M3U8
                             ) {
                                 this.referer = "https://geo.dailymotion.com/"
                                 this.headers = streamHeaders
                             }
                         )
-                        try {
-                            M3u8Helper.generateM3u8(
-                                source = "${this.name} - $serverName Dailymotion",
-                                streamUrl = m3u8Url,
-                                referer = "https://geo.dailymotion.com/",
-                                headers = streamHeaders
-                            ).forEach(callback)
-                        } catch (_: Exception) {}
-                    }
-                }
-
-                Regex("""https?:\\/\\/[^"'\s]+\.mp4[^"'\s]*""").findAll(text).map { it.value.replace("\\/", "/") }.distinct().forEach { mp4Url ->
-                    callback(
-                        newExtractorLink(
-                            source = this.name,
-                            name = "${this.name} - $serverName Dailymotion MP4",
-                            url = mp4Url,
-                            type = ExtractorLinkType.VIDEO
-                        ) {
-                            this.referer = "https://geo.dailymotion.com/"
-                            this.headers = streamHeaders
+                    } else {
+                        val firstMp4 = Regex("""https?://[^\s"'<>]+\.mp4[^\s"'<>]*""").find(text)?.value?.replace("\\/", "/")
+                        if (!firstMp4.isNullOrBlank()) {
+                            callback(
+                                newExtractorLink(
+                                    source = this.name,
+                                    name = "${this.name} - $serverName Dailymotion",
+                                    url = firstMp4,
+                                    type = ExtractorLinkType.VIDEO
+                                ) {
+                                    this.referer = "https://geo.dailymotion.com/"
+                                    this.headers = streamHeaders
+                                }
+                            )
                         }
-                    )
+                    }
                 }
             }
         } catch (_: Exception) {}
     }
 
-    // Direct OK.ru (Odnoklassniki) Extractor with All Qualities & DNS Sinkhole Bypass
+    // Direct OK.ru (Odnoklassniki) Extractor (1 Link Sahaja - Multi-Quality HLS with DNS Sinkhole Bypass)
     private suspend fun extractOkRuDirect(
         okUrl: String,
         refererUrl: String,
@@ -903,9 +950,10 @@ class Anichin(val context: Context) : MainAPI() {
                     .replace("\\u002F", "/")
                     .replace("\\/", "/")
 
-                // 1. HLS Master Playlist
-                val hlsMatch = Regex("""["']hlsMasterPlaylistUrl["']\s*:\s*["']([^"']+)["']""").find(rawOptions)
-                    ?: Regex("""["']hlsMasterPlaylistUrl["']\s*:\s*["']([^"']+)["']""").find(html)
+                // 1. HLS Master Playlist (1 Link Sahaja - In-Player Quality Selection)
+                val hlsMatch = Regex("""['"]hlsMasterPlaylistUrl['"]\s*:\s*['"]([^'"]+)['"]""").find(rawOptions)
+                    ?: Regex("""['"]hlsMasterPlaylistUrl['"]\s*:\s*['"]([^'"]+)['"]""").find(html)
+
                 if (hlsMatch != null) {
                     val hlsUrl = hlsMatch.groupValues[1]
                         .replace("\\/", "/")
@@ -915,7 +963,7 @@ class Anichin(val context: Context) : MainAPI() {
                     callback(
                         newExtractorLink(
                             source = this.name,
-                            name = "${this.name} - $serverName OK.ru HLS",
+                            name = "${this.name} - $serverName OK.ru",
                             url = hlsUrl,
                             type = ExtractorLinkType.M3U8
                         ) {
@@ -923,71 +971,47 @@ class Anichin(val context: Context) : MainAPI() {
                             this.headers = mediaHeaders
                         }
                     )
+                } else {
+                    // Fallback to highest available MP4 if HLS is absent
+                    val videoBlockMatch = Regex(""""videos"\s*:\s*(\[[^\]]+\])""").find(rawOptions)
+                        ?: Regex(""""videos"\s*:\s*(\[[^\]]+\])""").find(html)
 
-                    try {
-                        M3u8Helper.generateM3u8(
-                            source = "${this.name} - $serverName OK.ru",
-                            streamUrl = hlsUrl,
-                            referer = embedUrl,
-                            headers = mediaHeaders
-                        ).forEach(callback)
-                    } catch (_: Exception) {}
-                }
+                    if (videoBlockMatch != null) {
+                        val videosStr = videoBlockMatch.groupValues[1]
+                        val vMatches = Regex("""\{[^}]*?"name"\s*:\s*"([^"]+)"[^}]*?"url"\s*:\s*"([^"]+)"[^}]*?\}""").findAll(videosStr).toList()
+                        
+                        // Pick the single best quality MP4
+                        val bestVm = vMatches.firstOrNull { it.groupValues[1].equals("FULL", true) }
+                            ?: vMatches.firstOrNull { it.groupValues[1].equals("HD", true) }
+                            ?: vMatches.firstOrNull { it.groupValues[1].equals("SD", true) }
+                            ?: vMatches.firstOrNull()
 
-                // 2. Kualiti Video Individu (1080p -> 144p)
-                val videoBlockMatch = Regex(""""videos"\s*:\s*(\[[^]]+\])""").find(rawOptions)
-                    ?: Regex(""""videos"\s*:\s*(\[[^]]+\])""").find(html)
-                if (videoBlockMatch != null) {
-                    val videosStr = videoBlockMatch.groupValues[1]
-                    val vMatches = Regex("""\{[^}]*?"name"\s*:\s*"([^"]+)"[^}]*?"url"\s*:\s*"([^"]+)"[^}]*?\}""").findAll(videosStr)
-                    for (vm in vMatches) {
-                        val qName = vm.groupValues[1].uppercase()
-                        val rawVideoUrl = vm.groupValues[2]
-                            .replace("\\/", "/")
-                            .replace("\\u0026", "&")
-                            .replace("&amp;", "&")
-                        val fullVideoUrl = if (rawVideoUrl.startsWith("//")) "https:$rawVideoUrl" else rawVideoUrl
+                        if (bestVm != null) {
+                            val rawVideoUrl = bestVm.groupValues[2]
+                                .replace("\\/", "/")
+                                .replace("\\u0026", "&")
+                                .replace("&amp;", "&")
+                            val fullVideoUrl = if (rawVideoUrl.startsWith("//")) "https:$rawVideoUrl" else rawVideoUrl
 
-                        val qualityLabel = when (qName) {
-                            "MOBILE" -> "144p"
-                            "LOWEST" -> "240p"
-                            "LOW" -> "360p"
-                            "SD" -> "480p"
-                            "HD" -> "720p"
-                            "FULL" -> "1080p"
-                            "QUAD" -> "1440p"
-                            "ULTRA" -> "4K"
-                            else -> qName
+                            callback(
+                                newExtractorLink(
+                                    source = this.name,
+                                    name = "${this.name} - $serverName OK.ru",
+                                    url = fullVideoUrl,
+                                    type = ExtractorLinkType.VIDEO
+                                ) {
+                                    this.referer = embedUrl
+                                    this.headers = mediaHeaders
+                                }
+                            )
                         }
-
-                        val qualityValue = when (qualityLabel) {
-                            "1080p" -> Qualities.P1080.value
-                            "720p" -> Qualities.P720.value
-                            "480p" -> Qualities.P480.value
-                            "360p" -> Qualities.P360.value
-                            "240p" -> Qualities.P240.value
-                            else -> Qualities.Unknown.value
-                        }
-
-                        callback(
-                            newExtractorLink(
-                                source = this.name,
-                                name = "${this.name} - $serverName OK.ru $qualityLabel",
-                                url = fullVideoUrl,
-                                type = ExtractorLinkType.VIDEO
-                            ) {
-                                this.referer = embedUrl
-                                this.quality = qualityValue
-                                this.headers = mediaHeaders
-                            }
-                        )
                     }
                 }
             }
         } catch (_: Exception) {}
     }
 
-    // Direct Rumble Extractor (HLS Master & Multi-Quality MP4)
+    // Direct Rumble Extractor (1 Link Sahaja - Multi-Quality HLS Master)
     private suspend fun extractRumbleDirect(
         rumbleUrl: String,
         refererUrl: String,
@@ -1002,283 +1026,239 @@ class Anichin(val context: Context) : MainAPI() {
             val res = app.get(rumbleUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl), timeout = 10)
             val text = res.text
 
-            // 1. HLS Master Playlist
-            Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").findAll(text).forEach { m ->
-                val cleanUrl = m.groupValues[1].replace("\\/", "/")
+            // 1. HLS Master Playlist (1 Link Sahaja)
+            val hlsMatch = Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(text)
+            val hlsUrl = hlsMatch?.groupValues?.getOrNull(1)?.replace("\\/", "/")
+
+            if (!hlsUrl.isNullOrBlank()) {
                 callback(
                     newExtractorLink(
                         source = this.name,
-                        name = "${this.name} - $serverName Rumble HLS",
-                        url = cleanUrl,
+                        name = "${this.name} - $serverName Rumble",
+                        url = hlsUrl,
                         type = ExtractorLinkType.M3U8
                     ) {
                         this.referer = "https://rumble.com/"
                         this.headers = headers
                     }
                 )
-                try {
-                    M3u8Helper.generateM3u8(
-                        source = "${this.name} - $serverName Rumble",
-                        streamUrl = cleanUrl,
-                        referer = "https://rumble.com/",
-                        headers = headers
-                    ).forEach(callback)
-                } catch (_: Exception) {}
-            }
+            } else {
+                // Fallback to highest quality MP4
+                val mp4Matches = Regex("""(https?:[\\/]+[^\s"']+\.mp4[^\s"']*)""").findAll(text).map {
+                    it.groupValues[1].replace("\\/", "/")
+                }.distinct().toList()
 
-            // 2. Direct MP4 Video Streams
-            val mp4Matches = Regex("""(https?:[\\/]+[^\s"']+\.mp4[^\s"']*)""").findAll(text).map {
-                it.groupValues[1].replace("\\/", "/")
-            }.distinct().toList()
+                val bestMp4 = mp4Matches.firstOrNull { it.contains(".Faa.mp4", ignoreCase = true) }
+                    ?: mp4Matches.firstOrNull { it.contains(".gaa.mp4", ignoreCase = true) }
+                    ?: mp4Matches.firstOrNull { it.contains(".caa.mp4", ignoreCase = true) }
+                    ?: mp4Matches.firstOrNull()
 
-            for (cleanUrl in mp4Matches) {
-                val qualityLabel = when {
-                    cleanUrl.contains(".Faa.mp4", ignoreCase = true) -> "1080p"
-                    cleanUrl.contains(".gaa.mp4", ignoreCase = true) -> "720p"
-                    cleanUrl.contains(".caa.mp4", ignoreCase = true) -> "480p"
-                    cleanUrl.contains(".baa.mp4", ignoreCase = true) -> "360p"
-                    else -> "MP4"
+                if (!bestMp4.isNullOrBlank()) {
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = "${this.name} - $serverName Rumble",
+                            url = bestMp4,
+                            type = ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = "https://rumble.com/"
+                            this.headers = headers
+                        }
+                    )
                 }
-                val qualityValue = when (qualityLabel) {
-                    "1080p" -> Qualities.P1080.value
-                    "720p" -> Qualities.P720.value
-                    "480p" -> Qualities.P480.value
-                    "360p" -> Qualities.P360.value
-                    else -> Qualities.Unknown.value
-                }
-                callback(
-                    newExtractorLink(
-                        source = this.name,
-                        name = "${this.name} - $serverName Rumble $qualityLabel",
-                        url = cleanUrl,
-                        type = ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = "https://rumble.com/"
-                        this.quality = qualityValue
-                        this.headers = headers
-                    }
-                )
             }
         } catch (_: Exception) {}
     }
 
     // Direct TurboVIP Extractor
     private suspend fun extractTurboVipDirect(
-        turboUrl: String,
+        vipUrl: String,
         refererUrl: String,
         serverName: String,
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            val headers = mapOf("User-Agent" to USER_AGENT, "Referer" to turboUrl)
-            val res = app.get(turboUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl), timeout = 8)
+            val headers = mapOf(
+                "User-Agent" to USER_AGENT,
+                "Referer" to refererUrl
+            )
+            val res = app.get(vipUrl, headers = headers, timeout = 10)
             val text = res.text
 
-            Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").findAll(text).forEach { m ->
-                val cleanUrl = m.groupValues[1].replace("\\/", "/")
+            val m3u8Match = Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(text)
+            if (m3u8Match != null) {
+                val cleanUrl = m3u8Match.groupValues[1].replace("\\/", "/")
                 callback(
                     newExtractorLink(
                         source = this.name,
-                        name = "${this.name} - $serverName TurboVIP HLS",
+                        name = "${this.name} - $serverName TurboVIP",
                         url = cleanUrl,
                         type = ExtractorLinkType.M3U8
                     ) {
-                        this.referer = turboUrl
+                        this.referer = vipUrl
                         this.headers = headers
                     }
                 )
-                try {
-                    M3u8Helper.generateM3u8(
-                        source = "${this.name} - $serverName TurboVIP",
-                        streamUrl = cleanUrl,
-                        referer = turboUrl,
-                        headers = headers
-                    ).forEach(callback)
-                } catch (_: Exception) {}
+            } else if (text.contains("eval(function(p,a,c,k,e,d)")) {
+                val unpacked = try { getAndUnpack(text) } catch (_: Exception) { text }
+                val unpackedM3u8 = Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(unpacked)?.groupValues?.getOrNull(1)?.replace("\\/", "/")
+                if (!unpackedM3u8.isNullOrBlank()) {
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = "${this.name} - $serverName TurboVIP",
+                            url = unpackedM3u8,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = vipUrl
+                            this.headers = headers
+                        }
+                    )
+                }
             }
         } catch (_: Exception) {}
     }
 
     // Direct PixelDrain Extractor
     private suspend fun extractPixelDrainDirect(
-        url: String,
+        pixelUrl: String,
+        refererUrl: String,
         serverName: String,
         callback: (ExtractorLink) -> Unit
     ) {
         try {
             val fileId = when {
-                url.contains("/u/") -> url.substringAfter("/u/").substringBefore("?").substringBefore("/")
-                url.contains("/file/") -> url.substringAfter("/file/").substringBefore("?").substringBefore("/")
-                else -> Regex("""pixeldrain\.com/(?:u|file)/([a-zA-Z0-9]+)""").find(url)?.groupValues?.getOrNull(1)
-            }
-            if (!fileId.isNullOrBlank()) {
-                val directStreamUrl = "https://pixeldrain.com/api/file/$fileId"
-                callback(
-                    newExtractorLink(
-                        source = this.name,
-                        name = "${this.name} - $serverName PixelDrain",
-                        url = directStreamUrl,
-                        type = ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = "https://pixeldrain.com/"
-                        this.quality = Qualities.P1080.value
-                    }
-                )
-            }
+                pixelUrl.contains("/u/") -> pixelUrl.substringAfter("/u/").substringBefore("?").substringBefore("/")
+                pixelUrl.contains("/api/file/") -> pixelUrl.substringAfter("/api/file/").substringBefore("?").substringBefore("/")
+                else -> Regex("""[a-zA-Z0-9]{8}""").find(pixelUrl)?.value
+            } ?: return
+
+            val streamUrl = "https://pixeldrain.com/api/file/$fileId"
+            callback(
+                newExtractorLink(
+                    source = this.name,
+                    name = "${this.name} - $serverName PixelDrain",
+                    url = streamUrl,
+                    type = ExtractorLinkType.VIDEO
+                ) {
+                    this.referer = "https://pixeldrain.com/"
+                    this.headers = mapOf("User-Agent" to USER_AGENT)
+                }
+            )
         } catch (_: Exception) {}
     }
 
     // Direct StreamRuby Extractor
     private suspend fun extractStreamRubyDirect(
-        url: String,
+        rubyUrl: String,
         refererUrl: String,
         serverName: String,
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            val res = app.get(url, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl), timeout = 8)
+            val res = app.get(rubyUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl), timeout = 10)
             val text = res.text
 
-            val unpacked = if (text.contains("eval(function(p,a,c,k,e,d)")) {
-                try { getAndUnpack(text) } catch (_: Exception) { text }
-            } else text
-
-            val m3u8Match = Regex("""(?:file|sources?)\s*:\s*["']([^"']+\.m3u8[^"']*)["']""").find(unpacked)
-                ?: Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(unpacked)
-
+            val m3u8Match = Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(text)
             if (m3u8Match != null) {
-                val m3u8Url = m3u8Match.groupValues[1].replace("\\/", "/")
-                val headers = mapOf("User-Agent" to USER_AGENT, "Referer" to url)
+                val cleanUrl = m3u8Match.groupValues[1].replace("\\/", "/")
                 callback(
                     newExtractorLink(
                         source = this.name,
-                        name = "${this.name} - $serverName StreamRuby HLS",
-                        url = m3u8Url,
+                        name = "${this.name} - $serverName StreamRuby",
+                        url = cleanUrl,
                         type = ExtractorLinkType.M3U8
                     ) {
-                        this.referer = url
-                        this.headers = headers
+                        this.referer = rubyUrl
                     }
                 )
-                try {
-                    M3u8Helper.generateM3u8(
-                        source = "${this.name} - $serverName",
-                        streamUrl = m3u8Url,
-                        referer = url,
-                        headers = headers
-                    ).forEach(callback)
-                } catch (_: Exception) {}
+            } else if (text.contains("eval(function(p,a,c,k,e,d)")) {
+                val unpacked = try { getAndUnpack(text) } catch (_: Exception) { text }
+                val unpackedM3u8 = Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(unpacked)?.groupValues?.getOrNull(1)?.replace("\\/", "/")
+                if (!unpackedM3u8.isNullOrBlank()) {
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = "${this.name} - $serverName StreamRuby",
+                            url = unpackedM3u8,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = rubyUrl
+                        }
+                    )
+                }
             }
         } catch (_: Exception) {}
     }
 
-    // Direct VidHide / EarnVids Extractor
+    // Direct VidHide Extractor
     private suspend fun extractVidHideDirect(
-        url: String,
+        vidHideUrl: String,
         refererUrl: String,
         serverName: String,
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            val res = app.get(url, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl), timeout = 8)
+            val res = app.get(vidHideUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl), timeout = 10)
             val text = res.text
 
-            val unpacked = if (text.contains("eval(function(p,a,c,k,e,d)")) {
-                try { getAndUnpack(text) } catch (_: Exception) { text }
-            } else text
-
-            val m3u8Match = Regex("""(?:file|sources?)\s*:\s*["']([^"']+\.m3u8[^"']*)["']""").find(unpacked)
-                ?: Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(unpacked)
-
+            val m3u8Match = Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(text)
             if (m3u8Match != null) {
-                val m3u8Url = m3u8Match.groupValues[1].replace("\\/", "/")
-                val headers = mapOf("User-Agent" to USER_AGENT, "Referer" to url)
+                val cleanUrl = m3u8Match.groupValues[1].replace("\\/", "/")
                 callback(
                     newExtractorLink(
                         source = this.name,
-                        name = "${this.name} - $serverName VidHide HLS",
-                        url = m3u8Url,
+                        name = "${this.name} - $serverName VidHide",
+                        url = cleanUrl,
                         type = ExtractorLinkType.M3U8
                     ) {
-                        this.referer = url
-                        this.headers = headers
+                        this.referer = vidHideUrl
                     }
                 )
-                try {
-                    M3u8Helper.generateM3u8(
-                        source = "${this.name} - $serverName",
-                        streamUrl = m3u8Url,
-                        referer = url,
-                        headers = headers
-                    ).forEach(callback)
-                } catch (_: Exception) {}
+            } else if (text.contains("eval(function(p,a,c,k,e,d)")) {
+                val unpacked = try { getAndUnpack(text) } catch (_: Exception) { text }
+                val unpackedM3u8 = Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(unpacked)?.groupValues?.getOrNull(1)?.replace("\\/", "/")
+                if (!unpackedM3u8.isNullOrBlank()) {
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = "${this.name} - $serverName VidHide",
+                            url = unpackedM3u8,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = vidHideUrl
+                        }
+                    )
+                }
             }
         } catch (_: Exception) {}
     }
 
-    // Anichin Stream Extractor
+    // Direct Anichin Native Stream Extractor
     private suspend fun extractAnichinStream(
         streamUrl: String,
         refererUrl: String,
         serverName: String,
-        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            if (streamUrl.contains("video=") || streamUrl.contains("dailymotion")) {
-                extractDailymotionDirect(streamUrl, refererUrl, serverName, callback)
-            }
-
-            val res = app.get(streamUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl), timeout = 8)
+            val res = app.get(streamUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to refererUrl), timeout = 10)
             val text = res.text
 
-            val doc = res.document
-            doc.select("iframe[src]").forEach { ifr ->
-                val innerSrc = toAbsoluteUrl(ifr.attr("src"))
-                if (innerSrc.isNotBlank() && !innerSrc.contains("cbox", true) && !innerSrc.startsWith("about:") && !innerSrc.startsWith("javascript:")) {
-                    if (innerSrc.contains("video=") || innerSrc.contains("dailymotion") || (innerSrc.contains("anichin-player.web.id") && !innerSrc.contains("ok="))) {
-                        extractDailymotionDirect(innerSrc, streamUrl, serverName, callback)
-                    } else if (innerSrc.contains("ok.ru") || innerSrc.contains("ok=")) {
-                        extractOkRuDirect(innerSrc, streamUrl, serverName, callback)
-                    } else {
-                        try {
-                            loadExtractor(innerSrc, streamUrl, subtitleCallback, callback)
-                        } catch (_: Exception) {}
-                    }
-                }
-            }
-
-            val hlsMatch = Regex("""/hls/([a-zA-Z0-9_-]+\.m3u8)""").find(text)
-            if (hlsMatch != null) {
-                val fullHls = "https://anichin.stream/hls/${hlsMatch.groupValues[1]}"
+            val m3u8Match = Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(text)
+            if (m3u8Match != null) {
+                val cleanUrl = m3u8Match.groupValues[1].replace("\\/", "/")
                 callback(
                     newExtractorLink(
                         source = this.name,
                         name = "${this.name} - $serverName",
-                        url = fullHls,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "https://anichin.stream/"
-                    }
-                )
-                return
-            }
-
-            Regex("""(https?:[^"'\s<>]+\.m3u8[^"'\s<>]*)""").findAll(text).forEach { m ->
-                val cleanUrl = m.groupValues[1].replace("\\/", "/")
-                callback(
-                    newExtractorLink(
-                        source = this.name,
-                        name = "${this.name} - $serverName HLS",
                         url = cleanUrl,
                         type = ExtractorLinkType.M3U8
                     ) {
                         this.referer = streamUrl
                     }
                 )
-            }
-
-            if (text.contains("eval(function(p,a,c,k,e,d)")) {
+            } else if (text.contains("eval(function(p,a,c,k,e,d)")) {
                 val unpacked = try { getAndUnpack(text) } catch (_: Exception) { text }
                 val m3u8Inside = Regex("""(["'])(/[^"']+\.m3u8)\1""").find(unpacked)?.groupValues?.getOrNull(2)
                     ?: Regex("""(["'])(https?://[^"']+\.m3u8)\1""").find(unpacked)?.groupValues?.getOrNull(2)
