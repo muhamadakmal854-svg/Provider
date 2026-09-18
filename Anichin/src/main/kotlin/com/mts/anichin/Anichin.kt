@@ -876,7 +876,7 @@ class Anichin(val context: Context) : MainAPI() {
         } catch (_: Exception) {}
     }
 
-    // Direct OK.ru (Odnoklassniki) Extractor (1 Link Sahaja - Multi-Quality HLS with DNS Sinkhole Bypass)
+    // Direct OK.ru (Odnoklassniki) Extractor (1 Link Sahaja - Multi-Quality HLS with Client IP Signature)
     private suspend fun extractOkRuDirect(
         okUrl: String,
         refererUrl: String,
@@ -892,45 +892,35 @@ class Anichin(val context: Context) : MainAPI() {
                 else -> Regex("""\b(\d{10,})\b""").find(okUrl)?.groupValues?.getOrNull(1)
             }
 
-            val embedUrl = if (!okId.isNullOrBlank()) {
-                "https://ok.ru/videoembed/$okId"
-            } else if (okUrl.contains("/video/")) {
-                okUrl.replace("/video/", "/videoembed/")
-            } else {
-                okUrl
-            }
+            if (okId.isNullOrBlank()) return
 
-            val fallbackWorkerUrl = if (!okId.isNullOrBlank()) {
-                "https://box-prox.jeannefrankli-n2-7-2-0-5.workers.dev/https://ok.ru/videoembed/$okId"
-            } else {
-                "https://box-prox.jeannefrankli-n2-7-2-0-5.workers.dev/$embedUrl"
-            }
+            val embedUrl = "https://ok.ru/videoembed/$okId"
 
-            val mediaHeaders = mapOf(
-                "Accept" to "*/*",
-                "Connection" to "keep-alive",
-                "Origin" to "https://ok.ru",
+            val clientHeaders = mapOf(
                 "User-Agent" to USER_AGENT,
-                "Referer" to embedUrl
+                "Referer" to "https://ok.ru/"
             )
 
+            // Direct client connections (Ensures video tokens are bound to user device IP, NOT proxy IP)
             val html = try {
-                app.get(
-                    embedUrl,
-                    headers = mapOf(
-                        "User-Agent" to USER_AGENT,
-                        "Referer" to "https://ok.ru/"
-                    ),
-                    timeout = 5
-                ).text
+                app.get(embedUrl, headers = clientHeaders, timeout = 15).text
+            } catch (_: Throwable) {
+                null
+            } ?: try {
+                app.get("http://ok.ru/videoembed/$okId", headers = clientHeaders, timeout = 10).text
+            } catch (_: Throwable) {
+                null
+            } ?: try {
+                app.get("https://odnoklassniki.ru/videoembed/$okId", headers = clientHeaders, timeout = 10).text
             } catch (_: Throwable) {
                 null
             } ?: try {
                 app.get(
-                    fallbackWorkerUrl,
+                    "http://95.163.61.74/videoembed/$okId",
                     headers = mapOf(
+                        "Host" to "ok.ru",
                         "User-Agent" to USER_AGENT,
-                        "Referer" to "https://ok.ru/"
+                        "Referer" to "http://ok.ru/"
                     ),
                     timeout = 10
                 ).text
@@ -950,24 +940,38 @@ class Anichin(val context: Context) : MainAPI() {
                     .replace("\\u002F", "/")
                     .replace("\\/", "/")
 
-                // 1. HLS Master Playlist (1 Link Sahaja - In-Player Quality Selection)
-                val hlsMatch = Regex("""['"]hlsMasterPlaylistUrl['"]\s*:\s*['"]([^'"]+)['"]""").find(rawOptions)
-                    ?: Regex("""['"]hlsMasterPlaylistUrl['"]\s*:\s*['"]([^'"]+)['"]""").find(html)
+                val mediaHeaders = mapOf(
+                    "Accept" to "*/*",
+                    "Connection" to "keep-alive",
+                    "Origin" to "https://ok.ru",
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "https://ok.ru/"
+                )
+
+                // 1. HLS Master Playlist (Matches hlsManifestUrl, hlsMasterPlaylistUrl, or any .m3u8)
+                val hlsMatch = Regex("""['"]hls(?:MasterPlaylist|Manifest)?Url['"]\s*:\s*['"]([^'"]+)['"]""").find(rawOptions)
+                    ?: Regex("""['"]hls(?:MasterPlaylist|Manifest)?Url['"]\s*:\s*['"]([^'"]+)['"]""").find(html)
+                    ?: Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(rawOptions)
+                    ?: Regex("""(https?:[\\/]+[^\s"']+\.m3u8[^\s"']*)""").find(html)
 
                 if (hlsMatch != null) {
-                    val hlsUrl = hlsMatch.groupValues[1]
+                    val rawHlsUrl = (hlsMatch.groupValues.getOrNull(2) ?: hlsMatch.groupValues[1])
                         .replace("\\/", "/")
                         .replace("\\u0026", "&")
                         .replace("&amp;", "&")
 
+                    val fullHlsUrl = if (rawHlsUrl.startsWith("//")) "https:$rawHlsUrl" else rawHlsUrl
+
+                    val displayName = if (serverName.equals("OK.ru", true)) "Anichin - OK.ru" else "${this.name} - $serverName OK.ru"
+
                     callback(
                         newExtractorLink(
                             source = this.name,
-                            name = "${this.name} - $serverName OK.ru",
-                            url = hlsUrl,
+                            name = displayName,
+                            url = fullHlsUrl,
                             type = ExtractorLinkType.M3U8
                         ) {
-                            this.referer = embedUrl
+                            this.referer = "https://ok.ru/"
                             this.headers = mediaHeaders
                         }
                     )
@@ -979,7 +983,7 @@ class Anichin(val context: Context) : MainAPI() {
                     if (videoBlockMatch != null) {
                         val videosStr = videoBlockMatch.groupValues[1]
                         val vMatches = Regex("""\{[^}]*?"name"\s*:\s*"([^"]+)"[^}]*?"url"\s*:\s*"([^"]+)"[^}]*?\}""").findAll(videosStr).toList()
-                        
+
                         // Pick the single best quality MP4
                         val bestVm = vMatches.firstOrNull { it.groupValues[1].equals("FULL", true) }
                             ?: vMatches.firstOrNull { it.groupValues[1].equals("HD", true) }
@@ -993,14 +997,16 @@ class Anichin(val context: Context) : MainAPI() {
                                 .replace("&amp;", "&")
                             val fullVideoUrl = if (rawVideoUrl.startsWith("//")) "https:$rawVideoUrl" else rawVideoUrl
 
+                            val displayName = if (serverName.equals("OK.ru", true)) "Anichin - OK.ru" else "${this.name} - $serverName OK.ru"
+
                             callback(
                                 newExtractorLink(
                                     source = this.name,
-                                    name = "${this.name} - $serverName OK.ru",
+                                    name = displayName,
                                     url = fullVideoUrl,
                                     type = ExtractorLinkType.VIDEO
                                 ) {
-                                    this.referer = embedUrl
+                                    this.referer = "https://ok.ru/"
                                     this.headers = mediaHeaders
                                 }
                             )
