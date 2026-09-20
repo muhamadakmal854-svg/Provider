@@ -1,16 +1,25 @@
 package com.mts.anichin
 
 import android.app.Activity
+import android.app.Dialog
+import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.view.Window
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.preference.PreferenceManager
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import kotlin.coroutines.resume
@@ -24,49 +33,21 @@ object CloudflareSolver {
 
         return suspendCoroutine { continuation ->
             Handler(Looper.getMainLooper()).post {
-                val rootView = activity.findViewById<ViewGroup>(android.R.id.content)
-                if (rootView == null) {
-                    continuation.resume(null)
-                    return@post
-                }
-
-                val webView = WebView(activity)
-                val params = FrameLayout.LayoutParams(1, 1).apply {
-                    leftMargin = -5000
-                    topMargin = -5000
-                }
-                webView.layoutParams = params
-
-                val settings = webView.settings
-                settings.apply {
-                    javaScriptEnabled = true
-                    domStorageEnabled = true
-                    databaseEnabled = true
-                    useWideViewPort = true
-                    loadWithOverviewMode = true
-                    userAgentString = userAgent
-                }
-
-                val cookieManager = CookieManager.getInstance()
-                cookieManager.setAcceptCookie(true)
-                cookieManager.setAcceptThirdPartyCookies(webView, true)
-
-                val pollingHandler = Handler(Looper.getMainLooper())
                 var isSolved = false
-                var isProcessingClick = false
+                var dialog: Dialog? = null
 
                 fun finishSuccess(html: String?) {
                     if (isSolved) return
                     isSolved = true
 
                     try {
-                        cookieManager.flush()
-                        pollingHandler.removeCallbacksAndMessages(null)
-                        rootView.removeView(webView)
-                        webView.destroy()
+                        CookieManager.getInstance().flush()
+                        if (dialog?.isShowing == true && !activity.isFinishing) {
+                            dialog?.dismiss()
+                        }
                     } catch (_: Exception) {}
 
-                    if (html == null) {
+                    if (html.isNullOrBlank()) {
                         continuation.resume(null)
                         return
                     }
@@ -80,136 +61,153 @@ object CloudflareSolver {
                     continuation.resume(Jsoup.parse(cleanHtml))
                 }
 
-                pollingHandler.postDelayed({ finishSuccess(null) }, 60000)
-
-                fun simulateRealTouch(view: WebView, cssX: Float, cssY: Float) {
-                    val density = activity.resources.displayMetrics.density
-                    val realX = cssX * density
-                    val realY = cssY * density
-                    val downTime = SystemClock.uptimeMillis()
-                    val eventTime = SystemClock.uptimeMillis() + 50
-                    val downEvent = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, realX, realY, 0)
-                    view.dispatchTouchEvent(downEvent)
-                    view.postDelayed({
-                        val upEvent = MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_UP, realX, realY, 0)
-                        view.dispatchTouchEvent(upEvent)
-                        downEvent.recycle()
-                        upEvent.recycle()
-                    }, 50)
-                }
-
-                val targetCssPath = "html > body > div:nth-of-type(1) > div > div:nth-of-type(2) > div"
-
-                fun startPolling() {
-                    val runnable = object : Runnable {
-                        override fun run() {
-                            if (isSolved || isProcessingClick) {
-                                pollingHandler.postDelayed(this, 2000)
-                                return
-                            }
-
-                            val jsGetCoords = """
-                                (function(){
-                                    try{
-                                        var box = document.querySelector("$targetCssPath");
-                                        if(!box) return "NO_BOX";
-                                        var r = box.getBoundingClientRect();
-                                        if(r.width === 0 && r.height === 0) return "NO_BOX";
-                                        var size = Math.min(36, Math.max(18, Math.round(r.height * 0.55)));
-                                        var margin = Math.round(Math.max(8, r.width * 0.03));
-                                        var centerY = r.top + (r.height / 2);
-                                        var rightSideX = r.right - (size / 2) - margin;
-                                        var leftSideX = r.left + (size / 2) + margin;
-                                        return rightSideX + "," + centerY + "|" + leftSideX + "," + centerY;
-                                    }catch(e){ return "ERROR"; }
-                                })();
-                            """.trimIndent()
-
-                            webView.evaluateJavascript(jsGetCoords) { res ->
-                                try {
-                                    val clean = res?.removeSurrounding("\"")
-                                    if (clean != null && clean.contains("|")) {
-                                        isProcessingClick = true
-                                        val sides = clean.split("|")
-                                        val (rx, ry) = sides[0].split(",").map { it.toFloatOrNull() }
-                                        val (lx, ly) = sides[1].split(",").map { it.toFloatOrNull() }
-                                        if (rx != null && ry != null && lx != null && ly != null) {
-                                            simulateRealTouch(webView, rx, ry)
-                                            pollingHandler.postDelayed({
-                                                simulateRealTouch(webView, lx, ly)
-                                                pollingHandler.postDelayed({ isProcessingClick = false }, 3000)
-                                            }, 250)
-                                        } else { isProcessingClick = false }
-                                    }
-                                } catch (_: Exception) { isProcessingClick = false }
-                            }
-                            pollingHandler.postDelayed(this, 2000)
-                        }
+                try {
+                    val rootLayout = LinearLayout(activity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setBackgroundColor(Color.parseColor("#141414"))
+                        layoutParams = ViewGroup.LayoutParams(-1, -1)
                     }
-                    pollingHandler.post(runnable)
-                }
 
-                var lastUrl: String? = null
-                var stableSince = 0L
-                var fetched = false
+                    val headerLayout = LinearLayout(activity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        setPadding(30, 24, 30, 24)
+                        gravity = Gravity.CENTER_VERTICAL
+                        setBackgroundColor(Color.parseColor("#202020"))
+                    }
 
-                fun waitUntilReady() {
-                    if (isSolved) return
-                    val js = """
-                        (function(){
-                            try{
-                                var hasBox = document.querySelector("$targetCssPath") != null;
-                                var html = document.documentElement.innerHTML || "";
-                                var stillCloudflare = html.toLowerCase().includes("cloudflare") || html.toLowerCase().includes("checking your browser") || html.toLowerCase().includes("challenge-platform");
-                                return location.href + "|" + document.readyState + "|" + hasBox + "|" + stillCloudflare;
-                            }catch(e){ return location.href + "|loading|false|true"; }
-                        })();
-                    """.trimIndent()
+                    val titleView = TextView(activity).apply {
+                        text = "Sahkan Cloudflare (Turnstile)..."
+                        setTextColor(Color.WHITE)
+                        textSize = 14f
+                        layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                    }
 
-                    webView.evaluateJavascript(js) { res ->
-                        if (res == null) {
-                            pollingHandler.postDelayed({ waitUntilReady() }, 200)
-                            return@evaluateJavascript
-                        }
+                    val cancelBtn = Button(activity).apply {
+                        text = "Batal"
+                        setTextColor(Color.LTGRAY)
+                        setBackgroundColor(Color.TRANSPARENT)
+                        setOnClickListener { finishSuccess(null) }
+                    }
 
-                        val parts = res.replace("\"", "").split("|")
-                        if (parts.size < 4) {
-                            pollingHandler.postDelayed({ waitUntilReady() }, 200)
-                            return@evaluateJavascript
-                        }
+                    headerLayout.addView(titleView)
+                    headerLayout.addView(cancelBtn)
+                    rootLayout.addView(headerLayout)
 
-                        val (currentUrl, ready, hasBox, stillCloudflare) = parts
-                        val now = SystemClock.uptimeMillis()
-                        if (currentUrl != lastUrl) {
-                            lastUrl = currentUrl
-                            stableSince = now
-                        }
-                        val stableTime = now - stableSince
+                    val webContainer = FrameLayout(activity).apply {
+                        layoutParams = LinearLayout.LayoutParams(-1, -1)
+                    }
 
-                        if (hasBox == "false" && stillCloudflare == "false" && ready == "complete" && stableTime > 1500 && !fetched) {
-                            fetched = true
+                    val webView = WebView(activity).apply {
+                        layoutParams = FrameLayout.LayoutParams(-1, -1)
+                    }
+
+                    val settings = webView.settings
+                    settings.apply {
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        databaseEnabled = true
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
+                        userAgentString = userAgent
+                    }
+
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptThirdPartyCookies(webView, true)
+
+                    webContainer.addView(webView)
+                    rootLayout.addView(webContainer)
+
+                    val newDialog = Dialog(activity)
+                    newDialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                    newDialog.setContentView(rootLayout)
+                    newDialog.setCancelable(true)
+                    newDialog.setOnCancelListener { finishSuccess(null) }
+
+                    val window = newDialog.window
+                    if (window != null) {
+                        val dm = activity.resources.displayMetrics
+                        val width = (dm.widthPixels * 0.94).toInt()
+                        val height = (dm.heightPixels * 0.65).toInt()
+                        window.setLayout(width, height)
+                        window.setGravity(Gravity.CENTER)
+                    }
+
+                    dialog = newDialog
+                    newDialog.show()
+
+                    val pollingHandler = Handler(Looper.getMainLooper())
+                    pollingHandler.postDelayed({ finishSuccess(null) }, 60000)
+
+                    fun checkSolved() {
+                        if (isSolved) return
+                        val cookies = cookieManager.getCookie(url) ?: ""
+                        if (cookies.contains("cf_clearance")) {
+                            try {
+                                val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
+                                prefs.edit().putString(COOKIE_KEY, cookies).apply()
+                                prefs.edit().putString(USER_AGENT_KEY, userAgent).apply()
+                                Anichin.savedCookies = cookies
+                            } catch (_: Exception) {}
+
+                            titleView.text = "Berjaya! Memuatkan..."
+                            titleView.setTextColor(Color.GREEN)
                             pollingHandler.postDelayed({
                                 webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
                                     finishSuccess(html)
                                 }
                             }, 500)
-                            return@evaluateJavascript
+                            return
                         }
-                        pollingHandler.postDelayed({ waitUntilReady() }, 200)
-                    }
-                }
 
-                webView.webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        super.onPageFinished(view, url)
-                        isProcessingClick = false
-                        startPolling()
-                        waitUntilReady()
-                    }
-                }
+                        val jsCheck = """
+                        (function() {
+                            var body = document.body ? document.body.innerHTML : '';
+                            var hasCf = body.indexOf('challenge-platform') !== -1 || body.indexOf('cf-turnstile') !== -1 || body.indexOf('Just a moment...') !== -1;
+                            var hasContent = document.querySelector('.listupd, .bsx, article.bs, .entry-content, #content, h1') != null;
+                            return hasCf + "|" + hasContent;
+                        })();
+                        """.trimIndent()
 
-                rootView.addView(webView)
-                webView.loadUrl(url)
+                        webView.evaluateJavascript(jsCheck) { res ->
+                            val parts = res?.removeSurrounding("\"")?.split("|")
+                            if (parts != null && parts.size >= 2) {
+                                val hasCf = parts[0] == "true"
+                                val hasContent = parts[1] == "true"
+                                if (!hasCf && hasContent) {
+                                    val finalCookies = cookieManager.getCookie(url) ?: ""
+                                    try {
+                                        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
+                                        prefs.edit().putString(COOKIE_KEY, finalCookies).apply()
+                                        prefs.edit().putString(USER_AGENT_KEY, userAgent).apply()
+                                        Anichin.savedCookies = finalCookies
+                                    } catch (_: Exception) {}
+
+                                    titleView.text = "Berjaya! Memuatkan..."
+                                    titleView.setTextColor(Color.GREEN)
+                                    pollingHandler.postDelayed({
+                                        webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                                            finishSuccess(html)
+                                        }
+                                    }, 500)
+                                    return@evaluateJavascript
+                                }
+                            }
+                            pollingHandler.postDelayed({ checkSolved() }, 1000)
+                        }
+                    }
+
+                    webView.webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, pageUrl: String?) {
+                            super.onPageFinished(view, pageUrl)
+                            checkSolved()
+                        }
+                    }
+
+                    webView.loadUrl(url)
+                } catch (_: Exception) {
+                    finishSuccess(null)
+                }
             }
         }
     }

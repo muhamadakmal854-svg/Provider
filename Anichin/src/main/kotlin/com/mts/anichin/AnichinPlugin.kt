@@ -8,5 +8,8 @@ import android.content.Context
 class AnichinPlugin : Plugin() {
     override fun load(context: Context) {
         registerMainAPI(Anichin(context))
+        openSettings = { ctx ->
+            AnichinSettingsDialog.open(ctx)
+        }
     }
 }

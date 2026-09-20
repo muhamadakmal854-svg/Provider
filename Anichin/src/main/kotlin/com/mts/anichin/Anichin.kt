@@ -3,6 +3,7 @@ package com.mts.anichin
 import android.app.Activity
 import android.app.Dialog
 import android.content.Context
+import android.content.ContextWrapper
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -13,7 +14,9 @@ import android.view.Window
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
+import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebSettings
 import android.webkit.WebViewClient
 import androidx.preference.PreferenceManager
 import com.lagradost.cloudstream3.*
@@ -38,10 +41,12 @@ class Anichin(val context: Context) : MainAPI() {
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
     companion object {
-        private var savedCookies: String = ""
+        var savedCookies: String = ""
         private const val TAG = "Anichin"
-        private const val COOKIE_KEY = "anichin_cf_cookies"
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        const val COOKIE_KEY = "anichin_cf_cookies"
+        const val USER_AGENT_KEY = "anichin_cf_ua"
+        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        const val USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
     }
 
     private fun getSafeContext(): Context {
@@ -93,8 +98,33 @@ class Anichin(val context: Context) : MainAPI() {
         return null
     }
 
+    private fun getActualUserAgent(): String {
+        try {
+            val ctx = getSafeContext()
+            val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
+            val storedUa = prefs.getString(USER_AGENT_KEY, null)
+            if (!storedUa.isNullOrBlank()) return storedUa
+
+            val defaultUa = WebSettings.getDefaultUserAgent(ctx)
+            if (!defaultUa.isNullOrBlank()) {
+                prefs.edit().putString(USER_AGENT_KEY, defaultUa).apply()
+                return defaultUa
+            }
+        } catch (_: Exception) {}
+        return DEFAULT_USER_AGENT
+    }
+
+    private fun getActivity(ctx: Context?): Activity? {
+        var c = ctx
+        while (c is ContextWrapper) {
+            if (c is Activity) return c
+            c = c.baseContext
+        }
+        return null
+    }
+
     private fun getSavedCookie(ctx: Context?): String {
-        if (savedCookies.isNotBlank()) return savedCookies
+        if (savedCookies.isNotBlank() && savedCookies.contains("cf_clearance")) return savedCookies
         if (ctx != null) {
             try {
                 val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
@@ -112,7 +142,7 @@ class Anichin(val context: Context) : MainAPI() {
                 return cm
             }
         } catch (_: Exception) {}
-        return ""
+        return savedCookies
     }
 
     sealed class SmartResult {
@@ -123,13 +153,16 @@ class Anichin(val context: Context) : MainAPI() {
 
     private suspend fun getDocumentSmart(url: String): Document? {
         val targetUrl = toAbsoluteUrl(url)
+        val ua = getActualUserAgent()
 
         // 1. Direct HTTP GET with saved/existing cookies
         try {
             val cookie = getSavedCookie(getSafeContext())
             val headers = mutableMapOf(
-                "User-Agent" to USER_AGENT,
-                "Referer" to "$mainUrl/"
+                "User-Agent" to ua,
+                "Referer" to "$mainUrl/",
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
             )
             if (cookie.isNotBlank()) headers["Cookie"] = cookie
 
@@ -139,144 +172,39 @@ class Anichin(val context: Context) : MainAPI() {
             }
         } catch (_: Exception) {}
 
-        // 2. Cloudflare solver via WebView / Dialog
-        val activity = getSafeContext() as? Activity
+        // 2. Cloudflare solver via visible Dialog if Activity is available
+        val activity = getActivity(getSafeContext())
         if (activity != null && !activity.isFinishing) {
-            val result = loadVisibleWebViewCheck(targetUrl)
-            if (result is SmartResult.Success) {
-                return result.document
-            } else if (result is SmartResult.NeedsCaptcha) {
-                val solvedDoc = CloudflareSolver.solve(activity, targetUrl, USER_AGENT)
-                if (solvedDoc != null) return solvedDoc
-            }
-        } else {
-            // Fallback webview solver using application context on MainLooper
-            val result = loadHiddenWebViewCheck(targetUrl)
-            if (result is SmartResult.Success) {
-                return result.document
+            val solvedDoc = CloudflareSolver.solve(activity, targetUrl, ua)
+            if (solvedDoc != null) {
+                getSavedCookie(getSafeContext())
+                return solvedDoc
             }
         }
 
-        // 3. Fallback direct Jsoup parse
+        // 3. Fallback background WebView solver
+        val bgResult = loadHiddenWebViewCheck(targetUrl, ua)
+        if (bgResult is SmartResult.Success) {
+            return bgResult.document
+        }
+
+        // 4. Fallback direct Jsoup parse with saved cookie
         return try {
-            Jsoup.connect(targetUrl)
-                .userAgent(USER_AGENT)
+            val cookie = getSavedCookie(getSafeContext())
+            val conn = Jsoup.connect(targetUrl)
+                .userAgent(ua)
                 .referrer("$mainUrl/")
                 .timeout(10000)
-                .get()
+            if (cookie.isNotBlank()) {
+                conn.header("Cookie", cookie)
+            }
+            conn.get()
         } catch (_: Exception) {
             null
         }
     }
 
-    private suspend fun loadVisibleWebViewCheck(url: String): SmartResult {
-        val activity = getSafeContext() as? Activity ?: return SmartResult.Error
-        if (activity.isFinishing) return SmartResult.Error
-
-        return suspendCoroutine { continuation ->
-            Handler(Looper.getMainLooper()).post {
-                var isFinished = false
-                var dialog: Dialog? = null
-
-                fun finish(result: SmartResult) {
-                    if (isFinished) return
-                    isFinished = true
-                    try {
-                        if (dialog?.isShowing == true && !activity.isFinishing) {
-                            dialog?.dismiss()
-                        }
-                    } catch (_: Exception) {}
-                    continuation.resume(result)
-                }
-
-                try {
-                    val webView = WebView(activity)
-                    val settings = webView.settings
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.databaseEnabled = true
-                    settings.useWideViewPort = true
-                    settings.loadWithOverviewMode = true
-                    settings.userAgentString = USER_AGENT
-
-                    val cookieManager = CookieManager.getInstance()
-                    cookieManager.setAcceptCookie(true)
-                    cookieManager.setAcceptThirdPartyCookies(webView, true)
-
-                    val newDialog = Dialog(activity)
-                    newDialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-                    newDialog.setContentView(webView)
-                    newDialog.setCancelable(true)
-                    newDialog.setOnCancelListener { finish(SmartResult.Error) }
-
-                    val window = newDialog.window
-                    if (window != null) {
-                        window.setGravity(Gravity.TOP or Gravity.START)
-                        val layoutParams = WindowManager.LayoutParams().apply {
-                            copyFrom(window.attributes)
-                            width = 1
-                            height = 1
-                            x = -2000
-                            y = -2000
-                            flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                        }
-                        window.attributes = layoutParams
-                    }
-
-                    dialog = newDialog
-                    newDialog.show()
-
-                    val handler = Handler(Looper.getMainLooper())
-                    val poller = object : Runnable {
-                        override fun run() {
-                            if (isFinished) return
-
-                            val jsCheck = """
-                            (function() {
-                                var body = document.body ? document.body.innerHTML : '';
-                                if (body.indexOf('challenge-platform') !== -1 || body.indexOf('cf-turnstile') !== -1 || body.indexOf('Just a moment...') !== -1) {
-                                    return 'CAPTCHA';
-                                }
-                                if (document.querySelector('.listupd, .bsx, article.bs, .entry-content, .player-wrapper, #content, .eplister, h1')) {
-                                    return 'SUCCESS::' + document.documentElement.outerHTML;
-                                }
-                                return 'WAITING';
-                            })();
-                            """.trimIndent()
-
-                            webView.evaluateJavascript(jsCheck) { result ->
-                                if (isFinished) return@evaluateJavascript
-                                val cleanResult = result?.removeSurrounding("\"")
-                                when {
-                                    cleanResult == "CAPTCHA" -> finish(SmartResult.NeedsCaptcha)
-                                    cleanResult?.startsWith("SUCCESS::") == true -> {
-                                        val html = cleanResult.substringAfter("SUCCESS::")
-                                        val cleanHtml = html.replace("\\u003C", "<").replace("\\u003E", ">").replace("\\\"", "\"").replace("\\\\", "\\")
-                                        finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
-                                    }
-                                    else -> handler.postDelayed(this, 1000)
-                                }
-                            }
-                        }
-                    }
-
-                    webView.webViewClient = object : WebViewClient() {
-                        override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
-                            handler?.proceed()
-                        }
-                    }
-
-                    webView.loadUrl(url)
-                    handler.postDelayed(poller, 1000)
-                    handler.postDelayed({ if (!isFinished) finish(SmartResult.Error) }, 25000)
-                } catch (_: Exception) {
-                    finish(SmartResult.Error)
-                }
-            }
-        }
-    }
-
-    private suspend fun loadHiddenWebViewCheck(url: String): SmartResult {
+    private suspend fun loadHiddenWebViewCheck(url: String, userAgent: String): SmartResult {
         return suspendCoroutine { continuation ->
             Handler(Looper.getMainLooper()).post {
                 var isFinished = false
@@ -295,38 +223,84 @@ class Anichin(val context: Context) : MainAPI() {
                 val settings = webView.settings
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                settings.userAgentString = USER_AGENT
+                settings.databaseEnabled = true
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
+                settings.userAgentString = userAgent
+
+                val cookieManager = CookieManager.getInstance()
+                cookieManager.setAcceptCookie(true)
+                cookieManager.setAcceptThirdPartyCookies(webView, true)
 
                 val handler = Handler(Looper.getMainLooper())
                 val poller = object : Runnable {
                     override fun run() {
                         if (isFinished) return
 
+                        val cookies = cookieManager.getCookie(url) ?: ""
+                        if (cookies.contains("cf_clearance")) {
+                            try {
+                                val prefs = PreferenceManager.getDefaultSharedPreferences(getSafeContext())
+                                prefs.edit().putString(COOKIE_KEY, cookies).apply()
+                                prefs.edit().putString(USER_AGENT_KEY, userAgent).apply()
+                                savedCookies = cookies
+                            } catch (_: Exception) {}
+
+                            webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                                val cleanHtml = html?.removeSurrounding("\"")
+                                    ?.replace("\\u003C", "<")
+                                    ?.replace("\\u003E", ">")
+                                    ?.replace("\\\"", "\"")
+                                    ?.replace("\\\\", "\\")
+                                if (!cleanHtml.isNullOrBlank()) {
+                                    finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
+                                } else {
+                                    finish(SmartResult.Error)
+                                }
+                            }
+                            return
+                        }
+
                         val jsCheck = """
                         (function() {
                             var body = document.body ? document.body.innerHTML : '';
-                            if (body.indexOf('challenge-platform') !== -1 || body.indexOf('cf-turnstile') !== -1 || body.indexOf('Just a moment...') !== -1) {
-                                return 'CAPTCHA';
-                            }
-                            if (document.querySelector('.listupd, .bsx, article.bs, .entry-content, .player-wrapper, #content, .eplister, h1')) {
-                                return 'SUCCESS::' + document.documentElement.outerHTML;
-                            }
-                            return 'WAITING';
+                            var hasCf = body.indexOf('challenge-platform') !== -1 || body.indexOf('cf-turnstile') !== -1 || body.indexOf('Just a moment...') !== -1;
+                            var hasContent = document.querySelector('.listupd, .bsx, article.bs, .entry-content, #content, h1') != null;
+                            return hasCf + "|" + hasContent;
                         })();
                         """.trimIndent()
 
                         webView.evaluateJavascript(jsCheck) { result ->
                             if (isFinished) return@evaluateJavascript
-                            val cleanResult = result?.removeSurrounding("\"")
-                            when {
-                                cleanResult == "CAPTCHA" -> finish(SmartResult.NeedsCaptcha)
-                                cleanResult?.startsWith("SUCCESS::") == true -> {
-                                    val html = cleanResult.substringAfter("SUCCESS::")
-                                    val cleanHtml = html.replace("\\u003C", "<").replace("\\u003E", ">").replace("\\\"", "\"").replace("\\\\", "\\")
-                                    finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
+                            val parts = result?.removeSurrounding("\"")?.split("|")
+                            if (parts != null && parts.size >= 2) {
+                                val hasCf = parts[0] == "true"
+                                val hasContent = parts[1] == "true"
+                                if (!hasCf && hasContent) {
+                                    val finalCookies = cookieManager.getCookie(url) ?: ""
+                                    try {
+                                        val prefs = PreferenceManager.getDefaultSharedPreferences(getSafeContext())
+                                        prefs.edit().putString(COOKIE_KEY, finalCookies).apply()
+                                        prefs.edit().putString(USER_AGENT_KEY, userAgent).apply()
+                                        savedCookies = finalCookies
+                                    } catch (_: Exception) {}
+
+                                    webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                                        val cleanHtml = html?.removeSurrounding("\"")
+                                            ?.replace("\\u003C", "<")
+                                            ?.replace("\\u003E", ">")
+                                            ?.replace("\\\"", "\"")
+                                            ?.replace("\\\\", "\\")
+                                        if (!cleanHtml.isNullOrBlank()) {
+                                            finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
+                                        } else {
+                                            finish(SmartResult.Error)
+                                        }
+                                    }
+                                    return@evaluateJavascript
                                 }
-                                else -> handler.postDelayed(this, 1000)
                             }
+                            handler.postDelayed(this, 1000)
                         }
                     }
                 }
@@ -339,8 +313,8 @@ class Anichin(val context: Context) : MainAPI() {
 
                 try {
                     webView.loadUrl(url)
-                    handler.postDelayed(poller, 1000)
-                    handler.postDelayed({ if (!isFinished) finish(SmartResult.Error) }, 25000)
+                    handler.postDelayed(poller, 1500)
+                    handler.postDelayed({ if (!isFinished) finish(SmartResult.Error) }, 20000)
                 } catch (_: Exception) {
                     finish(SmartResult.Error)
                 }
