@@ -5,16 +5,11 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Color
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.SystemClock
 import android.view.Gravity
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -70,7 +65,7 @@ class AnichinSettingsDialog : DialogFragment() {
 
             val openWvPref = Preference(ctx).apply {
                 title = "Bypass Cloudflare / Turnstile (Manual)"
-                summary = "Buka tetingkap WebView untuk menyelesaikan Turnstile / reCAPTCHA atau menyegarkan cookies jika disekat"
+                summary = "Buka tetingkap WebView untuk menyelesaikan Turnstile / reCAPTCHA secara manual dan simpan cookies"
                 setOnPreferenceClickListener {
                     WebViewCaptureDialog().show(parentFragmentManager, "AnichinWVCapture")
                     true
@@ -119,6 +114,17 @@ class AnichinSettingsDialog : DialogFragment() {
     class WebViewCaptureDialog : DialogFragment() {
         private lateinit var webView: WebView
 
+        override fun onStart() {
+            super.onStart()
+            dialog?.window?.let { win ->
+                val dm = resources.displayMetrics
+                val width = (dm.widthPixels * 0.95).toInt()
+                val height = (dm.heightPixels * 0.85).toInt()
+                win.setLayout(width, height)
+                win.setGravity(Gravity.CENTER)
+            }
+        }
+
         @SuppressLint("SetJavaScriptEnabled")
         override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
             val ctx = requireContext()
@@ -136,7 +142,7 @@ class AnichinSettingsDialog : DialogFragment() {
 
             val toolbar = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
-                setPadding(30, 30, 30, 30)
+                setPadding(24, 20, 24, 20)
                 setBackgroundColor(Color.parseColor("#202020"))
                 gravity = Gravity.CENTER_VERTICAL
             }
@@ -147,21 +153,31 @@ class AnichinSettingsDialog : DialogFragment() {
                 setBackgroundColor(Color.TRANSPARENT)
                 setOnClickListener { dismiss() }
             }
+
             val titleView = TextView(ctx).apply {
-                text = "Menyelesaikan Turnstile / reCAPTCHA..."
-                textSize = 14f
+                text = "Sahkan Cloudflare di bawah & tekan 'Simpan'"
+                textSize = 12f
                 gravity = Gravity.CENTER
-                setTextColor(Color.YELLOW)
+                setTextColor(Color.parseColor("#FFD700"))
                 layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
             }
+
+            val reloadBtn = Button(ctx).apply {
+                text = "Refresh"
+                setTextColor(Color.LTGRAY)
+                setBackgroundColor(Color.TRANSPARENT)
+                setOnClickListener { webView.reload() }
+            }
+
             val saveBtn = Button(ctx).apply {
                 text = "Simpan"
                 setTextColor(Color.WHITE)
                 setBackgroundColor(Color.parseColor("#007AFF"))
-                setOnClickListener { captureAndClose(cleanUserAgent) }
+                setOnClickListener { validateAndSave(cleanUserAgent, titleView) }
             }
 
             toolbar.addView(closeBtn)
+            toolbar.addView(reloadBtn)
             toolbar.addView(titleView)
             toolbar.addView(saveBtn)
 
@@ -179,72 +195,47 @@ class AnichinSettingsDialog : DialogFragment() {
                 cacheMode = WebSettings.LOAD_DEFAULT
             }
 
-            webView.addJavascriptInterface(WebAppInterface(webView), "AndroidTouch")
-
             val cookieManager = CookieManager.getInstance()
             cookieManager.setAcceptCookie(true)
-            cookieManager.setAcceptThirdPartyCookies(webView, true)
+            cookieManager.setAcceptThirdThirdPartyCookies(webView)
+
+            // Clear any stale clearance cookies when opening manual bypass
+            try {
+                cookieManager.setCookie(ANICHIN_MAIN_URL, "cf_clearance=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.anichin.moe")
+                cookieManager.setCookie(ANICHIN_MAIN_URL, "cf_clearance=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/")
+                cookieManager.flush()
+            } catch (_: Exception) {}
 
             webView.webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?) = false
 
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    val jsTouchLogic = """
-                    (function() {
-                        function drawRedDot(x, y) {
-                            var dot = document.createElement('div');
-                            dot.style = "position:fixed; left:" + x + "px; top:" + y + "px; width:20px; height:20px; background:red; border:2px solid white; border-radius:50%; z-index:99999999; pointer-events:none; opacity:0.8;";
-                            document.body.appendChild(dot);
-                            setTimeout(function(){ dot.remove(); }, 300);
-                        }
-
-                        setInterval(function() {
-                            var xpath = "//*[contains(text(), 'Verify') or contains(text(), 'Verifikasi') or contains(text(), 'Cloudflare') or contains(text(), 'human')]";
-                            var textEl = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                            if (textEl) {
-                                var rect = textEl.getBoundingClientRect();
-                                var targetY = rect.top + (rect.height / 2);
-                                var xLeft = rect.left - 40;
-                                var xRight = rect.right + 40;
-
-                                drawRedDot(xLeft, targetY);
-                                if(window.AndroidTouch) window.AndroidTouch.performClick(xLeft, targetY);
-
-                                setTimeout(function() {
-                                    drawRedDot(xRight, targetY);
-                                    if(window.AndroidTouch) window.AndroidTouch.performClick(xRight, targetY);
-                                }, 200);
+                    // Informative guidance only - strictly NO auto-close, NO auto-touch
+                    view?.evaluateJavascript("""
+                        (function() {
+                            var text = (document.body ? document.body.innerText : '') + ' ' + document.title;
+                            text = text.toLowerCase();
+                            var isCf = text.indexOf('performing security verification') !== -1 ||
+                                       text.indexOf('security service to protect') !== -1 ||
+                                       text.indexOf('verifying you are not a bot') !== -1 ||
+                                       text.indexOf('verify you are human') !== -1 ||
+                                       text.indexOf('just a moment') !== -1;
+                            return isCf;
+                        })();
+                    """.trimIndent()) { res ->
+                        if (isAdded) {
+                            val isCf = res?.removeSurrounding("\"") == "true"
+                            if (isCf) {
+                                titleView.text = "Sila selesaikan pengesahan pada skrin"
+                                titleView.setTextColor(Color.parseColor("#FFA500"))
+                            } else {
+                                titleView.text = "Laman sedia! Tekan butang 'Simpan'"
+                                titleView.setTextColor(Color.parseColor("#4CAF50"))
                             }
-                        }, 2000);
-                    })();
-                    """.trimIndent()
-                    view?.evaluateJavascript(jsTouchLogic, null)
-
-                    val cookies = (cookieManager.getCookie(ANICHIN_MAIN_URL) ?: "") + "; " + (cookieManager.getCookie(url) ?: "")
-                    if (cookies.contains("cf_clearance")) {
-                        titleView.text = "Selesai! Menyimpan..."
-                        titleView.setTextColor(Color.GREEN)
-                        view?.postDelayed({ captureAndClose(cleanUserAgent) }, 1000)
+                        }
                     }
                 }
             }
-
-            val pollHandler = Handler(Looper.getMainLooper())
-            val pollRunnable = object : Runnable {
-                override fun run() {
-                    if (!isAdded) return
-                    val currentUrl = webView.url ?: ANICHIN_MAIN_URL
-                    val cookies = (cookieManager.getCookie(ANICHIN_MAIN_URL) ?: "") + "; " + (cookieManager.getCookie(currentUrl) ?: "")
-                    if (cookies.contains("cf_clearance")) {
-                        titleView.text = "Selesai! Menyimpan..."
-                        titleView.setTextColor(Color.GREEN)
-                        pollHandler.postDelayed({ captureAndClose(cleanUserAgent) }, 1000)
-                        return
-                    }
-                    pollHandler.postDelayed(this, 1000)
-                }
-            }
-            pollHandler.postDelayed(pollRunnable, 1000)
 
             webView.loadUrl(ANICHIN_MAIN_URL)
             webContainer.addView(webView)
@@ -253,54 +244,66 @@ class AnichinSettingsDialog : DialogFragment() {
             return root
         }
 
-        private fun captureAndClose(cleanUserAgent: String) {
+        private fun CookieManager.setAcceptThirdThirdPartyCookies(view: WebView) {
             try {
-                CookieManager.getInstance().flush()
-                val url = webView.url ?: ANICHIN_MAIN_URL
-                val cookieStr = CookieManager.getInstance().getCookie(url) ?: ""
-                if (cookieStr.isNotBlank()) {
-                    val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
-                    prefs.edit().putString(COOKIE_KEY, cookieStr).apply()
-                    prefs.edit().putString(USER_AGENT_KEY, cleanUserAgent).apply()
-                    Anichin.savedCookies = cookieStr
-                    Toast.makeText(context, "Cookies berjaya disimpan!", Toast.LENGTH_SHORT).show()
-                    dismiss()
-                }
+                setAcceptThirdPartyCookies(view, true)
             } catch (_: Exception) {}
         }
 
-        class WebAppInterface(private val view: WebView) {
-            @JavascriptInterface
-            fun performClick(x: Float, y: Float) {
-                Handler(Looper.getMainLooper()).post {
-                    val density = view.resources.displayMetrics.density
-                    val realX = x * density
-                    val realY = y * density
-                    val downTime = SystemClock.uptimeMillis()
-                    val eventTime = SystemClock.uptimeMillis() + 100
+        private fun validateAndSave(cleanUserAgent: String, titleView: TextView) {
+            val cm = CookieManager.getInstance()
+            cm.flush()
+            val currentUrl = webView.url ?: ANICHIN_MAIN_URL
+            val cookies = (cm.getCookie(ANICHIN_MAIN_URL) ?: "") + "; " + (cm.getCookie(currentUrl) ?: "")
 
-                    val motionEventDown = MotionEvent.obtain(
-                        downTime,
-                        eventTime,
-                        MotionEvent.ACTION_DOWN,
-                        realX,
-                        realY,
-                        0
-                    )
-                    val motionEventUp = MotionEvent.obtain(
-                        downTime,
-                        eventTime + 100,
-                        MotionEvent.ACTION_UP,
-                        realX,
-                        realY,
-                        0
-                    )
+            val checkJs = """
+            (function() {
+                var title = (document.title || '').toLowerCase();
+                var body = (document.body ? document.body.innerText : '').toLowerCase();
+                var isCf = title.indexOf('just a moment') !== -1 ||
+                           title.indexOf('security verification') !== -1 ||
+                           body.indexOf('performing security verification') !== -1 ||
+                           body.indexOf('security service to protect') !== -1 ||
+                           body.indexOf('verifying you are not a bot') !== -1 ||
+                           body.indexOf('verify you are human') !== -1 ||
+                           body.indexOf('checking if the site connection is secure') !== -1 ||
+                           body.indexOf('challenge-platform') !== -1 ||
+                           document.querySelector("iframe[src*='cloudflare.com']") != null;
 
-                    view.dispatchTouchEvent(motionEventDown)
-                    view.dispatchTouchEvent(motionEventUp)
+                var hasRealAnime = document.querySelector('.listupd .bsx, .bsx a, article.bs, .eplister, #daftarepisode, .releases h2, .releases h3, header#masthead') != null;
+                return isCf + "|" + hasRealAnime;
+            })();
+            """.trimIndent()
 
-                    motionEventDown.recycle()
-                    motionEventUp.recycle()
+            webView.evaluateJavascript(checkJs) { res ->
+                if (!isAdded) return@evaluateJavascript
+                val parts = res?.removeSurrounding("\"")?.split("|")
+                val isCf = parts?.getOrNull(0) == "true"
+                val hasRealAnime = parts?.getOrNull(1) == "true"
+                val hasClearance = cookies.contains("cf_clearance")
+
+                if (isCf) {
+                    titleView.text = "Pengesahan belum selesai!"
+                    titleView.setTextColor(Color.RED)
+                    Toast.makeText(context, "Pengesahan Cloudflare belum selesai! Sila selesaikan pengesahan pada skrin terlebih dahulu.", Toast.LENGTH_LONG).show()
+                    return@evaluateJavascript
+                }
+
+                if (hasClearance || hasRealAnime) {
+                    try {
+                        val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
+                        prefs.edit().putString(COOKIE_KEY, cookies).apply()
+                        prefs.edit().putString(USER_AGENT_KEY, cleanUserAgent).apply()
+                        Anichin.savedCookies = cookies
+                        Toast.makeText(context, "Cookies berjaya disimpan! Anichin sedia digunakan.", Toast.LENGTH_SHORT).show()
+                        dismiss()
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Ralat menyimpan cookies: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    titleView.text = "Laman belum sedia. Sila tunggu / refresh"
+                    titleView.setTextColor(Color.YELLOW)
+                    Toast.makeText(context, "Laman web belum selesai dimuatkan. Sila tunggu seketika atau tekan Refresh.", Toast.LENGTH_SHORT).show()
                 }
             }
         }

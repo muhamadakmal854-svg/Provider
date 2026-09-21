@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
+import android.widget.Toast
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebSettings
@@ -144,10 +145,22 @@ class Anichin(val context: Context) : MainAPI() {
         return savedCookies
     }
 
-    sealed class SmartResult {
-        data class Success(val document: Document) : SmartResult()
-        object NeedsCaptcha : SmartResult()
-        object Error : SmartResult()
+    private var lastToastTime = 0L
+
+    private fun showCloudflareBlockedToast() {
+        val now = System.currentTimeMillis()
+        if (now - lastToastTime > 15000) {
+            lastToastTime = now
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    Toast.makeText(
+                        getSafeContext(),
+                        "Anichin: Sila buka Tetapan > Extensions > Anichin untuk Bypass Cloudflare (Manual)",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     private fun isCloudflareChallenge(html: String): Boolean {
@@ -167,10 +180,10 @@ class Anichin(val context: Context) : MainAPI() {
     private suspend fun getDocumentSmart(url: String): Document? {
         val targetUrl = toAbsoluteUrl(url)
         val ua = getActualUserAgent()
+        val cookie = getSavedCookie(getSafeContext())
 
-        // 1. Direct HTTP GET with saved/existing cookies
+        // 1. Direct HTTP GET with saved cookies
         try {
-            val cookie = getSavedCookie(getSafeContext())
             val headers = mutableMapOf(
                 "User-Agent" to ua,
                 "Referer" to "$mainUrl/",
@@ -179,174 +192,30 @@ class Anichin(val context: Context) : MainAPI() {
             )
             if (cookie.isNotBlank()) headers["Cookie"] = cookie
 
-            val res = app.get(targetUrl, headers = headers, allowRedirects = true, timeout = 10)
+            val res = app.get(targetUrl, headers = headers, allowRedirects = true, timeout = 12)
             if (res.code == 200 && !isCloudflareChallenge(res.text)) {
                 return res.document
             }
         } catch (_: Exception) {}
 
-        // 2. Cloudflare solver via visible Dialog if Activity is available
-        val activity = getActivity(getSafeContext())
-        if (activity != null && !activity.isFinishing) {
-            val solvedDoc = CloudflareSolver.solve(activity, targetUrl, ua)
-            if (solvedDoc != null) {
-                getSavedCookie(getSafeContext())
-                return solvedDoc
-            }
-        }
-
-        // 3. Fallback background WebView solver
-        val bgResult = loadHiddenWebViewCheck(targetUrl, ua)
-        if (bgResult is SmartResult.Success) {
-            return bgResult.document
-        }
-
-        // 4. Fallback direct Jsoup parse with saved cookie
-        return try {
-            val cookie = getSavedCookie(getSafeContext())
+        // 2. Direct Jsoup connect fallback with saved cookies
+        try {
             val conn = Jsoup.connect(targetUrl)
                 .userAgent(ua)
                 .referrer("$mainUrl/")
-                .timeout(10000)
+                .timeout(12000)
             if (cookie.isNotBlank()) {
                 conn.header("Cookie", cookie)
             }
-            conn.get()
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private suspend fun loadHiddenWebViewCheck(url: String, userAgent: String): SmartResult {
-        return suspendCoroutine { continuation ->
-            Handler(Looper.getMainLooper()).post {
-                var isFinished = false
-                val webView = WebView(getSafeContext())
-
-                fun finish(result: SmartResult) {
-                    if (isFinished) return
-                    isFinished = true
-                    try {
-                        webView.stopLoading()
-                        webView.destroy()
-                    } catch (_: Exception) {}
-                    continuation.resume(result)
-                }
-
-                val settings = webView.settings
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.databaseEnabled = true
-                settings.useWideViewPort = true
-                settings.loadWithOverviewMode = true
-                settings.userAgentString = userAgent
-
-                val cookieManager = CookieManager.getInstance()
-                cookieManager.setAcceptCookie(true)
-                cookieManager.setAcceptThirdPartyCookies(webView, true)
-
-                val handler = Handler(Looper.getMainLooper())
-                val poller = object : Runnable {
-                    override fun run() {
-                        if (isFinished) return
-
-                        val cookies = (cookieManager.getCookie("https://anichin.moe") ?: "") + "; " + (cookieManager.getCookie(url) ?: "")
-                        if (cookies.contains("cf_clearance")) {
-                            try {
-                                val prefs = PreferenceManager.getDefaultSharedPreferences(getSafeContext())
-                                prefs.edit().putString(COOKIE_KEY, cookies).apply()
-                                prefs.edit().putString(USER_AGENT_KEY, userAgent).apply()
-                                savedCookies = cookies
-                            } catch (_: Exception) {}
-
-                            handler.postDelayed({
-                                webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
-                                    val cleanHtml = html?.removeSurrounding("\"")
-                                        ?.replace("\\u003C", "<")
-                                        ?.replace("\\u003E", ">")
-                                        ?.replace("\\\"", "\"")
-                                        ?.replace("\\\\", "\\")
-                                    if (!cleanHtml.isNullOrBlank()) {
-                                        finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
-                                    } else {
-                                        finish(SmartResult.Error)
-                                    }
-                                }
-                            }, 800)
-                            return
-                        }
-
-                        val jsCheck = """
-                        (function() {
-                            var text = (document.body ? document.body.innerText : '') + ' ' + document.title;
-                            text = text.toLowerCase();
-                            var isCf = text.indexOf('performing security verification') !== -1 ||
-                                       text.indexOf('security service to protect') !== -1 ||
-                                       text.indexOf('verifying you are not a bot') !== -1 ||
-                                       text.indexOf('verify you are human') !== -1 ||
-                                       text.indexOf('just a moment') !== -1 ||
-                                       text.indexOf('checking if the site connection is secure') !== -1 ||
-                                       text.indexOf('challenge-platform') !== -1 ||
-                                       text.indexOf('cf-turnstile') !== -1 ||
-                                       document.querySelector("iframe[src*='cloudflare.com']") != null;
-
-                            var hasRealAnime = document.querySelector('.listupd .bsx, .bsx a, article.bs, .eplister, #daftarepisode, .releases h2, .releases h3') != null;
-                            return isCf + "|" + hasRealAnime;
-                        })();
-                        """.trimIndent()
-
-                        webView.evaluateJavascript(jsCheck) { result ->
-                            if (isFinished) return@evaluateJavascript
-                            val parts = result?.removeSurrounding("\"")?.split("|")
-                            if (parts != null && parts.size >= 2) {
-                                val isCf = parts[0] == "true"
-                                val hasRealAnime = parts[1] == "true"
-                                if (!isCf && hasRealAnime) {
-                                    val finalCookies = (cookieManager.getCookie("https://anichin.moe") ?: "") + "; " + (cookieManager.getCookie(url) ?: "")
-                                    try {
-                                        val prefs = PreferenceManager.getDefaultSharedPreferences(getSafeContext())
-                                        prefs.edit().putString(COOKIE_KEY, finalCookies).apply()
-                                        prefs.edit().putString(USER_AGENT_KEY, userAgent).apply()
-                                        savedCookies = finalCookies
-                                    } catch (_: Exception) {}
-
-                                    handler.postDelayed({
-                                        webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
-                                            val cleanHtml = html?.removeSurrounding("\"")
-                                                ?.replace("\\u003C", "<")
-                                                ?.replace("\\u003E", ">")
-                                                ?.replace("\\\"", "\"")
-                                                ?.replace("\\\\", "\\")
-                                            if (!cleanHtml.isNullOrBlank()) {
-                                                finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
-                                            } else {
-                                                finish(SmartResult.Error)
-                                            }
-                                        }
-                                    }, 800)
-                                    return@evaluateJavascript
-                                }
-                            }
-                            handler.postDelayed(this, 1000)
-                        }
-                    }
-                }
-
-                webView.webViewClient = object : WebViewClient() {
-                    override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
-                        handler?.proceed()
-                    }
-                }
-
-                try {
-                    webView.loadUrl(url)
-                    handler.postDelayed(poller, 1500)
-                    handler.postDelayed({ if (!isFinished) finish(SmartResult.Error) }, 20000)
-                } catch (_: Exception) {
-                    finish(SmartResult.Error)
-                }
+            val doc = conn.get()
+            if (!isCloudflareChallenge(doc.html())) {
+                return doc
             }
-        }
+        } catch (_: Exception) {}
+
+        // If blocked by Cloudflare, notify user once via Toast without auto-popup
+        showCloudflareBlockedToast()
+        return null
     }
 
     // Netflix-Style Main Page Configuration
