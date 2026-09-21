@@ -174,55 +174,268 @@ class Anichin(val context: Context) : MainAPI() {
                lower.contains("verify you are human") ||
                lower.contains("checking if the site connection is secure") ||
                lower.contains("challenges.cloudflare.com") ||
-               lower.contains("ray id:")
+               (lower.contains("ray id:") && lower.contains("cloudflare"))
     }
 
     private fun isLandingPage(html: String): Boolean {
         val lower = html.lowercase()
-        return lower.contains("landing page resmi") ||
-               (lower.contains("anichin.care") && !lower.contains("listupd") && !lower.contains("eplister"))
+        return lower.contains("landing page resmi")
     }
+
+    private fun hasRealContent(doc: Document): Boolean {
+        return doc.selectFirst(".listupd, .bsx, article, .eplister, #daftarepisode, .releases, .bixbox, header, nav, #content, .entry-title") != null
+    }
+
+    sealed class SmartResult {
+        data class Success(val document: Document) : SmartResult()
+        object NeedsCaptcha : SmartResult()
+        object Error : SmartResult()
+    }
+
+    private suspend fun loadVisibleWebViewCheck(url: String): SmartResult {
+        return suspendCoroutine { continuation ->
+            Handler(Looper.getMainLooper()).post {
+                val ctx = getSafeContext()
+                val activity = getActivity(ctx)
+
+                var isFinished = false
+                val handler = Handler(Looper.getMainLooper())
+
+                val dialog = if (activity != null && !activity.isFinishing) {
+                    try {
+                        Dialog(activity).apply {
+                            requestWindowFeature(Window.FEATURE_NO_TITLE)
+                            setCancelable(false)
+                            window?.addFlags(
+                                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            )
+                            window?.setBackgroundDrawableResource(android.R.color.transparent)
+                            window?.setDimAmount(0f)
+
+                            val params = WindowManager.LayoutParams().apply {
+                                copyFrom(window?.attributes)
+                                width = 1
+                                height = 1
+                                gravity = Gravity.TOP or Gravity.START
+                                x = -10
+                                y = -10
+                            }
+                            window?.attributes = params
+                        }
+                    } catch (_: Exception) { null }
+                } else null
+
+                val webView = try {
+                    WebView(activity ?: ctx)
+                } catch (_: Exception) {
+                    continuation.resume(SmartResult.Error)
+                    return@post
+                }
+
+                if (dialog != null) {
+                    try {
+                        dialog.setContentView(webView, ViewGroup.LayoutParams(1, 1))
+                    } catch (_: Exception) {}
+                }
+
+                val ua = getActualUserAgent()
+                try {
+                    webView.settings.apply {
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        databaseEnabled = true
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
+                        userAgentString = ua
+                        blockNetworkImage = true
+                        cacheMode = WebSettings.LOAD_DEFAULT
+                    }
+                } catch (_: Exception) {}
+
+                val cookieManager = CookieManager.getInstance()
+                cookieManager.setAcceptCookie(true)
+                cookieManager.setAcceptThirdPartyCookies(webView, true)
+
+                fun finish(result: SmartResult) {
+                    if (isFinished) return
+                    isFinished = true
+                    handler.removeCallbacksAndMessages(null)
+                    try { if (dialog?.isShowing == true) dialog.dismiss() } catch (_: Exception) {}
+                    try { webView.destroy() } catch (_: Exception) {}
+
+                    if (result is SmartResult.Success) {
+                        try {
+                            cookieManager.flush()
+                            val newCookies = cookieManager.getCookie("https://anichin.moe/")
+                                ?: cookieManager.getCookie(url)
+                            if (!newCookies.isNullOrBlank()) {
+                                savedCookies = newCookies
+                                val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
+                                prefs.edit().putString(COOKIE_KEY, newCookies).apply()
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    continuation.resume(result)
+                }
+
+                class HtmlBridge {
+                    @android.webkit.JavascriptInterface
+                    fun postHtml(html: String) {
+                        handler.post {
+                            if (!isFinished && html.isNotBlank()) {
+                                try {
+                                    val doc = Jsoup.parse(html, url)
+                                    finish(SmartResult.Success(doc))
+                                } catch (_: Exception) {
+                                    finish(SmartResult.Error)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                try {
+                    webView.addJavascriptInterface(HtmlBridge(), "HtmlBridge")
+                } catch (_: Exception) {}
+
+                val poller = object : Runnable {
+                    override fun run() {
+                        if (isFinished) return
+                        val jsCheck = """
+                        (function() {
+                            var title = (document.title || '').toLowerCase();
+                            var body = (document.body ? document.body.innerText : '').toLowerCase();
+                            var html = document.documentElement ? document.documentElement.outerHTML : '';
+
+                            if (title.indexOf('just a moment') !== -1 ||
+                                html.indexOf('challenge-platform') !== -1 ||
+                                html.indexOf('cf-turnstile') !== -1 ||
+                                document.getElementById('cf-wrapper') != null ||
+                                body.indexOf('security verification') !== -1 ||
+                                body.indexOf('verifying you are not a bot') !== -1) {
+                                return 'CAPTCHA';
+                            }
+
+                            var hasRealContent = document.querySelector('.listupd, .bsx, article, .eplister, #daftarepisode, .releases, .bixbox, header, nav, #content, .entry-title') != null;
+                            if (hasRealContent) {
+                                if (window.HtmlBridge && window.HtmlBridge.postHtml) {
+                                    window.HtmlBridge.postHtml(html);
+                                    return 'BRIDGED';
+                                }
+                                return 'SUCCESS::' + html;
+                            }
+                            return 'POLLING';
+                        })();
+                        """.trimIndent()
+
+                        webView.evaluateJavascript(jsCheck) { result ->
+                            if (isFinished) return@evaluateJavascript
+                            val cleanResult = result?.removeSurrounding("\"")
+                            when {
+                                cleanResult == "CAPTCHA" -> finish(SmartResult.NeedsCaptcha)
+                                cleanResult == "BRIDGED" -> { /* Handled by HtmlBridge */ }
+                                cleanResult?.startsWith("SUCCESS::") == true -> {
+                                    val html = cleanResult.substringAfter("SUCCESS::")
+                                    val cleanHtml = html.replace("\\u003C", "<").replace("\\u003E", ">").replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n").replace("\\r", "")
+                                    try {
+                                        val doc = Jsoup.parse(cleanHtml, url)
+                                        finish(SmartResult.Success(doc))
+                                    } catch (_: Exception) {
+                                        finish(SmartResult.Error)
+                                    }
+                                }
+                                else -> handler.postDelayed(this, 800)
+                            }
+                        }
+                    }
+                }
+
+                webView.webViewClient = object : WebViewClient() {
+                    override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
+                        handler?.proceed()
+                    }
+                    override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                        handler.post(poller)
+                    }
+                }
+
+                try {
+                    dialog?.show()
+                    webView.loadUrl(url)
+                    handler.postDelayed(poller, 1000)
+                    handler.postDelayed({ if (!isFinished) finish(SmartResult.Error) }, 15000)
+                } catch (_: Exception) {
+                    finish(SmartResult.Error)
+                }
+            }
+        }
+    }
+
+    private val docCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Document>>()
 
     private suspend fun getDocumentSmart(url: String): Document? {
         val targetUrl = toAbsoluteUrl(url)
+
+        // 1. Fast in-memory cache (60 seconds)
+        val cached = docCache[targetUrl]
+        if (cached != null && System.currentTimeMillis() - cached.first < 60000) {
+            return cached.second
+        }
+
         val ua = getActualUserAgent()
         val cookie = getSavedCookie(getSafeContext())
 
-        // 1. Direct HTTP GET with saved cookies
-        try {
-            val headers = mutableMapOf(
-                "User-Agent" to ua,
-                "Referer" to "$mainUrl/",
-                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7"
-            )
-            if (cookie.isNotBlank()) headers["Cookie"] = cookie
+        // 2. Direct HTTP GET with saved cookies (fastest path if Cloudflare allows)
+        if (cookie.isNotBlank()) {
+            try {
+                val headers = mutableMapOf(
+                    "User-Agent" to ua,
+                    "Referer" to "$mainUrl/",
+                    "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                    "Accept-Language" to "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+                    "Cookie" to cookie
+                )
+                val res = app.get(targetUrl, headers = headers, allowRedirects = true, timeout = 8)
+                if (res.code == 200 && !isCloudflareChallenge(res.text) && !isLandingPage(res.text)) {
+                    val doc = res.document
+                    if (hasRealContent(doc)) {
+                        docCache[targetUrl] = Pair(System.currentTimeMillis(), doc)
+                        return doc
+                    }
+                }
+            } catch (_: Exception) {}
+        }
 
-            val res = app.get(targetUrl, headers = headers, allowRedirects = true, timeout = 12)
-            if (res.code == 200 && !isCloudflareChallenge(res.text) && !isLandingPage(res.text)) {
-                return res.document
+        // 3. Invisible background Chromium WebView fetcher (Uses Android Chromium TLS stack & CookieManager session)
+        val result = loadVisibleWebViewCheck(targetUrl)
+        return when (result) {
+            is SmartResult.Success -> {
+                docCache[targetUrl] = Pair(System.currentTimeMillis(), result.document)
+                result.document
             }
-        } catch (_: Exception) {}
-
-        // 2. Direct Jsoup connect fallback with saved cookies
-        try {
-            val conn = Jsoup.connect(targetUrl)
-                .userAgent(ua)
-                .referrer("$mainUrl/")
-                .timeout(12000)
-            if (cookie.isNotBlank()) {
-                conn.header("Cookie", cookie)
+            is SmartResult.NeedsCaptcha -> {
+                showCloudflareBlockedToast()
+                null
             }
-            val doc = conn.get()
-            val h = doc.html()
-            if (!isCloudflareChallenge(h) && !isLandingPage(h)) {
-                return doc
+            else -> {
+                // 4. Last-ditch direct Jsoup connect attempt
+                try {
+                    val conn = Jsoup.connect(targetUrl)
+                        .userAgent(ua)
+                        .referrer("$mainUrl/")
+                        .timeout(10000)
+                    if (cookie.isNotBlank()) conn.header("Cookie", cookie)
+                    val doc = conn.get()
+                    val h = doc.html()
+                    if (!isCloudflareChallenge(h) && !isLandingPage(h) && hasRealContent(doc)) {
+                        docCache[targetUrl] = Pair(System.currentTimeMillis(), doc)
+                        return doc
+                    }
+                } catch (_: Exception) {}
+                null
             }
-        } catch (_: Exception) {}
-
-        // If blocked by Cloudflare, notify user once via Toast without auto-popup
-        showCloudflareBlockedToast()
-        return null
+        }
     }
 
     // Netflix-Style Main Page Configuration

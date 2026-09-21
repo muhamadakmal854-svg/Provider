@@ -216,12 +216,6 @@ class AnichinSettingsDialog : DialogFragment() {
             cookieManager.setAcceptCookie(true)
             cookieManager.setAcceptThirdPartyCookies(webView, true)
 
-            // Clear old cookies on open so expired cookies are never saved by mistake
-            try {
-                cookieManager.removeAllCookies(null)
-                cookieManager.flush()
-            } catch (_: Exception) {}
-
             webView.webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     return false
@@ -246,10 +240,9 @@ class AnichinSettingsDialog : DialogFragment() {
                         (function() {
                             var title = (document.title || '').toLowerCase();
                             var body = (document.body ? document.body.innerText : '').toLowerCase();
+                            var host = window.location.hostname.toLowerCase();
 
-                            var isLanding = window.location.hostname.indexOf('care') !== -1 ||
-                                            body.indexOf('landing page resmi') !== -1 ||
-                                            body.indexOf('bookmark juga anichin.care') !== -1;
+                            var isLanding = (host.indexOf('care') !== -1 || window.location.href.indexOf('anichin.care') !== -1) && host.indexOf('anichin.moe') === -1;
 
                             var isCf = title.indexOf('just a moment') !== -1 ||
                                        title.indexOf('security verification') !== -1 ||
@@ -279,7 +272,7 @@ class AnichinSettingsDialog : DialogFragment() {
                         } else if (isCf) {
                             titleView.text = "Sila selesaikan Turnstile pada skrin"
                             titleView.setTextColor(Color.parseColor("#FFA500"))
-                        } else if (hasRealAnime && currentUrl.contains("anichin.moe")) {
+                        } else if (hasRealAnime || currentUrl.contains("anichin.moe")) {
                             titleView.text = "Laman Anichin sedia! Tekan 'Simpan'"
                             titleView.setTextColor(Color.parseColor("#4CAF50"))
                         } else {
@@ -315,10 +308,9 @@ class AnichinSettingsDialog : DialogFragment() {
             (function() {
                 var title = (document.title || '').toLowerCase();
                 var body = (document.body ? document.body.innerText : '').toLowerCase();
+                var host = window.location.hostname.toLowerCase();
 
-                var isLanding = window.location.hostname.indexOf('care') !== -1 ||
-                                body.indexOf('landing page resmi') !== -1 ||
-                                body.indexOf('bookmark juga anichin.care') !== -1;
+                var isLanding = (host.indexOf('care') !== -1 || window.location.href.indexOf('anichin.care') !== -1) && host.indexOf('anichin.moe') === -1;
 
                 var isCf = title.indexOf('just a moment') !== -1 ||
                            title.indexOf('security verification') !== -1 ||
@@ -361,7 +353,7 @@ class AnichinSettingsDialog : DialogFragment() {
                 val moeCookies = cm.getCookie(ANICHIN_MAIN_URL) ?: cm.getCookie("https://anichin.moe/") ?: ""
                 val hasClearance = moeCookies.contains("cf_clearance")
 
-                if (hasRealAnime || hasClearance) {
+                if (hasRealAnime || hasClearance || moeCookies.isNotBlank()) {
                     try {
                         val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
                         val finalCookies = if (moeCookies.isNotBlank()) moeCookies else cm.getCookie(currentUrl) ?: ""
