@@ -220,7 +220,7 @@ class AnichinSettingsDialog : DialogFragment() {
                     """.trimIndent()
                     view?.evaluateJavascript(jsTouchLogic, null)
 
-                    val cookies = cookieManager.getCookie(url) ?: ""
+                    val cookies = (cookieManager.getCookie(ANICHIN_MAIN_URL) ?: "") + "; " + (cookieManager.getCookie(url) ?: "")
                     if (cookies.contains("cf_clearance")) {
                         titleView.text = "Selesai! Menyimpan..."
                         titleView.setTextColor(Color.GREEN)
@@ -228,6 +228,23 @@ class AnichinSettingsDialog : DialogFragment() {
                     }
                 }
             }
+
+            val pollHandler = Handler(Looper.getMainLooper())
+            val pollRunnable = object : Runnable {
+                override fun run() {
+                    if (!isAdded) return
+                    val currentUrl = webView.url ?: ANICHIN_MAIN_URL
+                    val cookies = (cookieManager.getCookie(ANICHIN_MAIN_URL) ?: "") + "; " + (cookieManager.getCookie(currentUrl) ?: "")
+                    if (cookies.contains("cf_clearance")) {
+                        titleView.text = "Selesai! Menyimpan..."
+                        titleView.setTextColor(Color.GREEN)
+                        pollHandler.postDelayed({ captureAndClose(cleanUserAgent) }, 1000)
+                        return
+                    }
+                    pollHandler.postDelayed(this, 1000)
+                }
+            }
+            pollHandler.postDelayed(pollRunnable, 1000)
 
             webView.loadUrl(ANICHIN_MAIN_URL)
             webContainer.addView(webView)

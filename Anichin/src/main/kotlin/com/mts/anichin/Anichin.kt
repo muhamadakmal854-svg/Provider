@@ -150,6 +150,20 @@ class Anichin(val context: Context) : MainAPI() {
         object Error : SmartResult()
     }
 
+    private fun isCloudflareChallenge(html: String): Boolean {
+        val lower = html.lowercase()
+        return lower.contains("challenge-platform") ||
+               lower.contains("cf-turnstile") ||
+               lower.contains("just a moment") ||
+               lower.contains("performing security verification") ||
+               lower.contains("security service to protect") ||
+               lower.contains("verifying you are not a bot") ||
+               lower.contains("verify you are human") ||
+               lower.contains("checking if the site connection is secure") ||
+               lower.contains("challenges.cloudflare.com") ||
+               lower.contains("ray id:")
+    }
+
     private suspend fun getDocumentSmart(url: String): Document? {
         val targetUrl = toAbsoluteUrl(url)
         val ua = getActualUserAgent()
@@ -166,7 +180,7 @@ class Anichin(val context: Context) : MainAPI() {
             if (cookie.isNotBlank()) headers["Cookie"] = cookie
 
             val res = app.get(targetUrl, headers = headers, allowRedirects = true, timeout = 10)
-            if (res.code == 200 && !res.text.contains("challenge-platform") && !res.text.contains("cf-turnstile") && !res.text.contains("Just a moment...")) {
+            if (res.code == 200 && !isCloudflareChallenge(res.text)) {
                 return res.document
             }
         } catch (_: Exception) {}
@@ -236,7 +250,7 @@ class Anichin(val context: Context) : MainAPI() {
                     override fun run() {
                         if (isFinished) return
 
-                        val cookies = cookieManager.getCookie(url) ?: ""
+                        val cookies = (cookieManager.getCookie("https://anichin.moe") ?: "") + "; " + (cookieManager.getCookie(url) ?: "")
                         if (cookies.contains("cf_clearance")) {
                             try {
                                 val prefs = PreferenceManager.getDefaultSharedPreferences(getSafeContext())
@@ -245,27 +259,39 @@ class Anichin(val context: Context) : MainAPI() {
                                 savedCookies = cookies
                             } catch (_: Exception) {}
 
-                            webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
-                                val cleanHtml = html?.removeSurrounding("\"")
-                                    ?.replace("\\u003C", "<")
-                                    ?.replace("\\u003E", ">")
-                                    ?.replace("\\\"", "\"")
-                                    ?.replace("\\\\", "\\")
-                                if (!cleanHtml.isNullOrBlank()) {
-                                    finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
-                                } else {
-                                    finish(SmartResult.Error)
+                            handler.postDelayed({
+                                webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                                    val cleanHtml = html?.removeSurrounding("\"")
+                                        ?.replace("\\u003C", "<")
+                                        ?.replace("\\u003E", ">")
+                                        ?.replace("\\\"", "\"")
+                                        ?.replace("\\\\", "\\")
+                                    if (!cleanHtml.isNullOrBlank()) {
+                                        finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
+                                    } else {
+                                        finish(SmartResult.Error)
+                                    }
                                 }
-                            }
+                            }, 800)
                             return
                         }
 
                         val jsCheck = """
                         (function() {
-                            var body = document.body ? document.body.innerHTML : '';
-                            var hasCf = body.indexOf('challenge-platform') !== -1 || body.indexOf('cf-turnstile') !== -1 || body.indexOf('Just a moment...') !== -1;
-                            var hasContent = document.querySelector('.listupd, .bsx, article.bs, .entry-content, #content, h1') != null;
-                            return hasCf + "|" + hasContent;
+                            var text = (document.body ? document.body.innerText : '') + ' ' + document.title;
+                            text = text.toLowerCase();
+                            var isCf = text.indexOf('performing security verification') !== -1 ||
+                                       text.indexOf('security service to protect') !== -1 ||
+                                       text.indexOf('verifying you are not a bot') !== -1 ||
+                                       text.indexOf('verify you are human') !== -1 ||
+                                       text.indexOf('just a moment') !== -1 ||
+                                       text.indexOf('checking if the site connection is secure') !== -1 ||
+                                       text.indexOf('challenge-platform') !== -1 ||
+                                       text.indexOf('cf-turnstile') !== -1 ||
+                                       document.querySelector("iframe[src*='cloudflare.com']") != null;
+
+                            var hasRealAnime = document.querySelector('.listupd .bsx, .bsx a, article.bs, .eplister, #daftarepisode, .releases h2, .releases h3') != null;
+                            return isCf + "|" + hasRealAnime;
                         })();
                         """.trimIndent()
 
@@ -273,10 +299,10 @@ class Anichin(val context: Context) : MainAPI() {
                             if (isFinished) return@evaluateJavascript
                             val parts = result?.removeSurrounding("\"")?.split("|")
                             if (parts != null && parts.size >= 2) {
-                                val hasCf = parts[0] == "true"
-                                val hasContent = parts[1] == "true"
-                                if (!hasCf && hasContent) {
-                                    val finalCookies = cookieManager.getCookie(url) ?: ""
+                                val isCf = parts[0] == "true"
+                                val hasRealAnime = parts[1] == "true"
+                                if (!isCf && hasRealAnime) {
+                                    val finalCookies = (cookieManager.getCookie("https://anichin.moe") ?: "") + "; " + (cookieManager.getCookie(url) ?: "")
                                     try {
                                         val prefs = PreferenceManager.getDefaultSharedPreferences(getSafeContext())
                                         prefs.edit().putString(COOKIE_KEY, finalCookies).apply()
@@ -284,18 +310,20 @@ class Anichin(val context: Context) : MainAPI() {
                                         savedCookies = finalCookies
                                     } catch (_: Exception) {}
 
-                                    webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
-                                        val cleanHtml = html?.removeSurrounding("\"")
-                                            ?.replace("\\u003C", "<")
-                                            ?.replace("\\u003E", ">")
-                                            ?.replace("\\\"", "\"")
-                                            ?.replace("\\\\", "\\")
-                                        if (!cleanHtml.isNullOrBlank()) {
-                                            finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
-                                        } else {
-                                            finish(SmartResult.Error)
+                                    handler.postDelayed({
+                                        webView.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                                            val cleanHtml = html?.removeSurrounding("\"")
+                                                ?.replace("\\u003C", "<")
+                                                ?.replace("\\u003E", ">")
+                                                ?.replace("\\\"", "\"")
+                                                ?.replace("\\\\", "\\")
+                                            if (!cleanHtml.isNullOrBlank()) {
+                                                finish(SmartResult.Success(Jsoup.parse(cleanHtml)))
+                                            } else {
+                                                finish(SmartResult.Error)
+                                            }
                                         }
-                                    }
+                                    }, 800)
                                     return@evaluateJavascript
                                 }
                             }
