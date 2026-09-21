@@ -16,7 +16,6 @@ import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebSettings
 import android.webkit.WebView
-import android.webkit.WebSettings
 import android.webkit.WebViewClient
 import androidx.preference.PreferenceManager
 import com.lagradost.cloudstream3.*
