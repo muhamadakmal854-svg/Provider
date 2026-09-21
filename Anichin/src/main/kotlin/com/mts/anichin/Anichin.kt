@@ -177,6 +177,12 @@ class Anichin(val context: Context) : MainAPI() {
                lower.contains("ray id:")
     }
 
+    private fun isLandingPage(html: String): Boolean {
+        val lower = html.lowercase()
+        return lower.contains("landing page resmi") ||
+               (lower.contains("anichin.care") && !lower.contains("listupd") && !lower.contains("eplister"))
+    }
+
     private suspend fun getDocumentSmart(url: String): Document? {
         val targetUrl = toAbsoluteUrl(url)
         val ua = getActualUserAgent()
@@ -193,7 +199,7 @@ class Anichin(val context: Context) : MainAPI() {
             if (cookie.isNotBlank()) headers["Cookie"] = cookie
 
             val res = app.get(targetUrl, headers = headers, allowRedirects = true, timeout = 12)
-            if (res.code == 200 && !isCloudflareChallenge(res.text)) {
+            if (res.code == 200 && !isCloudflareChallenge(res.text) && !isLandingPage(res.text)) {
                 return res.document
             }
         } catch (_: Exception) {}
@@ -208,7 +214,8 @@ class Anichin(val context: Context) : MainAPI() {
                 conn.header("Cookie", cookie)
             }
             val doc = conn.get()
-            if (!isCloudflareChallenge(doc.html())) {
+            val h = doc.html()
+            if (!isCloudflareChallenge(h) && !isLandingPage(h)) {
                 return doc
             }
         } catch (_: Exception) {}

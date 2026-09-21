@@ -63,11 +63,33 @@ class AnichinSettingsDialog : DialogFragment() {
             }
             screen.addPreference(category)
 
+            val statusPref = Preference(ctx).apply {
+                title = "Status Cookies"
+                isEnabled = false
+            }
+            category.addPreference(statusPref)
+
+            fun updateStatus() {
+                val p = PreferenceManager.getDefaultSharedPreferences(ctx)
+                val c = p.getString(COOKIE_KEY, null)
+                val hasClearance = !c.isNullOrBlank() && c.contains("cf_clearance")
+                statusPref.summary = when {
+                    hasClearance -> "Aktif (Cookie tersimpan & sah)"
+                    !c.isNullOrBlank() -> "Cookie ada (Perlu semak semula jika disekat)"
+                    else -> "Tiada Cookie (Gunakan Bypass jika disekat)"
+                }
+            }
+            updateStatus()
+
             val openWvPref = Preference(ctx).apply {
                 title = "Bypass Cloudflare / Turnstile (Manual)"
                 summary = "Buka tetingkap WebView untuk menyelesaikan Turnstile / reCAPTCHA secara manual dan simpan cookies"
                 setOnPreferenceClickListener {
-                    WebViewCaptureDialog().show(parentFragmentManager, "AnichinWVCapture")
+                    val dialog = WebViewCaptureDialog()
+                    dialog.onSaved = {
+                        updateStatus()
+                    }
+                    dialog.show(parentFragmentManager, "AnichinWVCapture")
                     true
                 }
             }
@@ -82,6 +104,7 @@ class AnichinSettingsDialog : DialogFragment() {
                         prefs.edit().remove(COOKIE_KEY).remove(USER_AGENT_KEY).apply()
                         Anichin.savedCookies = ""
                         CookieManager.getInstance().removeAllCookies(null)
+                        updateStatus()
                         Toast.makeText(ctx, "Cookies berjaya dikosongkan", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
                         Toast.makeText(ctx, "Ralat: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -90,15 +113,6 @@ class AnichinSettingsDialog : DialogFragment() {
                 }
             }
             category.addPreference(clearPref)
-
-            val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
-            val hasCookie = !prefs.getString(COOKIE_KEY, null).isNullOrBlank()
-            val statusPref = Preference(ctx).apply {
-                title = "Status Cookies"
-                summary = if (hasCookie) "Aktif (Cookie tersimpan)" else "Tiada Cookie (Gunakan Bypass jika disekat)"
-                isEnabled = false
-            }
-            category.addPreference(statusPref)
 
             val closePref = Preference(ctx).apply {
                 title = "Tutup"
@@ -113,6 +127,7 @@ class AnichinSettingsDialog : DialogFragment() {
 
     class WebViewCaptureDialog : DialogFragment() {
         private lateinit var webView: WebView
+        var onSaved: (() -> Unit)? = null
 
         override fun onStart() {
             super.onStart()
@@ -155,7 +170,7 @@ class AnichinSettingsDialog : DialogFragment() {
             }
 
             val titleView = TextView(ctx).apply {
-                text = "Sahkan Cloudflare di bawah & tekan 'Simpan'"
+                text = "Memuatkan Anichin..."
                 textSize = 12f
                 gravity = Gravity.CENTER
                 setTextColor(Color.parseColor("#FFD700"))
@@ -166,7 +181,9 @@ class AnichinSettingsDialog : DialogFragment() {
                 text = "Refresh"
                 setTextColor(Color.LTGRAY)
                 setBackgroundColor(Color.TRANSPARENT)
-                setOnClickListener { webView.reload() }
+                setOnClickListener {
+                    webView.loadUrl(ANICHIN_MAIN_URL)
+                }
             }
 
             val saveBtn = Button(ctx).apply {
@@ -197,41 +214,77 @@ class AnichinSettingsDialog : DialogFragment() {
 
             val cookieManager = CookieManager.getInstance()
             cookieManager.setAcceptCookie(true)
-            cookieManager.setAcceptThirdThirdPartyCookies(webView)
+            cookieManager.setAcceptThirdPartyCookies(webView, true)
 
-            // Clear any stale clearance cookies when opening manual bypass
+            // Clear old cookies on open so expired cookies are never saved by mistake
             try {
-                cookieManager.setCookie(ANICHIN_MAIN_URL, "cf_clearance=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.anichin.moe")
-                cookieManager.setCookie(ANICHIN_MAIN_URL, "cf_clearance=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/")
+                cookieManager.removeAllCookies(null)
                 cookieManager.flush()
             } catch (_: Exception) {}
 
             webView.webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?) = false
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    return false
+                }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    // Informative guidance only - strictly NO auto-close, NO auto-touch
+                    val currentUrl = url.orEmpty()
+
+                    // Check if page redirected to landing page anichin.care
+                    if (currentUrl.contains("anichin.care")) {
+                        titleView.text = "Mengalihkan ke anichin.moe..."
+                        titleView.setTextColor(Color.parseColor("#FFD700"))
+                        // Automatically fast-forward to main website
+                        view?.postDelayed({
+                            view.loadUrl(ANICHIN_MAIN_URL)
+                        }, 1000)
+                        return
+                    }
+
+                    // Evaluate page content on anichin.moe
                     view?.evaluateJavascript("""
                         (function() {
-                            var text = (document.body ? document.body.innerText : '') + ' ' + document.title;
-                            text = text.toLowerCase();
-                            var isCf = text.indexOf('performing security verification') !== -1 ||
-                                       text.indexOf('security service to protect') !== -1 ||
-                                       text.indexOf('verifying you are not a bot') !== -1 ||
-                                       text.indexOf('verify you are human') !== -1 ||
-                                       text.indexOf('just a moment') !== -1;
-                            return isCf;
+                            var title = (document.title || '').toLowerCase();
+                            var body = (document.body ? document.body.innerText : '').toLowerCase();
+
+                            var isLanding = window.location.hostname.indexOf('care') !== -1 ||
+                                            body.indexOf('landing page resmi') !== -1 ||
+                                            body.indexOf('bookmark juga anichin.care') !== -1;
+
+                            var isCf = title.indexOf('just a moment') !== -1 ||
+                                       title.indexOf('security verification') !== -1 ||
+                                       body.indexOf('performing security verification') !== -1 ||
+                                       body.indexOf('security service to protect') !== -1 ||
+                                       body.indexOf('verifying you are not a bot') !== -1 ||
+                                       body.indexOf('verify you are human') !== -1 ||
+                                       body.indexOf('checking if the site connection is secure') !== -1 ||
+                                       body.indexOf('challenge-platform') !== -1 ||
+                                       document.querySelector("iframe[src*='cloudflare.com']") != null;
+
+                            var hasRealAnime = document.querySelector('.listupd .bsx, .bsx a, article.bs, .eplister, #daftarepisode, .releases h2, .releases h3, .bixbox') != null;
+
+                            return isLanding + "|" + isCf + "|" + hasRealAnime;
                         })();
                     """.trimIndent()) { res ->
-                        if (isAdded) {
-                            val isCf = res?.removeSurrounding("\"") == "true"
-                            if (isCf) {
-                                titleView.text = "Sila selesaikan pengesahan pada skrin"
-                                titleView.setTextColor(Color.parseColor("#FFA500"))
-                            } else {
-                                titleView.text = "Laman sedia! Tekan butang 'Simpan'"
-                                titleView.setTextColor(Color.parseColor("#4CAF50"))
-                            }
+                        if (!isAdded) return@evaluateJavascript
+                        val parts = res?.removeSurrounding("\"")?.split("|")
+                        val isLanding = parts?.getOrNull(0) == "true"
+                        val isCf = parts?.getOrNull(1) == "true"
+                        val hasRealAnime = parts?.getOrNull(2) == "true"
+
+                        if (isLanding) {
+                            titleView.text = "Mengalihkan ke anichin.moe..."
+                            titleView.setTextColor(Color.parseColor("#FFD700"))
+                            view?.loadUrl(ANICHIN_MAIN_URL)
+                        } else if (isCf) {
+                            titleView.text = "Sila selesaikan Turnstile pada skrin"
+                            titleView.setTextColor(Color.parseColor("#FFA500"))
+                        } else if (hasRealAnime && currentUrl.contains("anichin.moe")) {
+                            titleView.text = "Laman Anichin sedia! Tekan 'Simpan'"
+                            titleView.setTextColor(Color.parseColor("#4CAF50"))
+                        } else {
+                            titleView.text = "Sedang memuatkan anichin.moe..."
+                            titleView.setTextColor(Color.LTGRAY)
                         }
                     }
                 }
@@ -244,22 +297,29 @@ class AnichinSettingsDialog : DialogFragment() {
             return root
         }
 
-        private fun CookieManager.setAcceptThirdThirdPartyCookies(view: WebView) {
-            try {
-                setAcceptThirdPartyCookies(view, true)
-            } catch (_: Exception) {}
-        }
-
         private fun validateAndSave(cleanUserAgent: String, titleView: TextView) {
             val cm = CookieManager.getInstance()
             cm.flush()
-            val currentUrl = webView.url ?: ANICHIN_MAIN_URL
-            val cookies = (cm.getCookie(ANICHIN_MAIN_URL) ?: "") + "; " + (cm.getCookie(currentUrl) ?: "")
+            val currentUrl = webView.url.orEmpty()
+
+            // 1. Block saving if still on landing page or not on anichin.moe
+            if (currentUrl.contains("anichin.care") || !currentUrl.contains("anichin.moe")) {
+                titleView.text = "Belum di anichin.moe!"
+                titleView.setTextColor(Color.RED)
+                Toast.makeText(context, "Sila tunggu sehingga laman anichin.moe dimuatkan.", Toast.LENGTH_SHORT).show()
+                webView.loadUrl(ANICHIN_MAIN_URL)
+                return
+            }
 
             val checkJs = """
             (function() {
                 var title = (document.title || '').toLowerCase();
                 var body = (document.body ? document.body.innerText : '').toLowerCase();
+
+                var isLanding = window.location.hostname.indexOf('care') !== -1 ||
+                                body.indexOf('landing page resmi') !== -1 ||
+                                body.indexOf('bookmark juga anichin.care') !== -1;
+
                 var isCf = title.indexOf('just a moment') !== -1 ||
                            title.indexOf('security verification') !== -1 ||
                            body.indexOf('performing security verification') !== -1 ||
@@ -270,17 +330,26 @@ class AnichinSettingsDialog : DialogFragment() {
                            body.indexOf('challenge-platform') !== -1 ||
                            document.querySelector("iframe[src*='cloudflare.com']") != null;
 
-                var hasRealAnime = document.querySelector('.listupd .bsx, .bsx a, article.bs, .eplister, #daftarepisode, .releases h2, .releases h3, header#masthead') != null;
-                return isCf + "|" + hasRealAnime;
+                var hasRealAnime = document.querySelector('.listupd .bsx, .bsx a, article.bs, .eplister, #daftarepisode, .releases h2, .releases h3, .bixbox') != null;
+
+                return isLanding + "|" + isCf + "|" + hasRealAnime;
             })();
             """.trimIndent()
 
             webView.evaluateJavascript(checkJs) { res ->
                 if (!isAdded) return@evaluateJavascript
                 val parts = res?.removeSurrounding("\"")?.split("|")
-                val isCf = parts?.getOrNull(0) == "true"
-                val hasRealAnime = parts?.getOrNull(1) == "true"
-                val hasClearance = cookies.contains("cf_clearance")
+                val isLanding = parts?.getOrNull(0) == "true"
+                val isCf = parts?.getOrNull(1) == "true"
+                val hasRealAnime = parts?.getOrNull(2) == "true"
+
+                if (isLanding) {
+                    titleView.text = "Masih di landing page!"
+                    titleView.setTextColor(Color.RED)
+                    Toast.makeText(context, "Masih di landing page anichin.care. Sedang mengalihkan ke anichin.moe...", Toast.LENGTH_SHORT).show()
+                    webView.loadUrl(ANICHIN_MAIN_URL)
+                    return@evaluateJavascript
+                }
 
                 if (isCf) {
                     titleView.text = "Pengesahan belum selesai!"
@@ -289,21 +358,26 @@ class AnichinSettingsDialog : DialogFragment() {
                     return@evaluateJavascript
                 }
 
-                if (hasClearance || hasRealAnime) {
+                val moeCookies = cm.getCookie(ANICHIN_MAIN_URL) ?: cm.getCookie("https://anichin.moe/") ?: ""
+                val hasClearance = moeCookies.contains("cf_clearance")
+
+                if (hasRealAnime || hasClearance) {
                     try {
                         val prefs = PreferenceManager.getDefaultSharedPreferences(requireContext())
-                        prefs.edit().putString(COOKIE_KEY, cookies).apply()
+                        val finalCookies = if (moeCookies.isNotBlank()) moeCookies else cm.getCookie(currentUrl) ?: ""
+                        prefs.edit().putString(COOKIE_KEY, finalCookies).apply()
                         prefs.edit().putString(USER_AGENT_KEY, cleanUserAgent).apply()
-                        Anichin.savedCookies = cookies
+                        Anichin.savedCookies = finalCookies
+                        onSaved?.invoke()
                         Toast.makeText(context, "Cookies berjaya disimpan! Anichin sedia digunakan.", Toast.LENGTH_SHORT).show()
                         dismiss()
                     } catch (e: Exception) {
-                        Toast.makeText(context, "Ralat menyimpan cookies: ${e.message}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Ralat menyimpan: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     titleView.text = "Laman belum sedia. Sila tunggu / refresh"
                     titleView.setTextColor(Color.YELLOW)
-                    Toast.makeText(context, "Laman web belum selesai dimuatkan. Sila tunggu seketika atau tekan Refresh.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Laman anichin.moe belum selesai dimuatkan. Sila tunggu seketika atau tekan Refresh.", Toast.LENGTH_SHORT).show()
                 }
             }
         }
