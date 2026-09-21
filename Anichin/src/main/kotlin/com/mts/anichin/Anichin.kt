@@ -12,6 +12,11 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
+import android.graphics.Color
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
@@ -22,6 +27,8 @@ import androidx.preference.PreferenceManager
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -47,6 +54,9 @@ class Anichin(val context: Context) : MainAPI() {
         const val USER_AGENT_KEY = "anichin_cf_ua"
         const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        private val solverMutex = Mutex()
+        @Volatile
+        private var isDialogShowing = false
     }
 
     private fun getSafeContext(): Context {
@@ -374,6 +384,286 @@ class Anichin(val context: Context) : MainAPI() {
 
     private val docCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Document>>()
 
+    private suspend fun solveCaptchaAutomatically(url: String): Document? {
+        return solverMutex.withLock {
+            val cached = docCache[url]
+            if (cached != null && System.currentTimeMillis() - cached.first < 60000) {
+                return cached.second
+            }
+
+            val ctx = getSafeContext()
+            val activity = getActivity(ctx)
+            if (activity == null || activity.isFinishing) {
+                showCloudflareBlockedToast()
+                return null
+            }
+
+            if (isDialogShowing) {
+                return null
+            }
+
+            suspendCoroutine { continuation ->
+                Handler(Looper.getMainLooper()).post {
+                    if (activity.isFinishing) {
+                        continuation.resume(null)
+                        return@post
+                    }
+
+                    isDialogShowing = true
+                    var isFinished = false
+                    val handler = Handler(Looper.getMainLooper())
+
+                    val dialog = Dialog(activity).apply {
+                        requestWindowFeature(Window.FEATURE_NO_TITLE)
+                        setCancelable(true)
+                        setCanceledOnTouchOutside(false)
+                        window?.setBackgroundDrawableResource(android.R.color.transparent)
+                    }
+
+                    fun finish(doc: Document?) {
+                        if (isFinished) return
+                        isFinished = true
+                        isDialogShowing = false
+                        handler.removeCallbacksAndMessages(null)
+                        try { if (dialog.isShowing) dialog.dismiss() } catch (_: Exception) {}
+                        continuation.resume(doc)
+                    }
+
+                    dialog.setOnCancelListener {
+                        finish(null)
+                    }
+
+                    val dm = activity.resources.displayMetrics
+                    val dialogWidth = (dm.widthPixels * 0.92).toInt()
+                    val dialogHeight = (dm.heightPixels * 0.85).toInt()
+
+                    val root = LinearLayout(activity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = ViewGroup.LayoutParams(dialogWidth, dialogHeight)
+                        setBackgroundColor(Color.parseColor("#181818"))
+                    }
+
+                    val toolbar = LinearLayout(activity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        setPadding(20, 16, 20, 16)
+                        setBackgroundColor(Color.parseColor("#222222"))
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+
+                    val cancelBtn = Button(activity).apply {
+                        text = "Batal"
+                        setTextColor(Color.LTGRAY)
+                        setBackgroundColor(Color.TRANSPARENT)
+                        setOnClickListener { finish(null) }
+                    }
+
+                    val titleLayout = LinearLayout(activity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER
+                        layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                    }
+
+                    val titleView = TextView(activity).apply {
+                        text = "Pengesahan Cloudflare Anichin"
+                        textSize = 13f
+                        gravity = Gravity.CENTER
+                        setTextColor(Color.WHITE)
+                    }
+
+                    val statusView = TextView(activity).apply {
+                        text = "Sila sahkan Turnstile di bawah..."
+                        textSize = 11f
+                        gravity = Gravity.CENTER
+                        setTextColor(Color.parseColor("#FFA500"))
+                    }
+
+                    titleLayout.addView(titleView)
+                    titleLayout.addView(statusView)
+
+                    val saveBtn = Button(activity).apply {
+                        text = "Simpan"
+                        setTextColor(Color.WHITE)
+                        setBackgroundColor(Color.parseColor("#007AFF"))
+                    }
+
+                    toolbar.addView(cancelBtn)
+                    toolbar.addView(titleLayout)
+                    toolbar.addView(saveBtn)
+
+                    val webContainer = FrameLayout(activity).apply {
+                        layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
+                    }
+
+                    val webView = WebView(activity).apply {
+                        layoutParams = FrameLayout.LayoutParams(-1, -1)
+                    }
+
+                    val ua = getActualUserAgent()
+                    webView.settings.apply {
+                        javaScriptEnabled = true
+                        domStorageEnabled = true
+                        databaseEnabled = true
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
+                        userAgentString = ua
+                        cacheMode = WebSettings.LOAD_DEFAULT
+                    }
+
+                    val cookieManager = CookieManager.getInstance()
+                    cookieManager.setAcceptCookie(true)
+                    cookieManager.setAcceptThirdPartyCookies(webView, true)
+
+                    class AutoBridge {
+                        @android.webkit.JavascriptInterface
+                        fun onRealAnimeLoaded(html: String) {
+                            handler.post {
+                                if (isFinished) return@post
+                                statusView.text = "Pengesahan Berjaya! Memuatkan..."
+                                statusView.setTextColor(Color.parseColor("#4CAF50"))
+
+                                try {
+                                    cookieManager.flush()
+                                    val newCookies = cookieManager.getCookie("https://anichin.moe/")
+                                        ?: cookieManager.getCookie(url)
+                                        ?: ""
+                                    if (newCookies.isNotBlank()) {
+                                        savedCookies = newCookies
+                                        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
+                                        prefs.edit().putString(COOKIE_KEY, newCookies).apply()
+                                        prefs.edit().putString(USER_AGENT_KEY, ua).apply()
+                                    }
+                                    val doc = Jsoup.parse(html, url)
+                                    docCache[url] = Pair(System.currentTimeMillis(), doc)
+                                    handler.postDelayed({ finish(doc) }, 600)
+                                } catch (_: Exception) {
+                                    finish(null)
+                                }
+                            }
+                        }
+                    }
+
+                    try {
+                        webView.addJavascriptInterface(AutoBridge(), "AutoBridge")
+                    } catch (_: Exception) {}
+
+                    val checkJs = """
+                    (function() {
+                        var title = (document.title || '').toLowerCase();
+                        var body = (document.body ? document.body.innerText : '').toLowerCase();
+                        var html = document.documentElement ? document.documentElement.outerHTML : '';
+
+                        var isCf = title.indexOf('just a moment') !== -1 ||
+                                   title.indexOf('security verification') !== -1 ||
+                                   body.indexOf('performing security verification') !== -1 ||
+                                   body.indexOf('security service to protect') !== -1 ||
+                                   body.indexOf('verifying you are not a bot') !== -1 ||
+                                   body.indexOf('verify you are human') !== -1 ||
+                                   body.indexOf('checking if the site connection is secure') !== -1 ||
+                                   body.indexOf('challenge-platform') !== -1 ||
+                                   html.indexOf('challenge-platform') !== -1 ||
+                                   document.querySelector("iframe[src*='cloudflare.com']") != null;
+
+                        var hasRealAnime = document.querySelector('.listupd .bsx, .bsx a, article.bs, .eplister, #daftarepisode, .releases h2, .releases h3, .bixbox') != null;
+
+                        if (hasRealAnime && !isCf) {
+                            if (window.AutoBridge && window.AutoBridge.onRealAnimeLoaded) {
+                                window.AutoBridge.onRealAnimeLoaded(html);
+                                return 'SUCCESS';
+                            }
+                            return 'READY::' + html;
+                        }
+
+                        if (isCf) return 'CF_PENDING';
+                        return 'WAITING';
+                    })();
+                    """.trimIndent()
+
+                    val autoPoller = object : Runnable {
+                        override fun run() {
+                            if (isFinished) return
+                            webView.evaluateJavascript(checkJs) { res ->
+                                if (isFinished) return@evaluateJavascript
+                                val clean = res?.removeSurrounding("\"")
+                                when {
+                                    clean == "SUCCESS" -> { /* Handled by AutoBridge */ }
+                                    clean?.startsWith("READY::") == true -> {
+                                        val rawHtml = clean.substringAfter("READY::")
+                                        val cleanHtml = rawHtml.replace("\\u003C", "<").replace("\\u003E", ">").replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n").replace("\\r", "")
+                                        try {
+                                            cookieManager.flush()
+                                            val newCookies = cookieManager.getCookie("https://anichin.moe/") ?: ""
+                                            if (newCookies.isNotBlank()) {
+                                                savedCookies = newCookies
+                                                val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
+                                                prefs.edit().putString(COOKIE_KEY, newCookies).apply()
+                                                prefs.edit().putString(USER_AGENT_KEY, ua).apply()
+                                            }
+                                            val doc = Jsoup.parse(cleanHtml, url)
+                                            docCache[url] = Pair(System.currentTimeMillis(), doc)
+                                            statusView.text = "Pengesahan Berjaya! Memuatkan..."
+                                            statusView.setTextColor(Color.parseColor("#4CAF50"))
+                                            handler.postDelayed({ finish(doc) }, 600)
+                                        } catch (_: Exception) {
+                                            finish(null)
+                                        }
+                                    }
+                                    clean == "CF_PENDING" -> {
+                                        statusView.text = "Sila sahkan Turnstile pada skrin"
+                                        statusView.setTextColor(Color.parseColor("#FFA500"))
+                                        handler.postDelayed(this, 1000)
+                                    }
+                                    else -> handler.postDelayed(this, 1000)
+                                }
+                            }
+                        }
+                    }
+
+                    saveBtn.setOnClickListener {
+                        webView.evaluateJavascript(checkJs) { res ->
+                            val clean = res?.removeSurrounding("\"")
+                            if (clean == "SUCCESS" || clean?.startsWith("READY::") == true) {
+                                // Handled
+                            } else if (clean == "CF_PENDING") {
+                                Toast.makeText(activity, "Pengesahan belum selesai. Sila tanda kotak Turnstile terlebih dahulu.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                cookieManager.flush()
+                                val newCookies = cookieManager.getCookie("https://anichin.moe/") ?: cookieManager.getCookie(url) ?: ""
+                                if (newCookies.isNotBlank()) {
+                                    savedCookies = newCookies
+                                    val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
+                                    prefs.edit().putString(COOKIE_KEY, newCookies).apply()
+                                    prefs.edit().putString(USER_AGENT_KEY, ua).apply()
+                                    Toast.makeText(activity, "Cookies disimpan!", Toast.LENGTH_SHORT).show()
+                                    finish(null)
+                                } else {
+                                    Toast.makeText(activity, "Laman belum sedia. Sila tunggu seketika.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+
+                    webView.webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                            handler.post(autoPoller)
+                        }
+                    }
+
+                    webContainer.addView(webView)
+                    root.addView(toolbar)
+                    root.addView(webContainer)
+                    dialog.setContentView(root)
+
+                    dialog.show()
+                    dialog.window?.setLayout(dialogWidth, dialogHeight)
+                    webView.loadUrl("https://anichin.moe/")
+
+                    handler.postDelayed(autoPoller, 1500)
+                    handler.postDelayed({ if (!isFinished) finish(null) }, 90000)
+                }
+            }
+        }
+    }
+
     private suspend fun getDocumentSmart(url: String): Document? {
         val targetUrl = toAbsoluteUrl(url)
 
@@ -415,8 +705,14 @@ class Anichin(val context: Context) : MainAPI() {
                 result.document
             }
             is SmartResult.NeedsCaptcha -> {
-                showCloudflareBlockedToast()
-                null
+                // Auto Cloudflare prompt when selecting Anichin!
+                val autoDoc = solveCaptchaAutomatically(targetUrl)
+                if (autoDoc != null) {
+                    autoDoc
+                } else {
+                    showCloudflareBlockedToast()
+                    null
+                }
             }
             else -> {
                 // 4. Last-ditch direct Jsoup connect attempt
