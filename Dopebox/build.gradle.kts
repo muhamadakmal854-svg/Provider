@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://dopebox.info/index_files/logo.png"
+    iconUrl     = "https://watchhub.work/dopebox/favicon.ico"
 
 }
 
@@ -21,3 +21,4 @@ android {
     namespace = "com.mts.dopebox"
 
 }
+

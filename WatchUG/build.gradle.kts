@@ -4,7 +4,7 @@ cloudstream {
 
     language    = "en"
 
-    description = "Provider untuk F2Movies - Watch Free Movies & TV Shows Online"
+    description = "Provider untuk WatchUG - Watch Free Movies & TV Shows Online"
 
     authors     = listOf("MTS")
 
@@ -12,13 +12,13 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "https://f2movies.sx/favicon.ico"
+    iconUrl     = "https://moviespro.watch/favicon.ico"
 
 }
 
 android {
 
-    namespace = "com.mts.f2movies"
+    namespace = "com.mts.watchug"
 
 }
 

@@ -1,12 +1,12 @@
-package com.mts.sflix
+package com.mts.watchug
 
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 import android.content.Context
 
 @CloudstreamPlugin
-class SFlixPlugin: Plugin() {
+class WatchUGPlugin: Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(SFlix())
+        registerMainAPI(WatchUG())
     }
 }
