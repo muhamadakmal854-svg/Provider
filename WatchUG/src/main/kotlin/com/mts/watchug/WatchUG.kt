@@ -10,8 +10,6 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -93,7 +91,7 @@ class WatchUG : MainAPI() {
         } catch (_: Exception) {
             val fallbackUrl = url.replace(apiKey, fallbackApiKey)
             app.get(fallbackUrl).parsedSafe<Results>()
-        } ?: throw ErrorLoadingException("Gagal memuatkan data daripada pelayan WatchUG")
+        } ?: throw ErrorLoadingException("Gagal memuatkan data dari pelayan WatchUG")
 
         val list = res.results?.mapNotNull { media ->
             media.toSearchResponse()
@@ -144,7 +142,6 @@ class WatchUG : MainAPI() {
             parseJson<WatchUGData>(url)
         } catch (_: Exception) {
             if (url.startsWith("http")) {
-                // Cuba ekstrak daripada URL moviespro.watch atau ID TMDB
                 try {
                     val html = app.get(url).text
                     val tmdbMatch = Regex("""['"]id['"]\s*:\s*['"]?(\d+)['"]?""").find(html)?.groupValues?.get(1)?.toIntOrNull()
@@ -338,7 +335,7 @@ class WatchUG : MainAPI() {
                     else -> sub.lang ?: "Subtitle"
                 }
                 if (langCode in listOf("eng", "en", "ind", "id", "may", "ms", "zsm")) {
-                    subtitleCallback(newSubtitleFile(label, subUrl))
+                    subtitleCallback(SubtitleFile(label, subUrl))
                 }
             }
         } catch (_: Throwable) {}
@@ -363,7 +360,7 @@ class WatchUG : MainAPI() {
                         item.SubDownloadLink
                     }
                     if (!subUrl.isNullOrBlank()) {
-                        subtitleCallback(newSubtitleFile(langName, subUrl))
+                        subtitleCallback(SubtitleFile(langName, subUrl))
                     }
                 }
             } catch (_: Throwable) {}
@@ -419,78 +416,50 @@ class WatchUG : MainAPI() {
             suspend {
                 fetchSubtitles(imdbId, season, episode, subtitleCallback)
             },
-            // Pelayan 1: VidSrcMe / VidSrc
-            suspend {
-                invokeVidSrc(tmdbId, imdbId, isMovie, season, episode, subtitleCallback, callback)
-            },
-            // Pelayan 2: MoviesAPI (Vidora 1080p FHD HLS)
+            // Pelayan 1: MoviesAPI (Vidora Ultra-Fast 1080p FHD HLS)
             suspend {
                 invokeMoviesAPI(tmdbId, isMovie, season, episode, subtitleCallback, callback)
             },
-            // Pelayan 3: VidCore / Rigel (1080p FHD HLS)
+            // Pelayan 2: VidCore / Rigel (WatchUG Server 2 - 1080p FHD HLS)
             suspend {
                 invokeVidCore(tmdbId, isMovie, season, episode, subtitleCallback, callback)
             },
-            // Pelayan 4: Vidrock (AES-CBC encrypted)
+            // Pelayan 3: Vidrock (AES-CBC encrypted HLS)
             suspend {
                 invokeVidrock(tmdbId, isMovie, season, episode, subtitleCallback, callback)
             },
-            // Pelayan 5: VidLink
+            // Pelayan 4: VidLink
             suspend {
                 invokeVidlink(tmdbId, season, episode, subtitleCallback, callback)
             },
-            // Pelayan 6: 2Embed & StreamWish Multi-Quality
+            // Pelayan 5: 2Embed & StreamWish Multi-Quality
             suspend {
                 invoke2Embed(tmdbId, imdbId, isMovie, season, episode, subtitleCallback, callback)
             },
-            // Pelayan 7: SuperEmbed / MultiEmbed
+            // Pelayan 6: SuperEmbed / MultiEmbed
             suspend {
                 invokeSuperEmbed(tmdbId, isMovie, season, episode, subtitleCallback, callback)
             },
-            // Pelayan 8: AutoEmbed
+            // Pelayan 7: AutoEmbed
             suspend {
                 invokeAutoEmbed(tmdbId, isMovie, season, episode, subtitleCallback, callback)
+            },
+            // Pelayan 8: Vidsrc.to / Vidsrc.in
+            suspend {
+                invokeVidsrcTo(tmdbId, isMovie, season, episode, subtitleCallback, callback)
+            },
+            // Pelayan 9: WatchUG Native Vsrc / VidSrcMe
+            suspend {
+                invokeWatchUGNative(tmdbId, season, episode, subtitleCallback, callback)
             }
-        ).amap { action ->
+        ).amap { call ->
             try {
-                action.invoke()
-            } catch (_: Throwable) {}
+                call.invoke()
+            } catch (_: Throwable) {
+            }
         }
 
         return true
-    }
-
-    private suspend fun invokeVidSrc(
-        tmdbId: Int,
-        imdbId: String?,
-        isMovie: Boolean,
-        season: Int?,
-        episode: Int?,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        val targetImdb = imdbId ?: return
-        val urls = if (isMovie) {
-            listOf(
-                "https://vidsrcme.su/embed/movie/$targetImdb",
-                "https://vidsrc.me/embed/movie/$targetImdb",
-                "https://vidsrc.cc/v2/embed/movie/$tmdbId"
-            )
-        } else {
-            val s = season ?: 1
-            val e = episode ?: 1
-            listOf(
-                "https://vidsrcme.su/embed/tv?tmdb=$tmdbId&season=$s&episode=$e",
-                "https://vidsrc.me/embed/tv?tmdb=$tmdbId&season=$s&episode=$e",
-                "https://vidsrc.cc/v2/embed/tv/$tmdbId/$s/$e"
-            )
-        }
-
-        urls.amap { url ->
-            try {
-                loadExtractor(url, subtitleCallback, callback)
-            } catch (_: Throwable) {}
-        }
     }
 
     private suspend fun invokeMoviesAPI(
@@ -502,34 +471,65 @@ class WatchUG : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ) {
         val endpoint = if (isMovie) {
-            "https://moviesapi.to/api/vidora/v1/movie/$tmdbId?key=$moviesApiKey"
+            "https://moviesapi.to/api/vidora/v1/movie/$tmdbId"
         } else {
-            "https://moviesapi.to/api/vidora/v1/tv/$tmdbId/${season ?: 1}/${episode ?: 1}?key=$moviesApiKey"
+            "https://moviesapi.to/api/vidora/v1/tv/$tmdbId/$season/$episode"
         }
 
-        val jsonStr = app.get(
-            endpoint,
-            headers = mapOf(
+        val res = try {
+            app.get(
+                endpoint,
+                headers = mapOf(
+                    "x-player-key" to moviesApiKey,
+                    "Referer" to "https://moviesapi.to/",
+                    "Origin" to "https://moviesapi.to",
+                    "User-Agent" to USER_AGENT
+                ),
+                timeout = 10
+            ).parsedSafe<VidoraResponse>()
+        } catch (_: Throwable) {
+            null
+        } ?: return
+
+        res.sources?.forEach { src ->
+            val m3u8Url = src.url ?: return@forEach
+            val serverName = "WatchUG - Server 1 (MoviesAPI)"
+            val streamHeaders = mapOf(
                 "Referer" to "https://moviesapi.to/",
+                "Origin" to "https://moviesapi.to",
                 "User-Agent" to USER_AGENT
             )
-        ).text
 
-        val resp = tryParseJson<VidoraResponse>(jsonStr) ?: return
-        val masterUrl = resp.source ?: return
+            callback.invoke(
+                newExtractorLink(
+                    serverName,
+                    "MoviesAPI [1080p FHD]",
+                    m3u8Url,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "https://moviesapi.to/"
+                    this.quality = Qualities.P1080.value
+                    this.headers = streamHeaders
+                }
+            )
 
-        generateM3u8(
-            name,
-            masterUrl,
-            "https://moviesapi.to/"
-        ).forEach { link ->
-            callback(link)
-        }
+            try {
+                generateM3u8(
+                    serverName,
+                    m3u8Url,
+                    referer = "https://moviesapi.to/",
+                    headers = streamHeaders
+                ).forEach(callback)
+            } catch (_: Throwable) {
+            }
 
-        resp.tracks?.forEach { track ->
-            val trackUrl = track.file ?: return@forEach
-            val trackLabel = track.label ?: "English"
-            subtitleCallback(newSubtitleFile(trackLabel, trackUrl))
+            src.tracks?.forEach { track ->
+                val trackUrl = track.file ?: return@forEach
+                val lang = track.label ?: "English"
+                subtitleCallback.invoke(
+                    SubtitleFile(lang, trackUrl)
+                )
+            }
         }
     }
 
@@ -541,43 +541,76 @@ class WatchUG : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val endpoint = if (isMovie) {
-            "https://movish.to/player-sources/rigel/movie/$tmdbId"
-        } else {
-            "https://movish.to/player-sources/rigel/tv/$tmdbId/${season ?: 1}/${episode ?: 1}"
-        }
+        val path = if (isMovie) "movie/$tmdbId" else "tv/$tmdbId/$season/$episode"
+        val primaryUrl = "https://movish.to/player-sources/rigel/$path"
+        val fallbackUrl = "https://box-prox.jeannefrankli-n2-7-2-0-5.workers.dev/https://movish.to/player-sources/rigel/$path"
 
-        val res = app.get(
-            endpoint,
-            headers = mapOf(
-                "Referer" to "https://watchhub.work/",
+        val res = try {
+            app.get(
+                primaryUrl,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "https://vidcore.net/"
+                ),
+                timeout = 10
+            ).parsedSafe<VidCoreResponse>()
+        } catch (_: Throwable) {
+            try {
+                app.get(
+                    fallbackUrl,
+                    headers = mapOf(
+                        "User-Agent" to USER_AGENT,
+                        "Referer" to "https://vidcore.net/"
+                    ),
+                    timeout = 10
+                ).parsedSafe<VidCoreResponse>()
+            } catch (_: Throwable) {
+                null
+            }
+        } ?: return
+
+        res.streams?.forEach { stream ->
+            val m3u8Url = stream.url ?: return@forEach
+            val label = stream.label ?: "Rigel"
+            val qualityStr = stream.quality ?: "1080p"
+            val serverName = "WatchUG - Server 2 (VidCore [$label])"
+
+            val streamHeaders = mapOf(
+                "Referer" to "https://vidcore.net/",
+                "Origin" to "https://vidcore.net",
                 "User-Agent" to USER_AGENT
             )
-        ).parsedSafe<VidCoreResponse>() ?: return
 
-        res.sources?.forEach { src ->
-            val srcUrl = src.url ?: return@forEach
-            if (srcUrl.contains(".m3u8")) {
-                generateM3u8(
-                    "${this.name} VidCore",
-                    srcUrl,
-                    "https://movish.to/"
-                ).forEach { link ->
-                    callback(link)
+            callback.invoke(
+                newExtractorLink(
+                    serverName,
+                    "$label [$qualityStr]",
+                    m3u8Url,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "https://vidcore.net/"
+                    this.quality = Qualities.P1080.value
+                    this.headers = streamHeaders
                 }
-            } else {
-                callback(
-                    newExtractorLink(
-                        "${this.name} VidCore",
-                        "${this.name} VidCore (${src.quality ?: "1080p"})",
-                        srcUrl,
-                        ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = "https://movish.to/"
-                        this.quality = Qualities.P1080.value
-                    }
-                )
+            )
+
+            try {
+                generateM3u8(
+                    serverName,
+                    m3u8Url,
+                    referer = "https://vidcore.net/",
+                    headers = streamHeaders
+                ).forEach(callback)
+            } catch (_: Throwable) {
             }
+        }
+
+        res.subtitles?.forEach { sub ->
+            val subUrl = sub.file ?: return@forEach
+            val subLabel = sub.label ?: "English"
+            subtitleCallback.invoke(
+                SubtitleFile(subLabel, subUrl)
+            )
         }
     }
 
@@ -589,61 +622,83 @@ class WatchUG : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val payload = if (isMovie) {
-            VidrockPayload(tmdb_id = tmdbId, type = "movie")
-        } else {
-            VidrockPayload(tmdb_id = tmdbId, type = "tv", season = season ?: 1, episode = episode ?: 1)
-        }
+        val type = if (isMovie) "movie" else "tv"
+        val url = "$vidrockAPI/$type/$tmdbId${if (isMovie) "" else "/$season/$episode"}"
+        val encrypted = encryptVidrock(tmdbId, type, season, episode)
 
-        val jsonBody = payload.toJson()
-        val encResult = encryptVidrockPayload(jsonBody) ?: return
-
-        val requestBody = "{\"data\":\"$encResult\"}".toRequestBody("application/json".toMediaTypeOrNull())
-        val res = app.post(
-            "$vidrockAPI/api/source",
-            requestBody = requestBody,
-            headers = mapOf(
-                "Origin" to vidrockAPI,
-                "Referer" to "$vidrockAPI/",
-                "User-Agent" to USER_AGENT
-            )
-        ).text
-
-        val respObj = tryParseJson<VidrockResponse>(res) ?: return
-        val rawData = respObj.data ?: return
-        val decJson = decryptVidrockPayload(rawData) ?: return
-        val sourceObj = tryParseJson<VidrockSourceData>(decJson) ?: return
-
-        sourceObj.sources?.forEach { src ->
-            val streamUrl = src.file ?: return@forEach
-            if (streamUrl.contains(".m3u8")) {
-                generateM3u8(
-                    "${this.name} Vidrock",
-                    streamUrl,
-                    "$vidrockAPI/"
-                ).forEach { link ->
-                    callback(link)
-                }
-            } else {
-                callback(
-                    newExtractorLink(
-                        "${this.name} Vidrock",
-                        "${this.name} Vidrock 1080p",
-                        streamUrl,
-                        ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = "$vidrockAPI/"
-                        this.quality = Qualities.P1080.value
-                    }
+        val sources = try {
+            app.get(
+                "$vidrockAPI/api/$type/$encrypted",
+                headers = mapOf(
+                    "Referer" to url,
+                    "User-Agent" to USER_AGENT
                 )
+            ).parsedSafe<LinkedHashMap<String, HashMap<String, String>>>()
+        } catch (_: Throwable) {
+            null
+        } ?: return
+
+        sources.forEach { source ->
+            val streamUrl = source.value["url"] ?: return@forEach
+            val sourceName = source.key.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+            val serverName = "WatchUG - Server 3 (Vidrock [$sourceName])"
+
+            callback.invoke(
+                newExtractorLink(
+                    serverName,
+                    serverName,
+                    streamUrl,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "$vidrockAPI/"
+                    this.headers = mapOf(
+                        "Origin" to vidrockAPI,
+                        "Referer" to "$vidrockAPI/",
+                        "User-Agent" to USER_AGENT
+                    )
+                }
+            )
+
+            try {
+                generateM3u8(
+                    serverName,
+                    streamUrl,
+                    referer = "$vidrockAPI/",
+                    headers = mapOf("Origin" to vidrockAPI, "Referer" to "$vidrockAPI/")
+                ).forEach(callback)
+            } catch (_: Throwable) {
             }
         }
 
-        sourceObj.tracks?.forEach { trk ->
-            val trkUrl = trk.file ?: return@forEach
-            val trkLabel = trk.label ?: "English"
-            subtitleCallback(newSubtitleFile(trkLabel, trkUrl))
+        // Subtitles for Vidrock
+        try {
+            val subUrl = "https://sub.vdrk.site/$type/$tmdbId${if (isMovie) "" else "/$season/$episode"}"
+            val res = app.get(subUrl, headers = mapOf("Referer" to "$vidrockAPI/")).text
+            tryParseJson<ArrayList<VidrockSubtitle>>(res)?.forEach { subtitle ->
+                subtitleCallback.invoke(
+                    SubtitleFile(
+                        subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@forEach,
+                        subtitle.file ?: return@forEach
+                    )
+                )
+            }
+        } catch (_: Throwable) {
         }
+    }
+
+    private fun encryptVidrock(r: Int, e: String, t: Int?, n: Int?): String {
+        val s = if (e == "tv") "${r}_${t}_${n}" else r.toString()
+        val ww = "x7k9mPqT2rWvY8zA5bC3nF6hJ2lK4mN9"
+        val keyBytes = ww.toByteArray(Charsets.UTF_8)
+        val ivBytes = ww.substring(0, 16).toByteArray(Charsets.UTF_8)
+
+        val secretKey = SecretKeySpec(keyBytes, "AES")
+        val ivSpec = IvParameterSpec(ivBytes)
+
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
+        val encrypted = cipher.doFinal(s.toByteArray(Charsets.UTF_8))
+        return base64UrlEncode(encrypted)
     }
 
     private suspend fun invokeVidlink(
@@ -653,12 +708,16 @@ class WatchUG : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val url = if (season != null && episode != null) {
-            "$vidlinkAPI/tv/$tmdbId/$season/$episode"
-        } else {
+        val url = if (season == null) {
             "$vidlinkAPI/movie/$tmdbId"
+        } else {
+            "$vidlinkAPI/tv/$tmdbId/$season/$episode"
         }
-        loadExtractor(url, subtitleCallback, callback)
+
+        try {
+            loadExtractor(url, "https://moviespro.watch/", subtitleCallback, callback)
+        } catch (_: Throwable) {
+        }
     }
 
     private suspend fun invoke2Embed(
@@ -670,20 +729,30 @@ class WatchUG : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val embedUrl = if (isMovie) {
-            "https://www.2embed.cc/embed/$tmdbId"
+        val urls = mutableListOf<String>()
+        if (isMovie) {
+            urls.add("https://www.2embed.cc/embed/$tmdbId")
+            if (!imdbId.isNullOrBlank()) {
+                urls.add("https://www.2embed.cc/embed/$imdbId")
+            }
         } else {
-            "https://www.2embed.cc/embedtv/$tmdbId&s=${season ?: 1}&e=${episode ?: 1}"
+            urls.add("https://www.2embed.cc/embedtv/$tmdbId&s=$season&e=$episode")
+            if (!imdbId.isNullOrBlank()) {
+                urls.add("https://www.2embed.cc/embedtv/$imdbId&s=$season&e=$episode")
+            }
         }
 
-        try {
-            loadExtractor(embedUrl, subtitleCallback, callback)
-        } catch (_: Throwable) {}
-
-        if (!imdbId.isNullOrBlank()) {
+        urls.forEach { pageUrl ->
             try {
-                loadExtractor("https://www.2embed.skin/embed/$imdbId", subtitleCallback, callback)
-            } catch (_: Throwable) {}
+                val doc = app.get(pageUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
+                val iframe = doc.selectFirst("iframe")?.attr("src") ?: return@forEach
+                val streamWishUrl = if (iframe.startsWith("//")) "https:$iframe" else iframe
+
+                if (streamWishUrl.contains("streamwish") || streamWishUrl.contains("embed")) {
+                    loadExtractor(streamWishUrl, pageUrl, subtitleCallback, callback)
+                }
+            } catch (_: Throwable) {
+            }
         }
     }
 
@@ -695,15 +764,22 @@ class WatchUG : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val superUrl = if (isMovie) {
+        val url = if (isMovie) {
             "https://multiembed.mov/?video_id=$tmdbId&tmdb=1"
         } else {
-            "https://multiembed.mov/?video_id=$tmdbId&tmdb=1&s=${season ?: 1}&e=${episode ?: 1}"
+            "https://multiembed.mov/?video_id=$tmdbId&tmdb=1&s=$season&e=$episode"
         }
 
         try {
-            loadExtractor(superUrl, subtitleCallback, callback)
-        } catch (_: Throwable) {}
+            val doc = app.get(url, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$mainUrl/")).document
+            doc.select("iframe[src*='http']").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.startsWith("http") && !src.contains("multiembed.mov")) {
+                    loadExtractor(src, url, subtitleCallback, callback)
+                }
+            }
+        } catch (_: Throwable) {
+        }
     }
 
     private suspend fun invokeAutoEmbed(
@@ -714,61 +790,226 @@ class WatchUG : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val autoUrl = if (isMovie) {
+        val url = if (isMovie) {
             "https://player.autoembed.cc/embed/movie/$tmdbId"
         } else {
-            "https://player.autoembed.cc/embed/tv/$tmdbId/${season ?: 1}/${episode ?: 1}"
+            "https://player.autoembed.cc/embed/tv/$tmdbId/$season/$episode"
         }
 
         try {
-            loadExtractor(autoUrl, subtitleCallback, callback)
-        } catch (_: Throwable) {}
-    }
-
-    private fun encryptVidrockPayload(text: String): String? {
-        return try {
-            val keyBytes = "x7k9mPqT2rWvY8zA5bC3nF6hJ2lK4mN9".toByteArray(Charsets.UTF_8)
-            val ivBytes = ByteArray(16) { 0 }
-            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-            cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(keyBytes, "AES"), IvParameterSpec(ivBytes))
-            val encrypted = cipher.doFinal(text.toByteArray(Charsets.UTF_8))
-            base64UrlEncode(encrypted)
-        } catch (_: Exception) {
-            null
+            val doc = app.get(url, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$mainUrl/")).document
+            doc.select("iframe[src*='http']").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.startsWith("http") && !src.contains("autoembed.cc")) {
+                    loadExtractor(src, url, subtitleCallback, callback)
+                }
+            }
+        } catch (_: Throwable) {
         }
     }
 
-    private fun decryptVidrockPayload(base64Text: String): String? {
-        return try {
-            val keyBytes = "x7k9mPqT2rWvY8zA5bC3nF6hJ2lK4mN9".toByteArray(Charsets.UTF_8)
-            val ivBytes = ByteArray(16) { 0 }
-            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(keyBytes, "AES"), IvParameterSpec(ivBytes))
-            val padded = when (base64Text.length % 4) {
-                2 -> "$base64Text=="
-                3 -> "$base64Text="
-                else -> base64Text
-            }.replace("-", "+").replace("_", "/")
-            val decodedBytes = android.util.Base64.decode(padded, android.util.Base64.DEFAULT)
-            String(cipher.doFinal(decodedBytes), Charsets.UTF_8)
-        } catch (_: Exception) {
-            null
+    private suspend fun invokeVidsrcTo(
+        tmdbId: Int,
+        isMovie: Boolean,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val url = if (isMovie) {
+            "https://vidsrc.to/embed/movie/$tmdbId"
+        } else {
+            "https://vidsrc.to/embed/tv/$tmdbId/$season/$episode"
+        }
+
+        try {
+            val doc = app.get(url, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$mainUrl/")).document
+            doc.select("iframe[src*='http']").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.startsWith("http") && !src.contains("vidsrc.to")) {
+                    loadExtractor(src, url, subtitleCallback, callback)
+                }
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    private suspend fun invokeWatchUGNative(
+        tmdbId: Int,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val urls = if (season == null) {
+            listOf(
+                "https://vidsrcme.su/embed/movie/$tmdbId",
+                "https://vsrc.su/embed/movie/$tmdbId"
+            )
+        } else {
+            listOf(
+                "https://vidsrcme.su/embed/tv/$tmdbId/$season/$episode",
+                "https://vsrc.su/embed/tv/$tmdbId/$season/$episode"
+            )
+        }
+
+        urls.forEach { embedUrl ->
+            try {
+                loadExtractor(embedUrl, "https://moviespro.watch/", subtitleCallback, callback)
+            } catch (_: Throwable) {
+            }
         }
     }
 
     data class WatchUGData(
-        @JsonProperty("id") val id: Int? = null,
-        @JsonProperty("type") val type: String? = null
+        val id: Int? = null,
+        val type: String? = null
     )
 
     data class WatchUGLinkData(
+        val id: Int? = null,
+        val imdbId: String? = null,
+        val type: String? = null,
+        val season: Int? = null,
+        val episode: Int? = null,
+        val title: String? = null,
+        val year: Int? = null
+    )
+
+    data class Media(
         @JsonProperty("id") val id: Int? = null,
-        @JsonProperty("imdbId") val imdbId: String? = null,
-        @JsonProperty("type") val type: String? = null,
-        @JsonProperty("season") val season: Int? = null,
-        @JsonProperty("episode") val episode: Int? = null,
         @JsonProperty("title") val title: String? = null,
-        @JsonProperty("year") val year: Int? = null
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("original_title") val originalTitle: String? = null,
+        @JsonProperty("original_name") val originalName: String? = null,
+        @JsonProperty("poster_path") val posterPath: String? = null,
+        @JsonProperty("backdrop_path") val backdropPath: String? = null,
+        @JsonProperty("media_type") val mediaType: String? = null,
+        @JsonProperty("vote_average") val voteAverage: Any? = null
+    )
+
+    data class Results(
+        @JsonProperty("results") val results: ArrayList<Media>? = arrayListOf(),
+        @JsonProperty("page") val page: Int? = null,
+        @JsonProperty("total_pages") val totalPages: Int? = null
+    )
+
+    data class Genres(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("name") val name: String? = null
+    )
+
+    data class Seasons(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("season_number") val seasonNumber: Int? = null,
+        @JsonProperty("air_date") val airDate: String? = null
+    )
+
+    data class Cast(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("original_name") val originalName: String? = null,
+        @JsonProperty("character") val character: String? = null,
+        @JsonProperty("profile_path") val profilePath: String? = null
+    )
+
+    data class Credits(
+        @JsonProperty("cast") val cast: ArrayList<Cast>? = arrayListOf()
+    )
+
+    data class Trailers(
+        @JsonProperty("key") val key: String? = null
+    )
+
+    data class ResultsTrailer(
+        @JsonProperty("results") val results: ArrayList<Trailers>? = arrayListOf()
+    )
+
+    data class ExternalIds(
+        @JsonProperty("imdb_id") val imdb_id: String? = null,
+        @JsonProperty("tvdb_id") val tvdb_id: Int? = null
+    )
+
+    data class Episodes(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("overview") val overview: String? = null,
+        @JsonProperty("air_date") val airDate: String? = null,
+        @JsonProperty("still_path") val stillPath: String? = null,
+        @JsonProperty("vote_average") val voteAverage: Any? = null,
+        @JsonProperty("episode_number") val episodeNumber: Int? = null,
+        @JsonProperty("season_number") val seasonNumber: Int? = null
+    )
+
+    data class MediaDetailEpisodes(
+        @JsonProperty("episodes") val episodes: ArrayList<Episodes>? = arrayListOf()
+    )
+
+    data class MediaDetail(
+        @JsonProperty("id") val id: Int? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("original_title") val originalTitle: String? = null,
+        @JsonProperty("original_name") val originalName: String? = null,
+        @JsonProperty("poster_path") val posterPath: String? = null,
+        @JsonProperty("backdrop_path") val backdropPath: String? = null,
+        @JsonProperty("release_date") val releaseDate: String? = null,
+        @JsonProperty("first_air_date") val firstAirDate: String? = null,
+        @JsonProperty("overview") val overview: String? = null,
+        @JsonProperty("vote_average") val voteAverage: Any? = null,
+        @JsonProperty("status") val status: String? = null,
+        @JsonProperty("genres") val genres: ArrayList<Genres>? = arrayListOf(),
+        @JsonProperty("seasons") val seasons: ArrayList<Seasons>? = arrayListOf(),
+        @JsonProperty("videos") val videos: ResultsTrailer? = null,
+        @JsonProperty("external_ids") val external_ids: ExternalIds? = null,
+        @JsonProperty("credits") val credits: Credits? = null,
+        @JsonProperty("recommendations") val recommendations: Results? = null
+    )
+
+    data class VidoraTrack(
+        @JsonProperty("file") val file: String? = null,
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("kind") val kind: String? = null
+    )
+
+    data class VidoraSource(
+        @JsonProperty("file_code") val fileCode: String? = null,
+        @JsonProperty("url") val url: String? = null,
+        @JsonProperty("source") val source: String? = null,
+        @JsonProperty("tracks") val tracks: List<VidoraTrack>? = null
+    )
+
+    data class VidoraResponse(
+        @JsonProperty("result") val result: Boolean? = null,
+        @JsonProperty("type") val type: String? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("sources") val sources: List<VidoraSource>? = null
+    )
+
+    data class VidCoreStream(
+        @JsonProperty("url") val url: String? = null,
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("type") val type: String? = null,
+        @JsonProperty("quality") val quality: String? = null
+    )
+
+    data class VidCoreSubtitle(
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("file") val file: String? = null
+    )
+
+    data class VidCoreResponse(
+        @JsonProperty("source") val source: String? = null,
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("streams") val streams: List<VidCoreStream>? = null,
+        @JsonProperty("subtitles") val subtitles: List<VidCoreSubtitle>? = null,
+        @JsonProperty("success") val success: Boolean? = null
+    )
+
+    data class VidrockSubtitle(
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("file") val file: String? = null
     )
 
     data class StremioSubResponse(
@@ -787,137 +1028,5 @@ class WatchUG : MainAPI() {
         @JsonProperty("SubFileName") val SubFileName: String? = null,
         @JsonProperty("LanguageName") val LanguageName: String? = null,
         @JsonProperty("SubLanguageID") val SubLanguageID: String? = null
-    )
-
-    data class VidoraResponse(
-        @JsonProperty("status") val status: String? = null,
-        @JsonProperty("source") val source: String? = null,
-        @JsonProperty("tracks") val tracks: List<VidoraTrack>? = null
-    )
-
-    data class VidoraTrack(
-        @JsonProperty("file") val file: String? = null,
-        @JsonProperty("label") val label: String? = null,
-        @JsonProperty("kind") val kind: String? = null
-    )
-
-    data class VidCoreResponse(
-        @JsonProperty("sources") val sources: List<VidCoreSource>? = null
-    )
-
-    data class VidCoreSource(
-        @JsonProperty("url") val url: String? = null,
-        @JsonProperty("quality") val quality: String? = null
-    )
-
-    data class VidrockPayload(
-        @JsonProperty("tmdb_id") val tmdb_id: Int,
-        @JsonProperty("type") val type: String,
-        @JsonProperty("season") val season: Int? = null,
-        @JsonProperty("episode") val episode: Int? = null
-    )
-
-    data class VidrockResponse(
-        @JsonProperty("data") val data: String? = null
-    )
-
-    data class VidrockSourceData(
-        @JsonProperty("sources") val sources: List<VidrockSourceFile>? = null,
-        @JsonProperty("tracks") val tracks: List<VidrockTrack>? = null
-    )
-
-    data class VidrockSourceFile(
-        @JsonProperty("file") val file: String? = null
-    )
-
-    data class VidrockTrack(
-        @JsonProperty("file") val file: String? = null,
-        @JsonProperty("label") val label: String? = null
-    )
-
-    data class Results(
-        @JsonProperty("results") val results: List<Media>? = null
-    )
-
-    data class Media(
-        @JsonProperty("id") val id: Int? = null,
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("name") val name: String? = null,
-        @JsonProperty("original_title") val originalTitle: String? = null,
-        @JsonProperty("original_name") val originalName: String? = null,
-        @JsonProperty("poster_path") val posterPath: String? = null,
-        @JsonProperty("backdrop_path") val backdropPath: String? = null,
-        @JsonProperty("media_type") val mediaType: String? = null,
-        @JsonProperty("vote_average") val voteAverage: Double? = null
-    )
-
-    data class MediaDetail(
-        @JsonProperty("id") val id: Int? = null,
-        @JsonProperty("title") val title: String? = null,
-        @JsonProperty("name") val name: String? = null,
-        @JsonProperty("original_title") val originalTitle: String? = null,
-        @JsonProperty("original_name") val originalName: String? = null,
-        @JsonProperty("poster_path") val posterPath: String? = null,
-        @JsonProperty("backdrop_path") val backdropPath: String? = null,
-        @JsonProperty("release_date") val releaseDate: String? = null,
-        @JsonProperty("first_air_date") val firstAirDate: String? = null,
-        @JsonProperty("vote_average") val voteAverage: Double? = null,
-        @JsonProperty("genres") val genres: List<Genre>? = null,
-        @JsonProperty("overview") val overview: String? = null,
-        @JsonProperty("status") val status: String? = null,
-        @JsonProperty("seasons") val seasons: List<Season>? = null,
-        @JsonProperty("credits") val credits: Credits? = null,
-        @JsonProperty("external_ids") val external_ids: ExternalIds? = null,
-        @JsonProperty("videos") val videos: VideoResults? = null,
-        @JsonProperty("recommendations") val recommendations: Results? = null
-    )
-
-    data class Genre(
-        @JsonProperty("id") val id: Int? = null,
-        @JsonProperty("name") val name: String? = null
-    )
-
-    data class Season(
-        @JsonProperty("season_number") val seasonNumber: Int? = null,
-        @JsonProperty("name") val name: String? = null,
-        @JsonProperty("episode_count") val episodeCount: Int? = null
-    )
-
-    data class MediaDetailEpisodes(
-        @JsonProperty("episodes") val episodes: List<EpisodeItem>? = null
-    )
-
-    data class EpisodeItem(
-        @JsonProperty("episode_number") val episodeNumber: Int? = null,
-        @JsonProperty("name") val name: String? = null,
-        @JsonProperty("overview") val overview: String? = null,
-        @JsonProperty("still_path") val stillPath: String? = null,
-        @JsonProperty("air_date") val airDate: String? = null,
-        @JsonProperty("vote_average") val voteAverage: Double? = null
-    )
-
-    data class Credits(
-        @JsonProperty("cast") val cast: List<Cast>? = null
-    )
-
-    data class Cast(
-        @JsonProperty("name") val name: String? = null,
-        @JsonProperty("original_name") val originalName: String? = null,
-        @JsonProperty("character") val character: String? = null,
-        @JsonProperty("profile_path") val profilePath: String? = null
-    )
-
-    data class ExternalIds(
-        @JsonProperty("imdb_id") val imdb_id: String? = null
-    )
-
-    data class VideoResults(
-        @JsonProperty("results") val results: List<VideoItem>? = null
-    )
-
-    data class VideoItem(
-        @JsonProperty("key") val key: String? = null,
-        @JsonProperty("site") val site: String? = null,
-        @JsonProperty("type") val type: String? = null
     )
 }
