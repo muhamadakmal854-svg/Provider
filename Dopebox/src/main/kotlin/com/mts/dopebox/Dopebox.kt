@@ -277,6 +277,66 @@ class Dopebox : MainAPI() {
         }
     }
 
+    private suspend fun fetchSubtitles(
+        imdbId: String?,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ) {
+        if (imdbId.isNullOrBlank()) return
+        val cleanImdb = if (imdbId.startsWith("tt")) imdbId else "tt$imdbId"
+        val numericImdb = cleanImdb.removePrefix("tt")
+
+        // 1. Stremio OpenSubtitles v3 (Menghasilkan fail .srt UTF-8 secara terus)
+        try {
+            val stremioUrl = if (season != null && episode != null) {
+                "https://opensubtitles-v3.strem.io/subtitles/series/$cleanImdb:$season:$episode.json"
+            } else {
+                "https://opensubtitles-v3.strem.io/subtitles/movie/$cleanImdb.json"
+            }
+            val res = app.get(stremioUrl, timeout = 10L).parsedSafe<StremioSubResponse>()
+            res?.subtitles?.forEach { sub ->
+                val subUrl = sub.url ?: return@forEach
+                val langCode = sub.lang?.lowercase() ?: ""
+                val label = when (langCode) {
+                    "eng", "en" -> "English"
+                    "ind", "id" -> "Indonesian"
+                    "may", "ms", "zsm" -> "Malay"
+                    else -> sub.lang ?: "Subtitle"
+                }
+                if (langCode in listOf("eng", "en", "ind", "id", "may", "ms", "zsm")) {
+                    subtitleCallback(newSubtitleFile(label, subUrl))
+                }
+            }
+        } catch (_: Throwable) {}
+
+        // 2. OpenSubtitles REST API dengan carian bahasa terarah (Malay, Indonesian, English)
+        val targetLangs = listOf("may" to "Malay", "ind" to "Indonesian", "eng" to "English")
+        targetLangs.amap { (langCode, langName) ->
+            try {
+                val osUrl = if (season != null && episode != null) {
+                    "https://rest.opensubtitles.org/search/episode-$episode/imdbid-$numericImdb/season-$season/sublanguageid-$langCode"
+                } else {
+                    "https://rest.opensubtitles.org/search/imdbid-$numericImdb/sublanguageid-$langCode"
+                }
+                val osRes = app.get(osUrl, headers = mapOf("User-Agent" to "VLSub 0.10.2"), timeout = 10L).text
+                val parsed = tryParseJson<List<OpenSubItem>>(osRes)
+                parsed?.take(3)?.forEach { item ->
+                    val fileId = item.IDSubtitleFile
+                        ?: Regex("""file/(\d+)\.gz""").find(item.SubDownloadLink ?: "")?.groupValues?.get(1)
+                    val subUrl = if (fileId != null) {
+                        "https://subs5.strem.io/en/download/subencoding-stremio-utf8/src-api/file/$fileId"
+                    } else {
+                        item.SubDownloadLink
+                    }
+                    if (!subUrl.isNullOrBlank()) {
+                        subtitleCallback(newSubtitleFile(langName, subUrl))
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -322,6 +382,10 @@ class Dopebox : MainAPI() {
         }
 
         listOf(
+            // Ekstraksi Sari Kata: English, Indonesian, Malay
+            suspend {
+                fetchSubtitles(imdbId, season, episode, subtitleCallback)
+            },
             // Pelayan 1: MoviesAPI (Vidora Ultra-Fast 1080p FHD HLS)
             suspend {
                 invokeMoviesAPI(tmdbId, isMovie, season, episode, subtitleCallback, callback)
@@ -917,5 +981,23 @@ class Dopebox : MainAPI() {
     data class VidrockSubtitle(
         @JsonProperty("label") val label: String? = null,
         @JsonProperty("file") val file: String? = null
+    )
+
+    data class StremioSubResponse(
+        @JsonProperty("subtitles") val subtitles: List<StremioSubItem>? = null
+    )
+
+    data class StremioSubItem(
+        @JsonProperty("url") val url: String? = null,
+        @JsonProperty("lang") val lang: String? = null,
+        @JsonProperty("subtitleFileName") val subtitleFileName: String? = null
+    )
+
+    data class OpenSubItem(
+        @JsonProperty("IDSubtitleFile") val IDSubtitleFile: String? = null,
+        @JsonProperty("SubDownloadLink") val SubDownloadLink: String? = null,
+        @JsonProperty("SubFileName") val SubFileName: String? = null,
+        @JsonProperty("LanguageName") val LanguageName: String? = null,
+        @JsonProperty("SubLanguageID") val SubLanguageID: String? = null
     )
 }
