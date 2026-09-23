@@ -12,6 +12,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
 import javax.crypto.Cipher
@@ -119,7 +120,8 @@ class F2Movies : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$tmdbAPI/search/multi?api_key=$apiKey&query=${encode(query)}"
+        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+        val url = "$tmdbAPI/search/multi?api_key=$apiKey&query=$encodedQuery"
         val res = app.get(url).parsedSafe<Results>() ?: return emptyList()
         return res.results?.mapNotNull { media ->
             if (media.mediaType == "person") return@mapNotNull null
@@ -360,7 +362,7 @@ class F2Movies : MainAPI() {
             },
             // Pelayan 4: VidLink
             suspend {
-                invokeVidlink(tmdbId, season, episode, callback)
+                invokeVidlink(tmdbId, season, episode, subtitleCallback, callback)
             },
             // Pelayan 5: 2Embed & StreamWish Multi-Quality
             suspend {
@@ -631,34 +633,18 @@ class F2Movies : MainAPI() {
         tmdbId: Int,
         season: Int?,
         episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
         val type = if (season == null) "movie" else "tv"
         val url = if (season == null) {
-            "$vidlinkAPI/$type/$tmdbId"
+            "$vidlinkAPI/movie/$tmdbId"
         } else {
-            "$vidlinkAPI/$type/$tmdbId/$season/$episode"
+            "$vidlinkAPI/tv/$tmdbId/$season/$episode"
         }
 
         try {
-            val videoLink = app.get(
-                url,
-                interceptor = WebViewResolver(
-                    Regex("""$vidlinkAPI/api/b/$type/A{32}"""),
-                    timeout = 12_000L
-                )
-            ).parsedSafe<VidlinkSources>()?.stream?.playlist ?: return
-
-            callback.invoke(
-                newExtractorLink(
-                    "F2Movies - Server 4 (VidLink)",
-                    "VidLink [1080p]",
-                    videoLink,
-                    ExtractorLinkType.M3U8
-                ) {
-                    this.referer = "$vidlinkAPI/"
-                }
-            )
+            loadExtractor(url, "https://f2movies.sx/", subtitleCallback, callback)
         } catch (_: Throwable) {
         }
     }
@@ -926,13 +912,5 @@ class F2Movies : MainAPI() {
     data class VidrockSubtitle(
         @JsonProperty("label") val label: String? = null,
         @JsonProperty("file") val file: String? = null
-    )
-
-    data class VidlinkStream(
-        @JsonProperty("playlist") val playlist: String? = null
-    )
-
-    data class VidlinkSources(
-        @JsonProperty("stream") val stream: VidlinkStream? = null
     )
 }
