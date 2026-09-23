@@ -749,7 +749,7 @@ class WatchUG : MainAPI() {
                 3 -> "$base64Text="
                 else -> base64Text
             }.replace("-", "+").replace("_", "/")
-            val decodedBytes = base64Decode(padded)
+            val decodedBytes = android.util.Base64.decode(padded, android.util.Base64.DEFAULT)
             String(cipher.doFinal(decodedBytes), Charsets.UTF_8)
         } catch (_: Exception) {
             null
