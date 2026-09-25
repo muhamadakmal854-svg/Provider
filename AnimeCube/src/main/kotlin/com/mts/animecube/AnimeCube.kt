@@ -729,12 +729,18 @@ class AnimeCube : MainAPI() {
                 suspend { invokeMoviesAPI(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
                 suspend { invokeVidCore(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
                 suspend { invokeVidrock(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
-                suspend { invokeVidLink(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
-                suspend { invoke2Embed(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
+                suspend { invokeVidlink(tmdbId, season, episode, subtitleCallback, callback) },
+                suspend { invoke2Embed(tmdbId, imdbId, isMovie, season, episode, subtitleCallback, callback) },
                 suspend { invokeSuperEmbed(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
                 suspend { invokeAutoEmbed(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
-                suspend { invokeVidsrc(tmdbId, isMovie, season, episode, subtitleCallback, callback) }
-            ).amap { it.invoke() }
+                suspend { invokeVidsrcTo(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
+                suspend { invokeAnimeCubeNative(tmdbId, season, episode, subtitleCallback, callback) }
+            ).amap { call ->
+                try {
+                    call.invoke()
+                } catch (_: Throwable) {
+                }
+            }
         }
 
         return true
