@@ -11,9 +11,9 @@ import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import java.net.URLEncoder
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Locale
-import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.IvParameterSpec
@@ -108,27 +108,56 @@ class AnimeCube : MainAPI() {
             return cachedAnimeList ?: emptyList()
         }
 
-        val list = mutableListOf<AnimeCubeItem>()
         val pushRegex = Regex("""self\.__next_f\.push\(\[1,\s*"(.*?)"\]\)""")
         val sb = StringBuilder()
         pushRegex.findAll(html).forEach {
-            sb.append(it.groupValues[1].replace("\"", """).replace("\\", "\"))
+            val unescaped = it.groupValues[1]
+                .replace("\\\"", "\"")
+                .replace("\\\\", "\\")
+            sb.append(unescaped)
         }
         val fullData = sb.toString()
 
-        val animeRegex = Regex("""\{"aliases":\[.*?\][^}]+"slug":"([^"]+)"[^}]+"title":"([^"]+)"[^}]+(?:\}|\}\])""")
-        animeRegex.findAll(fullData).forEach { m ->
-            val chunk = m.value
-            val slug = m.groupValues[1]
-            val title = m.groupValues[2]
-            val cover = Regex(""""coverImage":"([^"]+)"""").find(chunk)?.groupValues?.get(1)
-            val rating = Regex(""""rating":([0-9.]+)""").find(chunk)?.groupValues?.get(1)?.toDoubleOrNull()
-            val status = Regex(""""status":"([^"]+)"""").find(chunk)?.groupValues?.get(1)
-            val genresRaw = Regex(""""genres":\[(.*?)\]""").find(chunk)?.groupValues?.get(1) ?: ""
-            val genres = genresRaw.split(",").map { it.trim().removeSurrounding(""") }.filter { it.isNotBlank() }
-            val hasUpcoming = chunk.contains("__hasUpcoming":true")
-
-            list.add(AnimeCubeItem(slug, title, cover, rating, status, genres, hasUpcoming))
+        val list = mutableListOf<AnimeCubeItem>()
+        var pos = 0
+        while (true) {
+            val idx = fullData.indexOf("{\"aliases\":", pos)
+            if (idx == -1) break
+            var depth = 0
+            var end = -1
+            for (i in idx until fullData.length) {
+                if (fullData[i] == '{') depth++
+                else if (fullData[i] == '}') {
+                    depth--
+                    if (depth == 0) {
+                        end = i
+                        break
+                    }
+                }
+            }
+            if (end != -1) {
+                val snippet = fullData.substring(idx, end + 1)
+                tryParseJson<AnimeCubeCard>(snippet)?.let { card ->
+                    val s = card.slug
+                    val t = card.title
+                    if (!s.isNullOrBlank() && !t.isNullOrBlank()) {
+                        list.add(
+                            AnimeCubeItem(
+                                slug = s,
+                                title = t.trim(),
+                                cover = card.coverImage,
+                                rating = card.rating,
+                                status = card.status,
+                                genres = card.genres ?: emptyList(),
+                                hasUpcoming = card.status?.contains("upcoming", true) == true
+                            )
+                        )
+                    }
+                }
+                pos = end + 1
+            } else {
+                break
+            }
         }
 
         if (list.isNotEmpty()) {
@@ -297,72 +326,113 @@ class AnimeCube : MainAPI() {
             val pushRegex = Regex("""self\.__next_f\.push\(\[1,\s*"(.*?)"\]\)""")
             val sb = StringBuilder()
             pushRegex.findAll(detailHtml).forEach {
-                sb.append(it.groupValues[1].replace("\"", """).replace("\\", "\"))
+                val unescaped = it.groupValues[1]
+                    .replace("\\\"", "\"")
+                    .replace("\\\\", "\\")
+                sb.append(unescaped)
             }
             val fullData = sb.toString()
 
-            val titleMatch = Regex(""""title":"([^"]+)".*?"description":"([^"]*)"""").find(fullData)
-            val title = titleMatch?.groupValues?.get(1)?.trim() ?: slug.replace("-", " ").capitalize(Locale.ROOT)
-            val plot = titleMatch?.groupValues?.get(2)
-            val cover = Regex(""""coverImage":"([^"]+)"""").find(fullData)?.groupValues?.get(1)
-            val rating = Regex(""""rating":([0-9.]+)""").find(fullData)?.groupValues?.get(1)
+            var title: String = slug.replace("-", " ")
+            var plot: String? = null
+            var cover: String? = null
+            var rating: Double? = null
+
+            val titleIdx = fullData.indexOf("\"title\":\"")
+            if (titleIdx != -1) {
+                val startT = titleIdx + 9
+                val endT = fullData.indexOf("\"", startT)
+                if (endT != -1) title = fullData.substring(startT, endT).trim()
+            }
+            val descIdx = fullData.indexOf("\"description\":\"")
+            if (descIdx != -1) {
+                val startD = descIdx + 15
+                val endD = fullData.indexOf("\"", startD)
+                if (endD != -1) plot = fullData.substring(startD, endD)
+            }
+            val coverIdx = fullData.indexOf("\"coverImage\":\"")
+            if (coverIdx != -1) {
+                val startC = coverIdx + 14
+                val endC = fullData.indexOf("\"", startC)
+                if (endC != -1) cover = fullData.substring(startC, endC)
+            }
+            val ratingIdx = fullData.indexOf("\"rating\":")
+            if (ratingIdx != -1) {
+                val startR = ratingIdx + 9
+                val endR = fullData.indexOfAny(charArrayOf(',', '}'), startR)
+                if (endR != -1) rating = fullData.substring(startR, endR).trim().toDoubleOrNull()
+            }
 
             // Parse seasons and episodes
             val episodes = mutableListOf<Episode>()
-            val seasonMatches = Regex("""\{"id":"(tab-[^"]+)","number":(\d+),"title":"([^"]+)","customName":"([^"]*)","year":(\d+),"rating":([0-9.]+),"episodes":\[(.*?)\]\}""").findAll(fullData)
-
-            for (sm in seasonMatches) {
-                val tabId = sm.groupValues[1]
-                val sNum = sm.groupValues[2].toIntOrNull() ?: 1
-                val sTitle = sm.groupValues[3]
-                val epRaw = sm.groupValues[7]
-
-                val epMatches = Regex("""\{"id":"([^"]+)","number":(\d+),"numberDisplay":"([^"]*)","title":"([^"]*)","description":"([^"]*)","duration":(\d+),"publishedAt":"([^"]*)"\}""").findAll(epRaw)
-                for (em in epMatches) {
-                    val epId = em.groupValues[1]
-                    val epNum = em.groupValues[2].toIntOrNull() ?: 1
-                    val epNumDisplay = em.groupValues[3]
-                    val epTitleRaw = em.groupValues[4]
-                    val epDesc = em.groupValues[5]
-                    val epDateStr = em.groupValues[7]
-
-                    val epTitle = if (epTitleRaw.isNotBlank()) epTitleRaw else "Episod $epNumDisplay"
-                    val parsedEpoch = try {
-                        if (epDateStr.isNotBlank()) {
-                            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ENGLISH).parse(epDateStr)?.time
-                        } else null
-                    } catch (_: Exception) { null }
-
-                    episodes.add(
-                        newEpisode(
-                            AnimeCubeLinkData(
-                                id = null,
-                                imdbId = null,
-                                type = "tv",
-                                season = sNum,
-                                episode = epNum,
-                                title = title,
-                                slug = slug,
-                                episodeId = epId,
-                                primaryTabId = tabId,
-                                seasonId = tabId
-                            ).toJson()
-                        ) {
-                            this.name = epTitle
-                            this.season = sNum
-                            this.episode = epNum
-                            this.posterUrl = cover
-                            this.description = epDesc.takeIf { it.isNotBlank() } ?: plot
-                            this.score = Score.from10(rating)
-                            if (parsedEpoch != null) {
-                                this.date = parsedEpoch
-                            }
-                        }.apply {
-                            if (epDateStr.isNotBlank()) {
-                                this.addDate(epDateStr.substringBefore("T"))
-                            }
+            var pos = 0
+            while (true) {
+                val idx = fullData.indexOf("{\"id\":\"tab-", pos)
+                if (idx == -1) break
+                var depth = 0
+                var end = -1
+                for (i in idx until fullData.length) {
+                    if (fullData[i] == '{') depth++
+                    else if (fullData[i] == '}') {
+                        depth--
+                        if (depth == 0) {
+                            end = i
+                            break
                         }
-                    )
+                    }
+                }
+                if (end != -1) {
+                    val snippet = fullData.substring(idx, end + 1)
+                    tryParseJson<AnimeCubeSeasonTab>(snippet)?.let { tab ->
+                        val tabId = tab.id ?: "tab-1"
+                        val sNum = tab.number ?: 1
+                        tab.episodes?.forEach { ep ->
+                            val epId = ep.id ?: "$slug-$tabId-ep-${ep.number ?: 1}"
+                            val epNum = ep.number ?: 1
+                            val epNumDisp = ep.numberDisplay ?: "$epNum"
+                            val epTitle = if (!ep.title.isNullOrBlank()) ep.title else "Episod $epNumDisp"
+                            val epDesc = ep.description?.takeIf { it.isNotBlank() } ?: plot
+                            val parsedEpoch = try {
+                                if (!ep.publishedAt.isNullOrBlank()) {
+                                    SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.ENGLISH).parse(ep.publishedAt)?.time
+                                } else null
+                            } catch (_: Exception) { null }
+
+                            episodes.add(
+                                newEpisode(
+                                    AnimeCubeLinkData(
+                                        id = null,
+                                        imdbId = null,
+                                        type = "tv",
+                                        season = sNum,
+                                        episode = epNum,
+                                        title = title,
+                                        slug = slug,
+                                        episodeId = epId,
+                                        primaryTabId = "primary-1",
+                                        seasonId = tabId
+                                    ).toJson()
+                                ) {
+                                    this.name = epTitle
+                                    this.season = sNum
+                                    this.episode = epNum
+                                    this.posterUrl = cover
+                                    this.description = epDesc
+                                    this.score = Score.from10(rating?.toString())
+                                    if (parsedEpoch != null) {
+                                        this.date = parsedEpoch
+                                    }
+                                }.apply {
+                                    if (!ep.publishedAt.isNullOrBlank()) {
+                                        this.addDate(ep.publishedAt.substringBefore("T"))
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    pos = end + 1
+                } else {
+                    break
                 }
             }
 
@@ -389,7 +459,7 @@ class AnimeCube : MainAPI() {
                 this.posterUrl = cover
                 this.backgroundPosterUrl = bgPoster ?: cover
                 this.plot = plot
-                this.score = Score.from10(rating)
+                this.score = Score.from10(rating?.toString())
                 this.showStatus = ShowStatus.Ongoing
                 addTrailer(trailerUrl)
                 if (tmdbId != null) {
@@ -448,13 +518,10 @@ class AnimeCube : MainAPI() {
 
                 seasonRes?.episodes?.mapNotNull { eps ->
                     val epNum = eps.episodeNumber ?: return@mapNotNull null
-                    val epTitle = eps.name.takeIf { !it.isNullOrBlank() } ?: "Episod $epNum"
-                    val epStill = getOriImageUrl(eps.stillPath) ?: getImageUrl(eps.stillPath) ?: poster
-                    val airDateStr = eps.airDate
-
-                    val parsedEpoch = try {
-                        if (!airDateStr.isNullOrBlank()) {
-                            SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).parse(airDateStr)?.time
+                    val epDate = eps.airDate
+                    val epParsedEpoch = try {
+                        if (epDate != null) {
+                            SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).parse(epDate)?.time
                         } else null
                     } catch (_: Exception) { null }
 
@@ -465,35 +532,39 @@ class AnimeCube : MainAPI() {
                             type = "tv",
                             season = sNum,
                             episode = epNum,
-                            title = title
+                            title = title,
+                            year = year
                         ).toJson()
                     ) {
-                        this.name = epTitle
+                        this.name = eps.name
                         this.season = sNum
                         this.episode = epNum
-                        this.posterUrl = epStill
+                        this.posterUrl = getImageUrl(eps.stillPath)
                         this.description = eps.overview
                         this.score = Score.from10(eps.voteAverage?.toString())
-                        if (parsedEpoch != null) {
-                            this.date = parsedEpoch
+                        if (epParsedEpoch != null) {
+                            this.date = epParsedEpoch
                         }
                     }.apply {
-                        this.addDate(airDateStr)
+                        if (epDate != null) {
+                            this.addDate(epDate)
+                        }
                     }
                 }
             }?.flatten() ?: emptyList()
 
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+            return newTvSeriesLoadResponse(
+                title,
+                url,
+                TvType.TvSeries,
+                episodes
+            ) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = bgPoster
                 this.year = year
                 this.plot = plot
                 this.tags = genres
                 this.score = score
-                this.showStatus = when (res.status) {
-                    "Returning Series" -> ShowStatus.Ongoing
-                    else -> ShowStatus.Completed
-                }
                 this.actors = actors
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -548,33 +619,35 @@ class AnimeCube : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit
     ) {
         if (imdbId.isNullOrBlank()) return
-        val cleanImdb = if (imdbId.startsWith("tt")) imdbId else "tt$imdbId"
-        val numericImdb = cleanImdb.removePrefix("tt")
+        val cleanImdb = imdbId.replace("tt", "")
 
-        // 1. Stremio OpenSubtitles v3 (Menghasilkan fail .srt UTF-8 secara terus)
+        val openSubUrl = if (season != null && episode != null) {
+            "https://rest.opensubtitles.org/search/episode-$episode/imdbid-$cleanImdb/season-$season"
+        } else {
+            "https://rest.opensubtitles.org/search/imdbid-$cleanImdb"
+        }
+
         try {
-            val stremioUrl = if (season != null && episode != null) {
-                "https://opensubtitles-v3.strem.io/subtitles/series/$cleanImdb:$season:$episode.json"
-            } else {
-                "https://opensubtitles-v3.strem.io/subtitles/movie/$cleanImdb.json"
-            }
-            val res = app.get(stremioUrl, timeout = 10L).parsedSafe<AnimeCubeSubResponse>()
-            res?.subtitles?.forEach { sub ->
-                val subUrl = sub.url ?: return@forEach
-                val langCode = sub.lang?.lowercase() ?: "eng"
+            val response = app.get(
+                openSubUrl,
+                headers = mapOf("X-User-Agent" to "VLSub 0.10.2")
+            ).parsedSafe<List<OpenSubItem>>()
 
-                val langName = when {
-                    langCode.startsWith("en") -> "English [Eng]"
-                    langCode.startsWith("id") || langCode == "ind" -> "Indonesian [Ind]"
-                    langCode.startsWith("ms") || langCode.startsWith("my") || langCode == "may" -> "Malay [My]"
-                    else -> null
+            response?.forEach { sub ->
+                val dlLink = sub.SubDownloadLink ?: return@forEach
+                val langCode = sub.SubLanguageID?.lowercase() ?: ""
+                val langName = when (langCode) {
+                    "eng", "en" -> "English"
+                    "ind", "id" -> "Indonesian"
+                    "may", "ms", "msa" -> "Malay"
+                    else -> sub.LanguageName ?: langCode.uppercase()
                 }
 
-                if (langName != null) {
-                    subtitleCallback.invoke(
+                if (langCode in listOf("eng", "en", "ind", "id", "may", "ms", "msa")) {
+                    subtitleCallback(
                         SubtitleFile(
                             langName,
-                            subUrl
+                            dlLink.replace(".gz", "").replace(".zip", "")
                         )
                     )
                 }
@@ -582,39 +655,23 @@ class AnimeCube : MainAPI() {
         } catch (_: Throwable) {
         }
 
-        // 2. OpenSubtitles API Langsung (Menapis Bahasa Melayu, Indonesia, Inggeris)
         try {
-            val queryParams = mutableListOf(
-                "imdbid" to numericImdb,
-                "sublanguageid" to "eng,ind,may,msa"
-            )
-            if (season != null && episode != null) {
-                queryParams.add("season" to season.toString())
-                queryParams.add("episode" to episode.toString())
-            }
-
-            val osUrl = "https://rest.opensubtitles.org/search/${queryParams.joinToString("/") { "${it.first}-${it.second}" }}"
-            val osRes = app.get(
-                osUrl,
-                headers = mapOf("User-Agent" to "TemporaryUserAgent"),
-                timeout = 10L
-            ).parsedSafe<List<OpenSubItem>>()
-
-            osRes?.forEach { sub ->
-                val dlLink = sub.SubDownloadLink ?: return@forEach
-                val subLang = sub.SubLanguageID?.lowercase() ?: ""
-                val cleanDl = dlLink.replace(".gz", "").replace(".zip", "")
-
+            val subUrl = "https://sub.wyzie.ru/search?id=$imdbId"
+            val subRes = app.get(subUrl).parsedSafe<AnimeCubeSubResponse>()
+            subRes?.subtitles?.forEach { sub ->
+                val subLang = sub.lang?.lowercase() ?: ""
                 val label = when (subLang) {
-                    "eng" -> "English [Eng] (OS)"
-                    "ind" -> "Indonesian [Ind] (OS)"
-                    "may", "msa" -> "Malay [My] (OS)"
-                    else -> null
+                    "en", "eng" -> "English"
+                    "id", "ind" -> "Indonesian"
+                    "ms", "may" -> "Malay"
+                    else -> subLang.uppercase()
                 }
-
-                if (label != null) {
-                    subtitleCallback.invoke(
-                        SubtitleFile(label, cleanDl)
+                if (subLang in listOf("en", "eng", "id", "ind", "ms", "may") && !sub.url.isNullOrBlank()) {
+                    subtitleCallback(
+                        SubtitleFile(
+                            label,
+                            sub.url
+                        )
                     )
                 }
             }
@@ -676,8 +733,7 @@ class AnimeCube : MainAPI() {
                 suspend { invoke2Embed(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
                 suspend { invokeSuperEmbed(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
                 suspend { invokeAutoEmbed(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
-                suspend { invokeVidsrc(tmdbId, isMovie, season, episode, subtitleCallback, callback) },
-                suspend { invokeAnimeCubeNative(tmdbId, season, episode, subtitleCallback, callback) }
+                suspend { invokeVidsrc(tmdbId, isMovie, season, episode, subtitleCallback, callback) }
             ).amap { it.invoke() }
         }
 
@@ -754,9 +810,9 @@ class AnimeCube : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ) {
         val endpoint = if (isMovie) {
-            "https://moviesapi.to/api/v1/movie/$tmdbId"
+            "https://moviesapi.to/api/vidora/v1/movie/$tmdbId"
         } else {
-            "https://moviesapi.to/api/v1/tv/$tmdbId/$season/$episode"
+            "https://moviesapi.to/api/vidora/v1/tv/$tmdbId/$season/$episode"
         }
 
         val res = try {
@@ -853,55 +909,46 @@ class AnimeCube : MainAPI() {
         } ?: return
 
         res.streams?.forEach { stream ->
-            val streamUrl = stream.url ?: return@forEach
-            val serverName = "AnimeCube - Server 2 (VidCore ${stream.label ?: "HD"})"
-            val qualityVal = when (stream.quality) {
-                "1080" -> Qualities.P1080.value
-                "720" -> Qualities.P720.value
-                "480" -> Qualities.P480.value
-                else -> Qualities.Unknown.value
-            }
+            val m3u8Url = stream.url ?: return@forEach
+            val label = stream.label ?: "Rigel"
+            val qualityStr = stream.quality ?: "1080p"
+            val serverName = "AnimeCube - Server 2 (VidCore [$label])"
 
-            if (streamUrl.contains(".m3u8")) {
-                callback.invoke(
-                    newExtractorLink(
-                        serverName,
-                        "VidCore [1080p FHD]",
-                        streamUrl,
-                        ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "https://vidcore.net/"
-                        this.quality = qualityVal
-                    }
-                )
+            val streamHeaders = mapOf(
+                "Referer" to "https://vidcore.net/",
+                "Origin" to "https://vidcore.net",
+                "User-Agent" to USER_AGENT
+            )
 
-                try {
-                    generateM3u8(
-                        serverName,
-                        streamUrl,
-                        referer = "https://vidcore.net/"
-                    ).forEach(callback)
-                } catch (_: Throwable) {
+            callback.invoke(
+                newExtractorLink(
+                    serverName,
+                    "$label [$qualityStr]",
+                    m3u8Url,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "https://vidcore.net/"
+                    this.quality = Qualities.P1080.value
+                    this.headers = streamHeaders
                 }
-            } else {
-                callback.invoke(
-                    newExtractorLink(
-                        serverName,
-                        "VidCore Direct",
-                        streamUrl,
-                        ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = "https://vidcore.net/"
-                        this.quality = qualityVal
-                    }
-                )
+            )
+
+            try {
+                generateM3u8(
+                    serverName,
+                    m3u8Url,
+                    referer = "https://vidcore.net/",
+                    headers = streamHeaders
+                ).forEach(callback)
+            } catch (_: Throwable) {
             }
         }
 
         res.subtitles?.forEach { sub ->
             val subUrl = sub.file ?: return@forEach
+            val subLabel = sub.label ?: "English"
             subtitleCallback.invoke(
-                SubtitleFile(sub.label ?: "English", subUrl)
+                SubtitleFile(subLabel, subUrl)
             )
         }
     }
@@ -914,108 +961,137 @@ class AnimeCube : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val path = if (isMovie) "movie/$tmdbId" else "tv/$tmdbId/$season/$episode"
-        val embedUrl = "$vidrockAPI/embed/$path"
+        val type = if (isMovie) "movie" else "tv"
+        val url = "$vidrockAPI/$type/$tmdbId${if (isMovie) "" else "/$season/$episode"}"
+        val encrypted = encryptVidrock(tmdbId, type, season, episode)
 
-        val html = try {
-            app.get(embedUrl, headers = mapOf("User-Agent" to USER_AGENT)).text
+        val sources = try {
+            app.get(
+                "$vidrockAPI/api/$type/$encrypted",
+                headers = mapOf(
+                    "Referer" to url,
+                    "User-Agent" to USER_AGENT
+                )
+            ).parsedSafe<LinkedHashMap<String, HashMap<String, String>>>()
         } catch (_: Throwable) {
-            return
-        }
+            null
+        } ?: return
 
-        val encData = Regex("""data-source=["']([^"']+)["']""").find(html)?.groupValues?.get(1) ?: return
-        val ivHex = Regex("""data-iv=["']([^"']+)["']""").find(html)?.groupValues?.get(1) ?: return
-        val keyHex = "9b7d8f4e2a1c6b5d3e7f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d"
+        sources.forEach { source ->
+            val streamUrl = source.value["url"] ?: return@forEach
+            val sourceName = source.key.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }
+            val serverName = "AnimeCube - Server 3 (Vidrock [$sourceName])"
 
-        val decrypted = try {
-            val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-            val keySpec = SecretKeySpec(keyHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray(), "AES")
-            val ivSpec = IvParameterSpec(ivHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray())
-            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
-            val decodedBytes = base64DecodeArray(encData)
-            String(cipher.doFinal(decodedBytes))
-        } catch (_: Throwable) {
-            return
-        }
+            callback.invoke(
+                newExtractorLink(
+                    serverName,
+                    serverName,
+                    streamUrl,
+                    ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "$vidrockAPI/"
+                    this.headers = mapOf(
+                        "Origin" to vidrockAPI,
+                        "Referer" to "$vidrockAPI/",
+                        "User-Agent" to USER_AGENT
+                    )
+                }
+            )
 
-        val videoUrl = Regex("""['"](https?://[^'"]+\.m3u8[^'"]*)['"]""").find(decrypted)?.groupValues?.get(1) ?: return
-        val serverName = "AnimeCube - Server 3 (Vidrock)"
-
-        callback.invoke(
-            newExtractorLink(
-                serverName,
-                "Vidrock [1080p FHD]",
-                videoUrl,
-                ExtractorLinkType.M3U8
-            ) {
-                this.referer = "$vidrockAPI/"
-                this.quality = Qualities.P1080.value
+            try {
+                generateM3u8(
+                    serverName,
+                    streamUrl,
+                    referer = "$vidrockAPI/",
+                    headers = mapOf("Origin" to vidrockAPI, "Referer" to "$vidrockAPI/")
+                ).forEach(callback)
+            } catch (_: Throwable) {
             }
-        )
+        }
 
+        // Subtitles for Vidrock
         try {
-            generateM3u8(
-                serverName,
-                videoUrl,
-                referer = "$vidrockAPI/"
-            ).forEach(callback)
+            val subUrl = "https://sub.vdrk.site/$type/$tmdbId${if (isMovie) "" else "/$season/$episode"}"
+            val res = app.get(subUrl, headers = mapOf("Referer" to "$vidrockAPI/")).text
+            tryParseJson<ArrayList<VidrockSubtitle>>(res)?.forEach { subtitle ->
+                subtitleCallback.invoke(
+                    SubtitleFile(
+                        subtitle.label?.replace(Regex("\\d"), "")?.replace(Regex("\\s+Hi"), "")?.trim() ?: return@forEach,
+                        subtitle.file ?: return@forEach
+                    )
+                )
+            }
         } catch (_: Throwable) {
         }
     }
 
-    private suspend fun invokeVidLink(
+    private fun encryptVidrock(r: Int, e: String, t: Int?, n: Int?): String {
+        val s = if (e == "tv") "${r}_${t}_${n}" else r.toString()
+        val ww = "x7k9mPqT2rWvY8zA5bC3nF6hJ2lK4mN9"
+        val keyBytes = ww.toByteArray(Charsets.UTF_8)
+        val ivBytes = ww.substring(0, 16).toByteArray(Charsets.UTF_8)
+
+        val secretKey = SecretKeySpec(keyBytes, "AES")
+        val ivSpec = IvParameterSpec(ivBytes)
+
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
+        val encrypted = cipher.doFinal(s.toByteArray(Charsets.UTF_8))
+        return base64UrlEncode(encrypted)
+    }
+
+    private suspend fun invokeVidlink(
         tmdbId: Int,
-        isMovie: Boolean,
         season: Int?,
         episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val path = if (isMovie) "movie/$tmdbId" else "tv/$tmdbId/$season/$episode"
-        val url = "$vidlinkAPI/embed/$path"
-
-        val res = try {
-            app.get(url, headers = mapOf("User-Agent" to USER_AGENT)).text
-        } catch (_: Throwable) {
-            return
+        val url = if (season == null) {
+            "$vidlinkAPI/movie/$tmdbId"
+        } else {
+            "$vidlinkAPI/tv/$tmdbId/$season/$episode"
         }
 
-        val streamUrl = Regex("""['"](https?://[^'"]+\.m3u8[^'"]*)['"]""").find(res)?.groupValues?.get(1) ?: return
-        val serverName = "AnimeCube - Server 4 (VidLink Pro)"
-
-        callback.invoke(
-            newExtractorLink(
-                serverName,
-                "VidLink [1080p FHD]",
-                streamUrl,
-                ExtractorLinkType.M3U8
-            ) {
-                this.referer = "$vidlinkAPI/"
-                this.quality = Qualities.P1080.value
-            }
-        )
+        try {
+            loadExtractor(url, "https://popcornflix.com/", subtitleCallback, callback)
+        } catch (_: Throwable) {
+        }
     }
 
     private suspend fun invoke2Embed(
         tmdbId: Int,
+        imdbId: String?,
         isMovie: Boolean,
         season: Int?,
         episode: Int?,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val url = if (isMovie) {
-            "https://www.2embed.cc/embed/$tmdbId"
+        val urls = mutableListOf<String>()
+        if (isMovie) {
+            urls.add("https://www.2embed.cc/embed/$tmdbId")
+            if (!imdbId.isNullOrBlank()) {
+                urls.add("https://www.2embed.cc/embed/$imdbId")
+            }
         } else {
-            "https://www.2embed.cc/embedtv/$tmdbId&s=$season&e=$episode"
+            urls.add("https://www.2embed.cc/embedtv/$tmdbId&s=$season&e=$episode")
+            if (!imdbId.isNullOrBlank()) {
+                urls.add("https://www.2embed.cc/embedtv/$imdbId&s=$season&e=$episode")
+            }
         }
 
-        try {
-            val html = app.get(url).text
-            val iframe = Regex("""<iframe[^>]+src=["']([^"']+)["']""").find(html)?.groupValues?.get(1) ?: return
-            val finalUrl = if (iframe.startsWith("//")) "https:$iframe" else iframe
-            loadExtractor(finalUrl, url, subtitleCallback, callback)
-        } catch (_: Throwable) {
+        urls.forEach { pageUrl ->
+            try {
+                val doc = app.get(pageUrl, headers = mapOf("User-Agent" to USER_AGENT)).document
+                val iframe = doc.selectFirst("iframe")?.attr("src") ?: return@forEach
+                val streamWishUrl = if (iframe.startsWith("//")) "https:$iframe" else iframe
+
+                if (streamWishUrl.contains("streamwish") || streamWishUrl.contains("embed")) {
+                    loadExtractor(streamWishUrl, pageUrl, subtitleCallback, callback)
+                }
+            } catch (_: Throwable) {
+            }
         }
     }
 
@@ -1034,11 +1110,12 @@ class AnimeCube : MainAPI() {
         }
 
         try {
-            val html = app.get(url).text
-            val regex = Regex("""['"](https?://[^'"]+stream[^'"]*)['"]""")
-            regex.findAll(html).forEach { match ->
-                val streamUrl = match.groupValues[1]
-                loadExtractor(streamUrl, url, subtitleCallback, callback)
+            val doc = app.get(url, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$mainUrl/")).document
+            doc.select("iframe[src*='http']").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.startsWith("http") && !src.contains("multiembed.mov")) {
+                    loadExtractor(src, url, subtitleCallback, callback)
+                }
             }
         } catch (_: Throwable) {
         }
@@ -1053,18 +1130,24 @@ class AnimeCube : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ) {
         val url = if (isMovie) {
-            "https://autoembed.to/movie/tmdb/$tmdbId"
+            "https://player.autoembed.cc/embed/movie/$tmdbId"
         } else {
-            "https://autoembed.to/tv/tmdb/$tmdbId-$season-$episode"
+            "https://player.autoembed.cc/embed/tv/$tmdbId/$season/$episode"
         }
 
         try {
-            loadExtractor(url, "https://autoembed.to/", subtitleCallback, callback)
+            val doc = app.get(url, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$mainUrl/")).document
+            doc.select("iframe[src*='http']").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.startsWith("http") && !src.contains("autoembed.cc")) {
+                    loadExtractor(src, url, subtitleCallback, callback)
+                }
+            }
         } catch (_: Throwable) {
         }
     }
 
-    private suspend fun invokeVidsrc(
+    private suspend fun invokeVidsrcTo(
         tmdbId: Int,
         isMovie: Boolean,
         season: Int?,
@@ -1079,8 +1162,8 @@ class AnimeCube : MainAPI() {
         }
 
         try {
-            val doc = app.get(url).document
-            doc.select("iframe").forEach { iframe ->
+            val doc = app.get(url, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "$mainUrl/")).document
+            doc.select("iframe[src*='http']").forEach { iframe ->
                 val src = iframe.attr("src")
                 if (src.startsWith("http") && !src.contains("vidsrc.to")) {
                     loadExtractor(src, url, subtitleCallback, callback)
@@ -1111,11 +1194,45 @@ class AnimeCube : MainAPI() {
 
         urls.forEach { embedUrl ->
             try {
-                loadExtractor(embedUrl, "https://animecube.live/", subtitleCallback, callback)
+                loadExtractor(embedUrl, "https://popcornflix.com/", subtitleCallback, callback)
             } catch (_: Throwable) {
             }
         }
     }
+
+
+
+    data class AnimeCubeCard(
+        @JsonProperty("id") val id: String? = null,
+        @JsonProperty("slug") val slug: String? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("coverImage") val coverImage: String? = null,
+        @JsonProperty("rating") val rating: Double? = null,
+        @JsonProperty("status") val status: String? = null,
+        @JsonProperty("genres") val genres: List<String>? = null,
+        @JsonProperty("year") val year: Int? = null,
+        @JsonProperty("hasEpisodes") val hasEpisodes: Boolean? = null
+    )
+
+    data class AnimeCubeSeasonTab(
+        @JsonProperty("id") val id: String? = null,
+        @JsonProperty("number") val number: Int? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("customName") val customName: String? = null,
+        @JsonProperty("year") val year: Int? = null,
+        @JsonProperty("rating") val rating: Double? = null,
+        @JsonProperty("episodes") val episodes: List<AnimeCubeEpisodeItem>? = null
+    )
+
+    data class AnimeCubeEpisodeItem(
+        @JsonProperty("id") val id: String? = null,
+        @JsonProperty("number") val number: Int? = null,
+        @JsonProperty("numberDisplay") val numberDisplay: String? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("description") val description: String? = null,
+        @JsonProperty("duration") val duration: Int? = null,
+        @JsonProperty("publishedAt") val publishedAt: String? = null
+    )
 
     data class AnimeCubeData(
         val id: Int? = null,
