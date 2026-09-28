@@ -668,7 +668,7 @@ class AnimeCube : MainAPI() {
     ): Boolean {
         val linkData = parseJson<AnimeCubeLinkData>(data)
 
-        // 1. If AnimeCube native item, extract AnimeCube native video source
+        // 1. If AnimeCube native item, extract AnimeCube native video source (Dailymotion 4K/HLS & Rumble)
         if (!linkData.slug.isNullOrBlank() && !linkData.episodeId.isNullOrBlank()) {
             try {
                 invokeAnimeCubeLiveNative(
@@ -683,7 +683,21 @@ class AnimeCube : MainAPI() {
             }
         }
 
-        // 2. Run multi-server scrapers for TMDB/IMDb
+        // 2. Donghua mirror fallback (Donghub / Donghive with Indonesian & English Subs)
+        if (!linkData.title.isNullOrBlank() && linkData.episode != null) {
+            try {
+                invokeDonghubFallback(
+                    title = linkData.title,
+                    season = linkData.season,
+                    episode = linkData.episode,
+                    subtitleCallback = subtitleCallback,
+                    callback = callback
+                )
+            } catch (_: Throwable) {
+            }
+        }
+
+        // 3. Run multi-server scrapers for TMDB/IMDb
         var tmdbId = linkData.id
         val isMovie = linkData.type == "movie"
         val season = linkData.season
@@ -781,10 +795,286 @@ class AnimeCube : MainAPI() {
 
         val sourcesJson = tryParseJson<AnimeCubeSourcesResponse>(decSources) ?: return
         sourcesJson.sources?.forEach { src ->
-            if (src.platform == "dailymotion" && !src.videoId.isNullOrBlank()) {
-                val dmUrl = "https://www.dailymotion.com/video/${src.videoId}"
-                loadExtractor(dmUrl, mainUrl, subtitleCallback, callback)
+            val targetId = src.privateId?.takeIf { it.isNotBlank() } ?: src.videoId
+            if (!targetId.isNullOrBlank()) {
+                when (src.platform?.lowercase()) {
+                    "dailymotion" -> {
+                        extractDailymotionNative(targetId, subtitleCallback, callback)
+                    }
+                    "rumble" -> {
+                        val rumbleEmbed = "https://rumble.com/embed/$targetId/"
+                        loadExtractor(rumbleEmbed, "https://rumble.com/", subtitleCallback, callback)
+                    }
+                    "youtube" -> {
+                        val ytUrl = "https://www.youtube.com/watch?v=$targetId"
+                        loadExtractor(ytUrl, "https://www.youtube.com/", subtitleCallback, callback)
+                    }
+                }
             }
+        }
+    }
+
+    private suspend fun extractDailymotionNative(
+        targetId: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            // 1. Visit player.html to obtain session cookies (ts, v1st)
+            val playerUrl = "https://geo.dailymotion.com/player.html?video=$targetId"
+            val playerRes = app.get(
+                playerUrl,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "$mainUrl/"
+                ),
+                timeout = 8
+            )
+
+            val cookieMap = mutableMapOf<String, String>()
+            playerRes.headers.forEach { (k, v) ->
+                if (k.equals("set-cookie", ignoreCase = true)) {
+                    val cVal = v.substringBefore(";")
+                    val name = cVal.substringBefore("=").trim()
+                    val value = cVal.substringAfter("=").trim()
+                    if (name.isNotBlank() && value.isNotBlank()) {
+                        cookieMap[name] = value
+                    }
+                }
+            }
+
+            val cookieHeader1 = cookieMap.map { "${it.key}=${it.value}" }.joinToString("; ")
+
+            // 2. Fetch metadata from Dailymotion internal player API
+            val metaUrl = "https://www.dailymotion.com/player/metadata/video/$targetId"
+            val metaRes = app.get(
+                metaUrl,
+                headers = mapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "https://geo.dailymotion.com/",
+                    "Cookie" to cookieHeader1
+                ),
+                timeout = 8
+            )
+
+            metaRes.headers.forEach { (k, v) ->
+                if (k.equals("set-cookie", ignoreCase = true)) {
+                    val cVal = v.substringBefore(";")
+                    val name = cVal.substringBefore("=").trim()
+                    val value = cVal.substringAfter("=").trim()
+                    if (name.isNotBlank() && value.isNotBlank()) {
+                        cookieMap[name] = value
+                    }
+                }
+            }
+
+            val cookieHeader2 = cookieMap.map { "${it.key}=${it.value}" }.joinToString("; ")
+            val metaObj = tryParseJson<DailymotionMetadata>(metaRes.text) ?: return
+
+            // 3. Extract subtitles
+            metaObj.subtitles?.data?.forEach { (langKey, subDetail) ->
+                val subUrl = subDetail.urls?.firstOrNull()
+                if (!subUrl.isNullOrBlank()) {
+                    val label = when {
+                        langKey.contains("id", ignoreCase = true) || langKey.contains("indo", ignoreCase = true) -> "Indonesian"
+                        langKey.contains("en", ignoreCase = true) || langKey.contains("eng", ignoreCase = true) -> "English"
+                        langKey.contains("ms", ignoreCase = true) || langKey.contains("my", ignoreCase = true) -> "Malay"
+                        !subDetail.label.isNullOrBlank() -> subDetail.label
+                        else -> langKey
+                    }
+                    subtitleCallback.invoke(SubtitleFile(label, subUrl))
+                }
+            }
+
+            // 4. Extract HLS stream
+            val autoM3u8Url = metaObj.qualities?.get("auto")?.firstOrNull()?.url
+            if (!autoM3u8Url.isNullOrBlank()) {
+                try {
+                    val manifestRes = app.get(
+                        autoM3u8Url,
+                        headers = mapOf(
+                            "User-Agent" to USER_AGENT,
+                            "Referer" to "https://geo.dailymotion.com/",
+                            "Cookie" to cookieHeader2
+                        ),
+                        timeout = 8
+                    )
+                    val manifestText = manifestRes.text
+
+                    val streamRegex = Regex("""#EXT-X-STREAM-INF:[^\n]*?(?:NAME="(\d+)"|RESOLUTION=(\d+x\d+))[^\n]*\n([^\n]+)""")
+                    val subStreams = streamRegex.findAll(manifestText).toList()
+
+                    if (subStreams.isNotEmpty()) {
+                        for (sub in subStreams) {
+                            val nameQ = sub.groupValues[1]
+                            val resQ = sub.groupValues[2]
+                            val streamUrl = sub.groupValues[3].trim()
+                            val qInt = when {
+                                nameQ == "2160" || resQ.contains("2160") || nameQ.contains("4k", true) -> Qualities.P2160.value
+                                nameQ == "1080" || resQ.contains("1080") -> Qualities.P1080.value
+                                nameQ == "720" || resQ.contains("720") -> Qualities.P720.value
+                                nameQ == "480" || resQ.contains("480") -> Qualities.P480.value
+                                nameQ == "360" || resQ.contains("360") -> Qualities.P360.value
+                                nameQ == "240" || resQ.contains("240") -> Qualities.P240.value
+                                else -> Qualities.Unknown.value
+                            }
+                            val qLabel = if (nameQ.isNotBlank()) "${nameQ}p" else if (resQ.isNotBlank()) resQ else "HLS"
+
+                            callback.invoke(
+                                newExtractorLink(
+                                    source = "AnimeCube - Dailymotion",
+                                    name = "AnimeCube - Dailymotion $qLabel",
+                                    url = streamUrl,
+                                    type = ExtractorLinkType.M3U8
+                                ) {
+                                    this.referer = "https://geo.dailymotion.com/"
+                                    this.quality = qInt
+                                }
+                            )
+                        }
+                    } else {
+                        callback.invoke(
+                            newExtractorLink(
+                                source = "AnimeCube - Dailymotion",
+                                name = "AnimeCube - Dailymotion Auto (4K/1080p)",
+                                url = autoM3u8Url,
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = "https://geo.dailymotion.com/"
+                                this.headers = mapOf(
+                                    "Referer" to "https://geo.dailymotion.com/",
+                                    "Cookie" to cookieHeader2
+                                )
+                            }
+                        )
+                    }
+
+                    // Extract subtitles from HLS manifest
+                    val subRegex = Regex("#EXT-X-MEDIA:TYPE=SUBTITLES[^\\n]*?NAME=\"([^\"]+)\"[^\\n]*?URI=\"([^\"]+)\"")
+                    subRegex.findAll(manifestText).forEach { m ->
+                        val subName = m.groupValues[1]
+                        val subUri = m.groupValues[2]
+                        val label = when {
+                            subName.contains("indo", ignoreCase = true) || subName.contains("id", ignoreCase = true) -> "Indonesian"
+                            subName.contains("eng", ignoreCase = true) -> "English"
+                            subName.contains("malay", ignoreCase = true) || subName.contains("my", ignoreCase = true) -> "Malay"
+                            else -> subName
+                        }
+                        subtitleCallback.invoke(SubtitleFile(label, subUri))
+                    }
+                } catch (_: Throwable) {
+                    callback.invoke(
+                        newExtractorLink(
+                            source = "AnimeCube - Dailymotion",
+                            name = "AnimeCube - Dailymotion Auto (4K/1080p)",
+                            url = autoM3u8Url,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://geo.dailymotion.com/"
+                            this.headers = mapOf(
+                                "Referer" to "https://geo.dailymotion.com/",
+                                "Cookie" to cookieHeader2
+                            )
+                        }
+                    )
+                }
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    private suspend fun invokeDonghubFallback(
+        title: String,
+        season: Int?,
+        episode: Int?,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        if (episode == null) return
+        val cleanTitle = title.replace(Regex("""(?i)\b(Season\s+\d+|S\d+|Remake|Origin|Special|Movie)\b"""), "").trim()
+        val searchUrl = "https://donghive.vip/?s=${URLEncoder.encode(cleanTitle, "utf-8")}"
+        try {
+            val searchDoc = app.get(searchUrl, headers = mapOf("User-Agent" to USER_AGENT), timeout = 8).document
+            val articles = searchDoc.select("article")
+            var matchedSeriesUrl: String? = null
+
+            for (art in articles) {
+                val link = art.selectFirst("a[href*='donghive.vip']") ?: continue
+                val href = link.attr("href")
+                val artTitle = link.attr("title").ifBlank { art.text() }
+                if (season != null && season > 1) {
+                    if (artTitle.contains("Season $season", ignoreCase = true) || artTitle.contains("S$season", ignoreCase = true)) {
+                        matchedSeriesUrl = href
+                        break
+                    }
+                }
+                if (matchedSeriesUrl == null) {
+                    matchedSeriesUrl = href
+                }
+            }
+
+            if (matchedSeriesUrl.isNullOrBlank()) return
+
+            val seriesDoc = app.get(matchedSeriesUrl, headers = mapOf("User-Agent" to USER_AGENT), timeout = 8).document
+            var epUrl: String? = null
+
+            val epElements = seriesDoc.select("a[href*='-episode-']")
+            for (el in epElements) {
+                val href = el.attr("href")
+                val text = el.text()
+                val epMatch = Regex("""(?:episode|ep)[\s-]*(\d+)""", RegexOption.IGNORE_CASE).find(href)
+                    ?: Regex("""(?:episode|ep)[\s-]*(\d+)""", RegexOption.IGNORE_CASE).find(text)
+                if (epMatch != null && epMatch.groupValues[1].toIntOrNull() == episode) {
+                    epUrl = href
+                    break
+                }
+            }
+
+            if (epUrl.isNullOrBlank()) return
+
+            val epDoc = app.get(epUrl, headers = mapOf("User-Agent" to USER_AGENT), timeout = 8).document
+            val options = epDoc.select(".mirror option, select.mirror option, select[name='server'] option, .itemvideo option")
+
+            val embedList = mutableListOf<Pair<String, String>>()
+            for (opt in options) {
+                val sName = opt.text().trim()
+                val rawVal = opt.attr("value").trim()
+                if (rawVal.isBlank() || sName.contains("Select", true)) continue
+
+                val decoded = try {
+                    String(base64DecodeArray(rawVal), Charsets.UTF_8)
+                } catch (_: Exception) {
+                    rawVal
+                }
+                val srcMatch = Regex("""src=["']([^"']+)["']""").find(decoded)?.groupValues?.get(1)
+                val finalSrc = srcMatch ?: if (decoded.startsWith("http")) decoded else ""
+                if (finalSrc.isNotBlank()) {
+                    embedList.add(sName to finalSrc)
+                }
+            }
+
+            for (ifr in epDoc.select(".player-embed iframe, #embed_holder iframe, .video-content iframe")) {
+                val src = ifr.attr("src").trim()
+                if (src.isNotBlank() && src.startsWith("http")) {
+                    embedList.add("Default" to src)
+                }
+            }
+
+            embedList.distinctBy { it.second }.forEach { (serverName, rawSrc) ->
+                val embed = rawSrc.replace("&amp;", "&").trim()
+                try {
+                    if (embed.contains("dailymotion.com", ignoreCase = true)) {
+                        val vid = Regex("""(?:video/|video=)([a-zA-Z0-9]+)""").find(embed)?.groupValues?.get(1).orEmpty()
+                        if (vid.isNotBlank()) {
+                            extractDailymotionNative(vid, subtitleCallback, callback)
+                        }
+                    } else {
+                        loadExtractor(embed, "https://donghive.vip/", subtitleCallback, callback)
+                    }
+                } catch (_: Throwable) {
+                }
+            }
+        } catch (_: Throwable) {
         }
     }
 
@@ -1251,12 +1541,33 @@ class AnimeCube : MainAPI() {
     data class AnimeCubeSource(
         @JsonProperty("platform") val platform: String? = null,
         @JsonProperty("videoId") val videoId: String? = null,
+        @JsonProperty("privateId") val privateId: String? = null,
         @JsonProperty("quality") val quality: String? = null,
         @JsonProperty("goodSub") val goodSub: Boolean? = null
     )
 
     data class AnimeCubeSourcesResponse(
         @JsonProperty("sources") val sources: List<AnimeCubeSource>? = null
+    )
+
+    data class DailymotionStream(
+        @JsonProperty("type") val type: String? = null,
+        @JsonProperty("url") val url: String? = null
+    )
+
+    data class DailymotionSubDetail(
+        @JsonProperty("label") val label: String? = null,
+        @JsonProperty("urls") val urls: List<String>? = null
+    )
+
+    data class DailymotionSubData(
+        @JsonProperty("enable") val enable: Boolean? = null,
+        @JsonProperty("data") val data: Map<String, DailymotionSubDetail>? = null
+    )
+
+    data class DailymotionMetadata(
+        @JsonProperty("qualities") val qualities: Map<String, List<DailymotionStream>>? = null,
+        @JsonProperty("subtitles") val subtitles: DailymotionSubData? = null
     )
 
     data class Media(
