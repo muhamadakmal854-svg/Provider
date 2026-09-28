@@ -61,10 +61,19 @@ class PopcornFlix : MainAPI() {
         }
     }
 
-    override val mainPage = mainPageOf(
-                "$tmdbAPI/trending/all/day?api_key=$apiKey" to "🔥 Spotlight & Pilihan Utama (Trending Hari Ini)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=538&watch_region=US" to "🍿 PopcornFlix: Filem Pilihan Percuma Terhangat",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_watch_providers=538&watch_region=US" to "📺 PopcornFlix: Siri TV Percuma Pilihan",
+        override val mainPage = mainPageOf(
+        "$mainUrl/category/featured" to "🍿 PopcornFlix Featured (Pilihan Utama PopcornFlix)",
+        "$mainUrl/category/popcornflix-originals" to "🌟 PopcornFlix Originals (Koleksi Eksklusif)",
+        "$mainUrl/category/new-arrivals" to "🆕 New Arrivals (Keluaran Terbaru PopcornFlix)",
+        "$mainUrl/category/action" to "💥 Action & Thrillers (Aksi & Debaran)",
+        "$mainUrl/category/comedy" to "😂 Comedy (Komedi Pilihan)",
+        "$mainUrl/category/horror" to "👻 Horror & Sci-Fi (Seram & Sains Fiksyen)",
+        "$mainUrl/category/drama" to "🎭 Drama & Romance (Drama & Romantik)",
+        "$mainUrl/category/family" to "👨‍👩‍👧 Family & Kids (Keluarga & Kanak-kanak)",
+        "$mainUrl/category/foreign" to "🌍 Foreign Films (Filem Antarabangsa)",
+        "$mainUrl/category/documentaries" to "📽️ Documentaries (Dokumentari)",
+        "$mainUrl/category/westerns" to "🤠 Westerns (Koboi & Klasik)",
+        "$tmdbAPI/trending/all/day?api_key=$apiKey" to "🔥 Spotlight & Pilihan Utama (Trending Hari Ini)",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213" to "🍿 Netflix Originals & Siri Terhangat",
         "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=8&watch_region=US" to "🍿 Netflix: Koleksi Filem Pilihan",
         "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=2739" to "🏰 Disney+ Originals & Universe",
@@ -82,33 +91,53 @@ class PopcornFlix : MainAPI() {
         "$tmdbAPI/trending/movie/week?api_key=$apiKey" to "⚡ Filem Blockbuster & Terhangat Minggu Ini",
         "$tmdbAPI/tv/popular?api_key=$apiKey" to "🏆 Siri TV Paling Popular",
         "$tmdbAPI/movie/top_rated?api_key=$apiKey" to "⭐ Filem Penilaian Tertinggi (Top IMDb)",
-        "$tmdbAPI/tv/top_rated?api_key=$apiKey" to "📺 Siri TV Penilaian Tertinggi",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=28" to "💥 Aksi & Pengembaraan (Action & Adventure)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=878" to "🔮 Fiksyen Sains & Fantasi (Sci-Fi & Fantasy)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=27" to "👻 Seram & Suspen (Horror)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=35" to "😂 Komedi Blockbuster (Comedy)",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=16" to "🎨 Animasi & Siri Kartun Pilihan"
+        "$tmdbAPI/tv/top_rated?api_key=$apiKey" to "📺 Siri TV Penilaian Tertinggi"
     )
 
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val url = if (request.data.contains("?")) {
-            "${request.data}&page=$page"
+        val tmdbUrl = if (request.data.startsWith(mainUrl)) {
+            val d = request.data.lowercase()
+            when {
+                d.contains("trending-movies") -> "$tmdbAPI/trending/movie/day?api_key=$apiKey&page=$page"
+                d.contains("trending-series") -> "$tmdbAPI/trending/tv/day?api_key=$apiKey&page=$page"
+                d.contains("action") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=28&page=$page"
+                d.contains("comedy") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=35&page=$page"
+                d.contains("horror") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=27&page=$page"
+                d.contains("sci-fi") || d.contains("scifi") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=878&page=$page"
+                d.contains("drama") || d.contains("crime") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=18&page=$page"
+                d.contains("romance") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10749&page=$page"
+                d.contains("animation") || d.contains("anime") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=16&page=$page"
+                d.contains("family") || d.contains("kids") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=10751&page=$page"
+                d.contains("documentar") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=99&page=$page"
+                d.contains("western") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=37&page=$page"
+                d.contains("thriller") -> "$tmdbAPI/discover/movie?api_key=$apiKey&with_genres=53&page=$page"
+                d.contains("top-imdb") || d.contains("all-time-best") -> "$tmdbAPI/movie/top_rated?api_key=$apiKey&page=$page"
+                d.contains("upcoming") || d.contains("coming-soon") -> "$tmdbAPI/movie/upcoming?api_key=$apiKey&page=$page"
+                d.contains("tv-show") || d.contains("series") || d.contains("binge") -> "$tmdbAPI/tv/popular?api_key=$apiKey&page=$page"
+                d.contains("movie") || d.contains("free-movies") -> "$tmdbAPI/movie/popular?api_key=$apiKey&page=$page"
+                d.contains("tubi-originals") || d.contains("popcornflix-originals") || d.contains("cinemeta-featured") -> "$tmdbAPI/trending/all/week?api_key=$apiKey&page=$page"
+                else -> "$tmdbAPI/trending/all/day?api_key=$apiKey&page=$page"
+            }
         } else {
-            "${request.data}?page=$page"
+            if (request.data.contains("?")) {
+                "${request.data}&page=$page"
+            } else {
+                "${request.data}?page=$page"
+            }
         }
 
         val res = try {
-            app.get(url).parsedSafe<Results>()
+            app.get(tmdbUrl).parsedSafe<Results>()
         } catch (_: Exception) {
             null
         } ?: try {
-            app.get(url.replace(apiKey, fallbackApiKey)).parsedSafe<Results>()
+            app.get(tmdbUrl.replace(apiKey, fallbackApiKey)).parsedSafe<Results>()
         } catch (_: Exception) {
             null
-        } ?: throw ErrorLoadingException("Gagal memuatkan data dari pelayan PLEX")
+        } ?: throw ErrorLoadingException("Gagal memuatkan data dari pelayan PopcornFlix")
 
         val list = res.results?.mapNotNull { media ->
             media.toSearchResponse()
