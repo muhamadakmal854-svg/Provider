@@ -167,7 +167,7 @@ class AnimeCube : MainAPI() {
         return list
     }
 
-    override val mainPage = mainPageOf(
+        override val mainPage = mainPageOf(
         "$mainUrl/?category=for-you" to "💖 For You (Pilihan Utama AnimeCube)",
         "$mainUrl/?category=weekly-schedule" to "📺 Weekly Schedule (Sedang Bersiaran / Ongoing)",
         "$mainUrl/?category=most-popular" to "🏆 Most Popular (Paling Popular)",
@@ -178,26 +178,7 @@ class AnimeCube : MainAPI() {
         "$mainUrl/?category=action" to "💥 Action & Martial Arts (Aksi & Seni Mempertahankan Diri)",
         "$mainUrl/?category=fantasy" to "🔮 Fantasy & Xuanhuan (Fantasi Mistik)",
         "$mainUrl/?category=scifi" to "🚀 Sci-Fi & Futuristic (Sains Fiksyen)",
-        "$mainUrl/?category=movies" to "🎬 Donghua Movies (Koleksi Filem Animasi)",
-        "$tmdbAPI/trending/all/day?api_key=$apiKey" to "🔥 Spotlight & Pilihan Utama (Trending Hari Ini)",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=213" to "🍿 Netflix Originals & Siri Terhangat",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=8&watch_region=US" to "🍿 Netflix: Koleksi Filem Pilihan",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=2739" to "🏰 Disney+ Originals & Universe",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=337&watch_region=US" to "🏰 Disney+: Filem Blockbuster & Animasi",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=49%7C3186" to "⚡ HBO & Max Exclusives",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=1899&watch_region=US" to "⚡ HBO Max: Filem Pawagam Pilihan",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=453" to "🟢 Hulu Exclusives & Siri Pilihan",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=2552" to "🍎 Apple TV+ Originals",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=350&watch_region=US" to "🍎 Apple TV+: Filem Eksklusif",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=1024" to "📦 Amazon Prime Video Exclusives",
-        "$tmdbAPI/discover/movie?api_key=$apiKey&with_watch_providers=9&watch_region=US" to "📦 Amazon Prime: Koleksi Filem Terhangat",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=4330" to "⭐ Paramount+ Originals",
-        "$tmdbAPI/discover/tv?api_key=$apiKey&with_networks=3353" to "🦚 Peacock Originals & Shows",
-        "$tmdbAPI/movie/now_playing?api_key=$apiKey" to "🎬 Filem Terkini di Pawagam (Now Playing)",
-        "$tmdbAPI/trending/movie/week?api_key=$apiKey" to "⚡ Filem Blockbuster & Terhangat Minggu Ini",
-        "$tmdbAPI/tv/popular?api_key=$apiKey" to "🏆 Siri TV Paling Popular",
-        "$tmdbAPI/movie/top_rated?api_key=$apiKey" to "⭐ Filem Penilaian Tertinggi (Top IMDb)",
-        "$tmdbAPI/tv/top_rated?api_key=$apiKey" to "📺 Siri TV Penilaian Tertinggi"
+        "$mainUrl/?category=movies" to "🎬 Donghua Movies (Koleksi Filem Animasi)"
     )
 
     override suspend fun getMainPage(
