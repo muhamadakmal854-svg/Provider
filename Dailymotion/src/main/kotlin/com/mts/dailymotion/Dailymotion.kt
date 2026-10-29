@@ -319,40 +319,49 @@ class Dailymotion : MainAPI() {
 
             var streamFound = false
 
-            // 1. Ekstrak Auto Master HLS (Multi-Quality Dalam Pemain)
-            val autoList = metadata?.qualities?.get("auto")
-            val autoUrl = autoList?.firstOrNull()?.url
-            if (!autoUrl.isNullOrBlank()) {
+            // 1. Ekstrak Auto Master HLS (Multi-Quality HLS dengan Trek Video & Audio Terintegrasi)
+            val jsonAutoMatch = Regex("""auto.+?["']url["']\s*:\s*["']([^"']+)["']""").find(metaRes.text)
+            val masterUrl = metadata?.qualities?.get("auto")?.firstOrNull()?.url
+                ?: jsonAutoMatch?.groupValues?.getOrNull(1)?.replace(Regex("""\\/"""), "/")
+
+            if (!masterUrl.isNullOrBlank()) {
                 streamFound = true
                 callback(
                     newExtractorLink(
                         source = this.name,
                         name = "${this.name} - Auto HLS (Multi-Quality)",
-                        url = autoUrl,
+                        url = masterUrl,
                         type = ExtractorLinkType.M3U8
                     ) {
                         this.referer = "https://geo.dailymotion.com/"
                         this.headers = streamHeaders
                     }
                 )
-
-                // Jana resolusi diskrit (1080p, 720p, 480p, 360p, dll.)
-                try {
-                    generateM3u8(
-                        source = this.name,
-                        streamUrl = autoUrl,
-                        referer = "https://geo.dailymotion.com/",
-                        headers = streamHeaders
-                    ).forEach(callback)
-                } catch (_: Exception) {}
+            } else {
+                val m3u8Regex = Regex("""https?://[^\s"'<>]+\.m3u8[^\s"'<>]*""")
+                val firstM3u8 = m3u8Regex.find(metaRes.text)?.value?.replace(Regex("""\\/"""), "/")
+                if (!firstM3u8.isNullOrBlank()) {
+                    streamFound = true
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = "${this.name} - Auto HLS",
+                            url = firstM3u8,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://geo.dailymotion.com/"
+                            this.headers = streamHeaders
+                        }
+                    )
+                }
             }
 
-            // 2. Ekstrak Kualiti MP4 / Stream Diskrit Lain Jika Ada
+            // 2. Ekstrak Kualiti MP4 Langsung Jika Ada (Bukan sub-manifest HLS tanpa audio)
             metadata?.qualities?.forEach { (qKey, qList) ->
                 if (!qKey.equals("auto", ignoreCase = true)) {
                     qList.forEach { qItem ->
                         val qUrl = qItem.url
-                        if (!qUrl.isNullOrBlank()) {
+                        if (!qUrl.isNullOrBlank() && (qUrl.contains(".mp4", ignoreCase = true) || qItem.type?.contains("mp4", ignoreCase = true) == true)) {
                             streamFound = true
                             val qualityLabel = when (qKey) {
                                 "1080" -> "1080p Full HD"
@@ -371,13 +380,12 @@ class Dailymotion : MainAPI() {
                                 "240" -> Qualities.P240.value
                                 else -> Qualities.Unknown.value
                             }
-                            val isM3u8 = qUrl.contains(".m3u8", ignoreCase = true)
                             callback(
                                 newExtractorLink(
                                     source = this.name,
-                                    name = "${this.name} - $qualityLabel",
+                                    name = "${this.name} - $qualityLabel MP4",
                                     url = qUrl,
-                                    type = if (isM3u8) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                    type = ExtractorLinkType.VIDEO
                                 ) {
                                     this.referer = "https://geo.dailymotion.com/"
                                     this.quality = qualityVal
