@@ -242,8 +242,10 @@ class Dailymotion : MainAPI() {
             this.year = year
             this.plot = plotText
             this.tags = tagsList
-            this.duration = item.duration
-            this.rating = item.rating?.toInt()
+            this.duration = item.duration?.let { (it / 60).toInt().coerceAtLeast(1) }
+            if (item.rating != null) {
+                this.score = Score.from10(item.rating.toString())
+            }
             addTrailer(fullUrl)
         }
     }
