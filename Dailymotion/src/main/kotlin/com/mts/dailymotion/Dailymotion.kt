@@ -236,7 +236,7 @@ class Dailymotion : MainAPI() {
         }
         item.tags?.let { tagsList.addAll(it.take(10)) }
 
-        return newMovieLoadResponse(title, fullUrl, TvType.Movie, fullUrl) {
+        return newMovieLoadResponse(title, fullUrl, TvType.Movie, videoId) {
             this.posterUrl = poster
             this.backgroundPosterUrl = backdrop
             this.year = year
@@ -246,7 +246,6 @@ class Dailymotion : MainAPI() {
             if (item.rating != null) {
                 this.score = Score.from10(item.rating.toString())
             }
-            addTrailer(fullUrl)
         }
     }
 
@@ -256,46 +255,52 @@ class Dailymotion : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        val cleanData = data.trim()
         val videoId = when {
-            data.contains("/video/") -> data.substringAfter("/video/").substringBefore("?").substringBefore("/")
-            data.contains("video=") -> data.substringAfter("video=").substringBefore("&")
-            data.contains("url=") -> data.substringAfter("url=").substringBefore("&")
-            else -> Regex("""([a-zA-Z0-9]{7,})""").find(data)?.groupValues?.getOrNull(1) ?: data.trim()
+            cleanData.contains("/video/") -> cleanData.substringAfter("/video/").substringBefore("?").substringBefore("/").substringBefore("_")
+            cleanData.contains("video=") -> cleanData.substringAfter("video=").substringBefore("&")
+            cleanData.contains("url=") -> cleanData.substringAfter("url=").substringBefore("&")
+            !cleanData.contains("/") && !cleanData.contains(".") && !cleanData.contains("=") -> cleanData.substringBefore("_")
+            else -> Regex("""([a-zA-Z0-9]{7})""").find(cleanData)?.groupValues?.getOrNull(1)
+                ?: Regex("""([a-zA-Z0-9]{6,})""").find(cleanData)?.groupValues?.getOrNull(1)
+                ?: cleanData
         }
 
         if (videoId.isBlank()) return false
 
+        var streamFound = false
+        val streamHeaders = mapOf(
+            "User-Agent" to USER_AGENT,
+            "Referer" to "$mainUrl/"
+        )
+
+        var masterM3u8Url: String? = null
+
+        // KAEDAH 1: Dapatkan Metadata Pemain Secara Terus dari API Rasmi Dailymotion
         try {
-            val geoUrl = "https://geo.dailymotion.com/player/xkyen.html?video=$videoId"
-            val geoRes = try {
-                app.get(
-                    geoUrl,
-                    headers = mapOf(
-                        "User-Agent" to USER_AGENT,
-                        "Referer" to "$mainUrl/"
-                    ),
-                    timeout = 10
-                )
-            } catch (_: Exception) { null }
-
-            val sessionCookies = geoRes?.cookies ?: emptyMap()
-            val cookieHeader = if (sessionCookies.isNotEmpty()) {
-                sessionCookies.entries.joinToString("; ") { "${it.key}=${it.value}" }
-            } else ""
-
-            val streamHeaders = mutableMapOf(
-                "User-Agent" to USER_AGENT,
-                "Referer" to "https://geo.dailymotion.com/"
+            val metaUrl = "https://www.dailymotion.com/player/metadata/video/$videoId"
+            val metaRes = app.get(
+                metaUrl,
+                headers = streamHeaders,
+                timeout = 10
             )
-            if (cookieHeader.isNotBlank()) {
-                streamHeaders["Cookie"] = cookieHeader
+            val metaText = metaRes.text
+
+            // Ekstrak Master HLS daripada JSON atau Regex
+            val autoRegex = Regex("""auto.+?["']url["']\s*:\s*["']([^"']+)["']""").find(metaText)
+            val extractedFromRegex = autoRegex?.groupValues?.getOrNull(1)?.replace(Regex("""\\/"""), "/")
+
+            val metadata = tryParseJson<DmMetadataResponse>(metaText)
+            masterM3u8Url = metadata?.qualities?.get("auto")?.firstOrNull()?.url ?: extractedFromRegex
+
+            if (masterM3u8Url.isNullOrBlank()) {
+                val m3u8Regex = Regex("""https?://cdndirector\.dailymotion\.com/cdn/[^\s"'<>]+\.m3u8[^\s"'<>]*""")
+                    .find(metaText)?.value?.replace(Regex("""\\/"""), "/")
+                    ?: Regex("""https?://[^\s"'<>]+\.m3u8[^\s"'<>]*""").find(metaText)?.value?.replace(Regex("""\\/"""), "/")
+                masterM3u8Url = m3u8Regex
             }
 
-            val metaUrl = "https://www.dailymotion.com/player/metadata/video/$videoId"
-            val metaRes = app.get(metaUrl, headers = streamHeaders, timeout = 12)
-            val metadata = tryParseJson<DmMetadataResponse>(metaRes.text)
-
-            // Pengekstrakan Sari Kata Khusus Eng, Ind, My & Semua Bahasa Tersedia
+            // Ekstrak Sari Kata jika ada dalam metadata
             metadata?.subtitles?.data?.forEach { (langCode, subData) ->
                 val rawLabel = subData.label ?: langCode
                 val cleanLang = when {
@@ -317,46 +322,7 @@ class Dailymotion : MainAPI() {
                 }
             }
 
-            var streamFound = false
-
-            // 1. Ekstrak Auto Master HLS (Multi-Quality HLS dengan Trek Video & Audio Terintegrasi)
-            val jsonAutoMatch = Regex("""auto.+?["']url["']\s*:\s*["']([^"']+)["']""").find(metaRes.text)
-            val masterUrl = metadata?.qualities?.get("auto")?.firstOrNull()?.url
-                ?: jsonAutoMatch?.groupValues?.getOrNull(1)?.replace(Regex("""\\/"""), "/")
-
-            if (!masterUrl.isNullOrBlank()) {
-                streamFound = true
-                callback(
-                    newExtractorLink(
-                        source = this.name,
-                        name = "${this.name} - Auto HLS (Multi-Quality)",
-                        url = masterUrl,
-                        type = ExtractorLinkType.M3U8
-                    ) {
-                        this.referer = "https://geo.dailymotion.com/"
-                        this.headers = streamHeaders
-                    }
-                )
-            } else {
-                val m3u8Regex = Regex("""https?://[^\s"'<>]+\.m3u8[^\s"'<>]*""")
-                val firstM3u8 = m3u8Regex.find(metaRes.text)?.value?.replace(Regex("""\\/"""), "/")
-                if (!firstM3u8.isNullOrBlank()) {
-                    streamFound = true
-                    callback(
-                        newExtractorLink(
-                            source = this.name,
-                            name = "${this.name} - Auto HLS",
-                            url = firstM3u8,
-                            type = ExtractorLinkType.M3U8
-                        ) {
-                            this.referer = "https://geo.dailymotion.com/"
-                            this.headers = streamHeaders
-                        }
-                    )
-                }
-            }
-
-            // 2. Ekstrak Kualiti MP4 Langsung Jika Ada (Bukan sub-manifest HLS tanpa audio)
+            // Ekstrak sebarang MP4 langsung jika disediakan oleh pelayan
             metadata?.qualities?.forEach { (qKey, qList) ->
                 if (!qKey.equals("auto", ignoreCase = true)) {
                     qList.forEach { qItem ->
@@ -387,19 +353,107 @@ class Dailymotion : MainAPI() {
                                     url = qUrl,
                                     type = ExtractorLinkType.VIDEO
                                 ) {
-                                    this.referer = "https://geo.dailymotion.com/"
+                                    this.referer = "$mainUrl/"
                                     this.quality = qualityVal
-                                    this.headers = streamHeaders
                                 }
                             )
                         }
                     }
                 }
             }
+        } catch (_: Exception) {}
 
-            return streamFound
-        } catch (_: Exception) {
-            return false
+        // KAEDAH 2: Fallback ke Halaman Embed Dailymotion jika Master URL belum ditemui
+        if (masterM3u8Url.isNullOrBlank()) {
+            try {
+                val embedUrl = "https://www.dailymotion.com/embed/video/$videoId"
+                val embedRes = app.get(embedUrl, headers = streamHeaders, timeout = 10)
+                val embedText = embedRes.text
+                val m3u8Match = Regex("""https?://cdndirector\.dailymotion\.com/cdn/[^\s"'<>]+\.m3u8[^\s"'<>]*""").find(embedText)
+                    ?: Regex("""https?://[^\s"'<>]+\.m3u8[^\s"'<>]*""").find(embedText)
+                masterM3u8Url = m3u8Match?.value?.replace(Regex("""\\/"""), "/")
+            } catch (_: Exception) {}
         }
+
+        // KAEDAH 3: Fallback ke Pemain Geo Dailymotion
+        if (masterM3u8Url.isNullOrBlank()) {
+            try {
+                val geoUrl = "https://geo.dailymotion.com/player/xkyen.html?video=$videoId"
+                val geoRes = app.get(geoUrl, headers = streamHeaders, timeout = 8)
+                val geoText = geoRes.text
+                val m3u8Match = Regex("""https?://cdndirector\.dailymotion\.com/cdn/[^\s"'<>]+\.m3u8[^\s"'<>]*""").find(geoText)
+                    ?: Regex("""https?://[^\s"'<>]+\.m3u8[^\s"'<>]*""").find(geoText)
+                masterM3u8Url = m3u8Match?.value?.replace(Regex("""\\/"""), "/")
+            } catch (_: Exception) {}
+        }
+
+        // PROSES PEMASUKAN STRIM JIKA MASTER M3U8 DITEMUI
+        if (!masterM3u8Url.isNullOrBlank()) {
+            streamFound = true
+
+            // 1. Tambah Master HLS (Multi-Quality HLS yang disegerakkan dengan sempurna untuk ExoPlayer)
+            callback(
+                newExtractorLink(
+                    source = this.name,
+                    name = "${this.name} - Auto HLS (Multi-Quality)",
+                    url = masterM3u8Url,
+                    type = ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "https://geo.dailymotion.com/"
+                }
+            )
+
+            // 2. Ekstrak Kualiti Resolusi Individu (1080p, 720p, 480p, 360p) untuk VOD biasa (tanpa split audio stream)
+            try {
+                val manifestRes = app.get(
+                    masterM3u8Url,
+                    headers = mapOf(
+                        "User-Agent" to USER_AGENT,
+                        "Referer" to "https://geo.dailymotion.com/"
+                    ),
+                    timeout = 6
+                )
+                val manifestText = manifestRes.text
+
+                // Hanya ekstrak sub-streams jika video tidak menggunakan trek audio terpisah (fMP4 live audio group)
+                val hasSeparateAudioTrack = manifestText.contains("#EXT-X-MEDIA:TYPE=AUDIO", ignoreCase = true)
+                if (!hasSeparateAudioTrack) {
+                    val streamRegex = Regex("""#EXT-X-STREAM-INF:[^\n]*?(?:NAME="(\d+)"|RESOLUTION=(\d+x\d+))[^\n]*\n([^\n]+)""")
+                    val subStreams = streamRegex.findAll(manifestText).toList()
+
+                    for (sub in subStreams) {
+                        val nameQ = sub.groupValues[1]
+                        val resQ = sub.groupValues[2]
+                        val streamUrl = sub.groupValues[3].trim()
+                        if (streamUrl.isNotBlank()) {
+                            val qInt = when {
+                                nameQ == "2160" || resQ.contains("2160") || nameQ.contains("4k", true) -> Qualities.P2160.value
+                                nameQ == "1080" || resQ.contains("1080") -> Qualities.P1080.value
+                                nameQ == "720" || resQ.contains("720") -> Qualities.P720.value
+                                nameQ == "480" || resQ.contains("480") -> Qualities.P480.value
+                                nameQ == "360" || resQ.contains("360") -> Qualities.P360.value
+                                nameQ == "240" || resQ.contains("240") -> Qualities.P240.value
+                                else -> Qualities.Unknown.value
+                            }
+                            val qLabel = if (nameQ.isNotBlank()) "${nameQ}p" else if (resQ.isNotBlank()) resQ else "HLS"
+
+                            callback(
+                                newExtractorLink(
+                                    source = this.name,
+                                    name = "${this.name} - $qLabel",
+                                    url = streamUrl,
+                                    type = ExtractorLinkType.M3U8
+                                ) {
+                                    this.referer = "https://geo.dailymotion.com/"
+                                    this.quality = qInt
+                                }
+                            )
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        return streamFound
     }
 }
