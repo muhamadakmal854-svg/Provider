@@ -1,0 +1,9 @@
+{
+  "name": "MTS Repo",
+  "iconUrl": "https://avatars.githubusercontent.com/muhamadakmal854-svg?size=512",
+  "description": "CloudStream 3 Extensions Repository",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://muhamadakmal854-svg.github.io/Provider/plugins.json"
+  ]
+}
