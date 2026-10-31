@@ -1,4 +1,4 @@
-version = 1
+version = 3
 
 cloudstream {
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries")
 
-    iconUrl     = "http://45.11.57.192/favicon.ico"
+    iconUrl     = "https://v1.oppadrama.cc/favicon.ico"
 
 }
 

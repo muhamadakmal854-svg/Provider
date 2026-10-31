@@ -1078,8 +1078,126 @@ object SoraExtractor : SoraStream() {
         }
     }
 
-}
-    data class RiveStreamSource(
-    @JsonProperty("data")
-    val data: List<String>?
-)
+    suspend fun invokeOppadrama(
+        title: String,
+        season: Int? = null,
+        episode: Int? = null,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val cleanTitle = title
+                .replace(Regex("(?i)[:\\-–—]\\s*(?:the\\s+)?series.*"), "")
+                .replace(Regex("\\(\\d{4}\\)"), "")
+                .trim()
+            if (cleanTitle.isBlank()) return
+
+            val encoded = java.net.URLEncoder.encode(cleanTitle, "utf-8")
+            val searchUrl = "https://v1.oppadrama.cc/?s=$encoded"
+            val res = app.get(searchUrl, headers = mapOf("User-Agent" to "Mozilla/5.0"), timeout = 6)
+            val doc = res.document
+            val cards = doc.select("article.bs a, div.bsx a, div.listupd a")
+
+            var matchedUrl: String? = null
+            for (card in cards) {
+                val href = card.attr("href")
+                if (href.isBlank() || href == "#") continue
+                val cardTitle = card.attr("title").ifBlank { card.text() }
+                if (season != null && (href.contains("series", true) || cardTitle.contains("series", true))) {
+                    matchedUrl = href
+                    break
+                } else if (matchedUrl == null) {
+                    matchedUrl = href
+                }
+            }
+
+            if (matchedUrl.isNullOrBlank()) return
+
+            var epPageUrl: String? = null
+            if (episode != null) {
+                val slug = matchedUrl.trim().removeSuffix("/").substringAfterLast("/")
+                val directEp = "https://v1.oppadrama.cc/$slug-episode-$episode/"
+                val directRes = try {
+                    app.get(directEp, headers = mapOf("User-Agent" to "Mozilla/5.0"), timeout = 5)
+                } catch (_: Throwable) { null }
+
+                if (directRes != null && directRes.code == 200 && directRes.text.contains("player-embed")) {
+                    epPageUrl = directEp
+                } else {
+                    val seriesDoc = app.get(matchedUrl, headers = mapOf("User-Agent" to "Mozilla/5.0"), timeout = 6).document
+                    for (a in seriesDoc.select("div.eplister ul li a")) {
+                        val h = a.attr("href")
+                        val t = a.text()
+                        if (h.contains("-episode-$episode/", true) || t.contains("episode $episode", true)) {
+                            epPageUrl = h
+                            break
+                        }
+                    }
+                }
+            } else {
+                epPageUrl = matchedUrl
+            }
+
+            if (epPageUrl.isNullOrBlank()) return
+
+            val epDoc = app.get(epPageUrl, headers = mapOf("User-Agent" to "Mozilla/5.0"), timeout = 6).document
+            val iframe = epDoc.selectFirst("div.player-embed iframe")
+            var iframeSrc = iframe?.attr("src")?.takeIf { it.isNotBlank() } ?: iframe?.attr("data-src")
+
+            if (iframeSrc.isNullOrBlank()) {
+                for (opt in epDoc.select("select.mirror option[value]:not([disabled])")) {
+                    val b64 = opt.attr("value").trim()
+                    if (b64.isNotBlank()) {
+                        try {
+                            val decoded = base64Decode(b64.replace("\\s".toRegex(), ""))
+                            val m = Regex("src=\"([^\"]+)\"").find(decoded)?.groupValues?.get(1)
+                            if (!m.isNullOrBlank()) {
+                                iframeSrc = m
+                                break
+                            }
+                        } catch (_: Throwable) {}
+                    }
+                }
+            }
+
+            if (iframeSrc.isNullOrBlank()) return
+
+            if (iframeSrc.contains("vid.oppadrama.cc") || iframeSrc.contains("g8w90qhngo.com")) {
+                val filecode = when {
+                    iframeSrc.contains("/e/") -> iframeSrc.substringAfter("/e/").substringBefore("?").substringBefore("/")
+                    iframeSrc.contains("filecode=") -> iframeSrc.substringAfter("filecode=").substringBefore("&")
+                    else -> null
+                } ?: return
+
+                val apiRes = app.post(
+                    "https://vid.oppadrama.cc/api/stream",
+                    headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0",
+                        "Referer" to iframeSrc,
+                        "Origin" to "https://vid.oppadrama.cc",
+                        "Content-Type" to "application/json"
+                    ),
+                    data = mapOf(
+                        "filecode" to filecode,
+                        "device" to "web",
+                        "codecs" to listOf("h265", "av1")
+                    ),
+                    timeout = 8
+                ).text
+
+                val streamUrl = Regex("\"streaming_url\"\\s*:\\s*\"([^\"]+)\"").find(apiRes)?.groupValues?.get(1)?.replace(Regex("\\\\/"), "/")
+                if (!streamUrl.isNullOrBlank()) {
+                    callback(
+                        newExtractorLink(
+                            source = "SoraStream - Oppadrama",
+                            name = "SoraStream - Oppadrama Vidara HLS",
+                            url = streamUrl,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = "https://vid.oppadrama.cc/"
+                        }
+                    )
+                }
+            }
+        } catch (_: Throwable) {}
+    }

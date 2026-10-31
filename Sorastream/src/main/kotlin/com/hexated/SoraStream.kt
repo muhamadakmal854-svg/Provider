@@ -342,6 +342,15 @@ open class SoraStream : TmdbProvider() {
                 )
             },
             {
+                invokeOppadrama(
+                    res.title ?: return@runAllAsync,
+                    res.season,
+                    res.episode,
+                    subtitleCallback,
+                    callback
+                )
+            },
+            {
                 val altTitle = res.orgTitle
                 if (!altTitle.isNullOrBlank() && !altTitle.equals(res.title, ignoreCase = true) &&
                     (res.isAsian || res.isAnime || res.isBollywood)

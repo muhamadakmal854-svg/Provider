@@ -20,7 +20,7 @@ import org.jsoup.Jsoup
 
 
 class Oppadrama : MainAPI() {
-    override var mainUrl = "http://45.11.57.192"
+    override var mainUrl = "https://v1.oppadrama.cc"
     override var name = "Oppadrama"
     override val hasMainPage = true
     override var lang = "id"
@@ -206,19 +206,103 @@ val episodes = episodeElements
 
 }
 
-        override suspend fun loadLinks(
+            private suspend fun extractVidara(
+        iframeUrl: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            val filecode = when {
+                iframeUrl.contains("/e/") -> iframeUrl.substringAfter("/e/").substringBefore("?").substringBefore("/")
+                iframeUrl.contains("filecode=") -> iframeUrl.substringAfter("filecode=").substringBefore("&")
+                else -> null
+            } ?: return false
+
+            val apiRes = app.post(
+                "https://vid.oppadrama.cc/api/stream",
+                headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+                    "Referer" to iframeUrl,
+                    "Origin" to "https://vid.oppadrama.cc",
+                    "Content-Type" to "application/json"
+                ),
+                data = mapOf(
+                    "filecode" to filecode,
+                    "device" to "web",
+                    "codecs" to listOf("h265", "av1")
+                ),
+                timeout = 10
+            ).text
+
+            val streamUrl = Regex("""["']streaming_url["']\s*:\s*["']([^"']+)["']""").find(apiRes)?.groupValues?.get(1)?.replace(Regex("""\\/"""), "/")
+            if (!streamUrl.isNullOrBlank()) {
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - Vidara (Multi-Quality HLS)",
+                        url = streamUrl,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "https://vid.oppadrama.cc/"
+                    }
+                )
+
+                try {
+                    val manifestText = app.get(streamUrl, headers = mapOf("Referer" to "https://vid.oppadrama.cc/"), timeout = 5).text
+                    val streamRegex = Regex("""#EXT-X-STREAM-INF:[^\n]*?(?:NAME="(\d+)"|RESOLUTION=(\d+x\d+))[^\n]*\n([^\n]+)""")
+                    val baseUrl = streamUrl.substringBeforeLast("/")
+                    streamRegex.findAll(manifestText).forEach { m ->
+                        val nameQ = m.groupValues[1]
+                        val resQ = m.groupValues[2]
+                        val sUrl = m.groupValues[3].trim()
+                        val fullSubUrl = if (sUrl.startsWith("http")) sUrl else "$baseUrl/$sUrl"
+                        val qInt = when {
+                            nameQ == "1080" || resQ.contains("1080") -> Qualities.P1080.value
+                            nameQ == "720" || resQ.contains("720") -> Qualities.P720.value
+                            nameQ == "480" || resQ.contains("480") -> Qualities.P480.value
+                            nameQ == "360" || resQ.contains("360") -> Qualities.P360.value
+                            else -> Qualities.Unknown.value
+                        }
+                        val qLabel = if (nameQ.isNotBlank()) "${nameQ}p" else if (resQ.isNotBlank()) resQ else "HLS"
+                        callback(
+                            newExtractorLink(
+                                source = this.name,
+                                name = "${this.name} - Vidara $qLabel",
+                                url = fullSubUrl,
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = "https://vid.oppadrama.cc/"
+                                this.quality = qInt
+                            }
+                        )
+                    }
+                } catch (_: Exception) {}
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        var foundAny = false
         val document = app.get(data, referer = "$mainUrl/", headers = requestHeaders).document
 
-        document.selectFirst("div.player-embed iframe")
-            ?.getIframeAttr()
-            ?.let { iframe ->
-                loadExtractor(httpsify(iframe), data, subtitleCallback, callback)
+        val mainIframe = document.selectFirst("div.player-embed iframe")?.getIframeAttr()
+        if (!mainIframe.isNullOrBlank()) {
+            val fullIframe = httpsify(mainIframe)
+            if (fullIframe.contains("vid.oppadrama.cc") || fullIframe.contains("g8w90qhngo.com")) {
+                if (extractVidara(fullIframe, callback)) foundAny = true
+            } else {
+                loadExtractor(fullIframe, data, subtitleCallback, callback)
             }
+        }
 
         val mirrorOptions = document.select("select.mirror option[value]:not([disabled])")
         for (opt in mirrorOptions) {
@@ -234,7 +318,12 @@ val episodes = episodeElements
                     else -> null
                 }
                 if (!mirrorUrl.isNullOrBlank()) {
-                    loadExtractor(httpsify(mirrorUrl), data, subtitleCallback, callback)
+                    val fullMirror = httpsify(mirrorUrl)
+                    if (fullMirror.contains("vid.oppadrama.cc") || fullMirror.contains("g8w90qhngo.com")) {
+                        if (extractVidara(fullMirror, callback)) foundAny = true
+                    } else {
+                        loadExtractor(fullMirror, data, subtitleCallback, callback)
+                    }
                 }
             } catch (_: Exception) {
                 // ignore broken mirrors
