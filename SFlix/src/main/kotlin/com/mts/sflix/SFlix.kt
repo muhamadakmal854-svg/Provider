@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import java.text.SimpleDateFormat
+import java.net.URLEncoder
 import java.util.Locale
 
 class SFlix : MainAPI() {
@@ -947,7 +948,7 @@ class SFlix : MainAPI() {
 
             if (cleanTitle.isBlank()) return
 
-            val encoded = URLEncoder.encode(cleanTitle, "utf-8")
+            val encoded = java.net.URLEncoder.encode(cleanTitle, "utf-8")
             val searchUrl = "https://v1.oppadrama.cc/?s=$encoded"
             val searchRes = app.get(
                 searchUrl,

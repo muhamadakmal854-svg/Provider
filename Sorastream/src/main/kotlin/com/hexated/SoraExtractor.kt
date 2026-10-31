@@ -1197,3 +1197,9 @@ object SoraExtractor : SoraStream() {
             }
         } catch (_: Throwable) {}
     }
+}
+
+data class RiveStreamSource(
+    @JsonProperty("data")
+    val data: List<String>?
+)
