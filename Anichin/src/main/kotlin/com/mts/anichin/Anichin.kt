@@ -98,7 +98,7 @@ class Anichin(val context: Context) : MainAPI() {
         if (style.isNotBlank()) {
             val bgMatch = Regex("""url\(['"]?(.*?)['"]?\)""").find(style)
             if (bgMatch != null) {
-                val bgUrl = bgMatch.groupValues[1].trim()
+                val bgUrl = bgMatch.groupValues[1].replace("'", "").replace("\"", "").trim()
                 if (bgUrl.isNotBlank() && !bgUrl.startsWith("data:", true)) {
                     return toAbsoluteUrl(bgUrl)
                 }
@@ -122,6 +122,25 @@ class Anichin(val context: Context) : MainAPI() {
             }
         } catch (_: Exception) {}
         return DEFAULT_USER_AGENT
+    }
+
+    private fun getPosterHeaders(): Map<String, String> {
+        return try {
+            val cookie = getSavedCookie(getSafeContext())
+            val headers = mutableMapOf(
+                "User-Agent" to getActualUserAgent(),
+                "Referer" to "$mainUrl/"
+            )
+            if (cookie.isNotBlank()) {
+                headers["Cookie"] = cookie
+            }
+            headers
+        } catch (_: Throwable) {
+            mapOf(
+                "User-Agent" to USER_AGENT,
+                "Referer" to "$mainUrl/"
+            )
+        }
     }
 
     private fun getActivity(ctx: Context?): Activity? {
@@ -795,6 +814,7 @@ class Anichin(val context: Context) : MainAPI() {
 
             newAnimeSearchResponse(cleanTitle, href, type) {
                 this.posterUrl = poster
+                this.posterHeaders = getPosterHeaders()
                 if (epNum != null) {
                     addDubStatus(false, epNum)
                 }
@@ -1023,6 +1043,7 @@ class Anichin(val context: Context) : MainAPI() {
             newMovieLoadResponse(title, fullUrl, TvType.AnimeMovie, fullUrl) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = backdrop.ifBlank { poster }
+                this.posterHeaders = getPosterHeaders()
                 this.plot = plot
                 this.tags = tags
                 this.year = year
@@ -1040,6 +1061,7 @@ class Anichin(val context: Context) : MainAPI() {
             newTvSeriesLoadResponse(title, fullUrl, TvType.Anime, sortedEpisodes) {
                 this.posterUrl = poster
                 this.backgroundPosterUrl = backdrop.ifBlank { poster }
+                this.posterHeaders = getPosterHeaders()
                 this.plot = plot
                 this.tags = tags
                 this.year = year
