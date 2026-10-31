@@ -1177,11 +1177,7 @@ object SoraExtractor : SoraStream() {
                         "Origin" to "https://vid.oppadrama.cc",
                         "Content-Type" to "application/json"
                     ),
-                    data = mapOf(
-                        "filecode" to filecode,
-                        "device" to "web",
-                        "codecs" to listOf("h265", "av1")
-                    ),
+                    json = mapOf("filecode" to filecode, "device" to "web"),
                     timeout = 8
                 ).text
 
