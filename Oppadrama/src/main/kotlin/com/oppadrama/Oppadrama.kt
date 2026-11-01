@@ -334,7 +334,20 @@ val episodes = episodeElements
             }
         }
 
-        return true
+        if (!foundAny) {
+            val titleText = document.selectFirst("h1.entry-title, h1")?.text()?.trim().orEmpty()
+            val cleanTitle = titleText
+                .replace(Regex("(?i)[:\\-–—]\\s*(?:the\\s+)?series.*"), "")
+                .replace(Regex("\\(\\d{4}\\)"), "")
+                .replace(Regex("(?i)Episode\\s*\\d+.*"), "")
+                .trim()
+            if (cleanTitle.isNotBlank()) {
+                val fallbackFound = invokeAlasRobanFallback(cleanTitle, data, subtitleCallback, callback)
+                if (fallbackFound) foundAny = true
+            }
+        }
+
+        return foundAny || true
     }
 
 
@@ -359,4 +372,153 @@ val episodes = episodeElements
     }
 
     private val searchResultSelector = "div.listupd article.bs, article.bs, div.bsx > a[href], div.bsx a[href]"
+
+    private suspend fun invokeAlasRobanFallback(
+        cleanTitle: String,
+        currentUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        var found = false
+        val slug = currentUrl.trim().removeSuffix("/").substringAfterLast("/")
+        val baseSlug = slug.replace("-the-series", "").replace("-series", "").replace(Regex("-episode-\\d+"), "")
+        val movieUrls = listOf(
+            "$mainUrl/movie-$baseSlug-webdl/",
+            "$mainUrl/movie-$baseSlug-2026-webdl/",
+            "$mainUrl/movie-$baseSlug/"
+        )
+        for (mUrl in movieUrls) {
+            try {
+                val mDoc = app.get(mUrl, referer = "$mainUrl/", headers = requestHeaders, timeout = 6).document
+                for (opt in mDoc.select("select.mirror option[value]:not([disabled])")) {
+                    val base64 = opt.attr("value").trim()
+                    if (base64.isBlank()) continue
+                    val decoded = base64Decode(base64.replace("\\s".toRegex(), ""))
+                    val iframeSrc = Jsoup.parse(decoded).selectFirst("iframe")?.attr("src")?.takeIf { it.isNotBlank() }
+                        ?: Jsoup.parse(decoded).selectFirst("iframe")?.attr("data-src")
+                    if (!iframeSrc.isNullOrBlank()) {
+                        val fixedUrl = httpsify(iframeSrc)
+                        if (fixedUrl.contains("morencius.com") || fixedUrl.contains("minochinos.com")) {
+                            if (extractMorenciusStream(fixedUrl, callback)) {
+                                found = true
+                            }
+                        } else {
+                            loadExtractor(fixedUrl, mUrl, subtitleCallback, callback)
+                        }
+                    }
+                }
+                if (found) return true
+            } catch (_: Throwable) {}
+        }
+
+        try {
+            val encoded = java.net.URLEncoder.encode(cleanTitle, "utf-8")
+            val f21SearchUrl = "https://tv14.filem21.net/?s=$encoded"
+            val f21Doc = app.get(f21SearchUrl, headers = mapOf("User-Agent" to "Mozilla/5.0"), timeout = 6).document
+            val f21Link = f21Doc.selectFirst("article a, div.item a")?.attr("href")
+            if (!f21Link.isNullOrBlank() && f21Link.contains("filem21.net")) {
+                val f21Page = app.get(f21Link, headers = mapOf("User-Agent" to "Mozilla/5.0", "Referer" to "https://tv14.filem21.net/"), timeout = 6).document
+                val postId = f21Page.selectFirst(".muvipro_player_content, #muvipro_player_content_id, .gmr-server-wrap")?.attr("data-id")
+                if (!postId.isNullOrBlank()) {
+                    for (tab in listOf("p1", "p2", "p3", "p4")) {
+                        try {
+                            val ajaxRes = app.post(
+                                "https://tv14.filem21.net/wp-admin/admin-ajax.php",
+                                data = mapOf("action" to "muvipro_player_content", "tab" to tab, "post_id" to postId),
+                                headers = mapOf("User-Agent" to "Mozilla/5.0", "Referer" to f21Link, "X-Requested-With" to "XMLHttpRequest"),
+                                timeout = 6
+                            ).text
+                            val ajaxDoc = Jsoup.parse(ajaxRes)
+                            val iframe = ajaxDoc.selectFirst("iframe")?.attr("src")?.ifBlank { ajaxDoc.selectFirst("iframe")?.attr("data-src") }
+                            if (!iframe.isNullOrBlank()) {
+                                val fixedIframe = httpsify(iframe)
+                                if (fixedIframe.contains("morencius.com") || fixedIframe.contains("minochinos.com")) {
+                                    if (extractMorenciusStream(fixedIframe, callback)) {
+                                        found = true
+                                    }
+                                } else {
+                                    loadExtractor(fixedIframe, f21Link, subtitleCallback, callback)
+                                }
+                            }
+                        } catch (_: Throwable) {}
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+
+        return found
+    }
+
+    private suspend fun extractMorenciusStream(
+        url: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            val domain = if (url.contains("minochinos.com")) "minochinos.com" else "morencius.com"
+            val serverName = if (url.contains("minochinos.com")) "Minochinos" else "Morencius"
+            val resp = app.get(
+                url,
+                headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Referer" to "https://$domain/"
+                ),
+                timeout = 8
+            ).text
+
+            val unpacked = runCatching { getAndUnpack(resp) }.getOrDefault("")
+            val content = unpacked.ifBlank { resp }
+
+            val m3u8Regex = Regex("https?://[^'\"\\s<>]+\\.m3u8[^'\"\\s<>]*")
+            val m3u8Match = m3u8Regex.find(content)?.value
+            if (!m3u8Match.isNullOrBlank()) {
+                callback(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "${this.name} - $serverName (Auto HLS)",
+                        url = m3u8Match,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "https://$domain/"
+                    }
+                )
+
+                try {
+                    val manifestText = app.get(m3u8Match, headers = mapOf("Referer" to "https://$domain/"), timeout = 5).text
+                    val streamRegex = Regex("#EXT-X-STREAM-INF:[^\\n]*?(?:NAME=\"(\\d+)\"|RESOLUTION=(\\d+x\\d+))[^\\n]*\\n([^\\n]+)")
+                    val baseUrl = m3u8Match.substringBeforeLast("/")
+                    streamRegex.findAll(manifestText).forEach { m ->
+                        val nameQ = m.groupValues[1]
+                        val resQ = m.groupValues[2]
+                        val sUrl = m.groupValues[3].trim()
+                        val fullSubUrl = if (sUrl.startsWith("http")) sUrl else "$baseUrl/$sUrl"
+                        val qInt = when {
+                            nameQ == "1080" || resQ.contains("1080") -> Qualities.P1080.value
+                            nameQ == "720" || resQ.contains("720") -> Qualities.P720.value
+                            nameQ == "480" || resQ.contains("480") -> Qualities.P480.value
+                            nameQ == "360" || resQ.contains("360") -> Qualities.P360.value
+                            else -> Qualities.Unknown.value
+                        }
+                        val qLabel = if (nameQ.isNotBlank()) "${nameQ}p" else if (resQ.isNotBlank()) resQ else "HLS"
+                        callback(
+                            newExtractorLink(
+                                source = this.name,
+                                name = "${this.name} - $serverName $qLabel",
+                                url = fullSubUrl,
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = "https://$domain/"
+                                this.quality = qInt
+                            }
+                        )
+                    }
+                } catch (_: Throwable) {}
+                true
+            } else {
+                false
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
 }

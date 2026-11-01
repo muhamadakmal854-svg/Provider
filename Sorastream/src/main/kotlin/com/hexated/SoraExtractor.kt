@@ -120,7 +120,7 @@ object SoraExtractor : SoraStream() {
             headers = headers
         )
         val script = getAndUnpack(serverRes.text)
-        val key = """key\s*="\s*(\d+)"""".toRegex().find(script)?.groupValues?.get(1) ?: return
+        val key = Regex("""key\s*="?\s*(\d+)""").find(script)?.groupValues?.get(1) ?: return
         serverRes.document.select("ul li").amap { el ->
             val server = el.attr("data-value")
             val encryptedData = app.get(
@@ -1078,6 +1078,81 @@ object SoraExtractor : SoraStream() {
         }
     }
 
+private suspend fun extractMorenciusOrMinochinos(
+        url: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            val lower = url.lowercase()
+            if (!lower.contains("morencius.com") && !lower.contains("minochinos.com") && !lower.contains("streamwish.to") && !lower.contains("embedwish.com")) {
+                return false
+            }
+            val domain = if (lower.contains("minochinos.com")) "minochinos.com" else "morencius.com"
+            val serverName = if (lower.contains("minochinos.com")) "Minochinos" else "Morencius"
+            val resp = app.get(
+                url,
+                headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Referer" to "https://$domain/"
+                ),
+                timeout = 8
+            ).text
+
+            val unpacked = runCatching { getAndUnpack(resp) }.getOrDefault("")
+            val content = unpacked.ifBlank { resp }
+
+            val m3u8Match = Regex("""https?://[^'"\s<>]+\.m3u8[^'"\s<>]*""").find(content)?.value
+            if (!m3u8Match.isNullOrBlank()) {
+                callback(
+                    newExtractorLink(
+                        source = "SoraStream - Oppadrama",
+                        name = "${"SoraStream - Oppadrama"} - $serverName (Auto HLS)",
+                        url = m3u8Match,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = "https://$domain/"
+                    }
+                )
+
+                try {
+                    val manifestText = app.get(m3u8Match, headers = mapOf("Referer" to "https://$domain/"), timeout = 5).text
+                    val streamRegex = Regex("""#EXT-X-STREAM-INF:[^\n]*?(?:NAME="(\d+)"|RESOLUTION=(\d+x\d+))[^\n]*\n([^\n]+)""")
+                    val baseUrl = m3u8Match.substringBeforeLast("/")
+                    streamRegex.findAll(manifestText).forEach { m ->
+                        val nameQ = m.groupValues[1]
+                        val resQ = m.groupValues[2]
+                        val sUrl = m.groupValues[3].trim()
+                        val fullSubUrl = if (sUrl.startsWith("http")) sUrl else "$baseUrl/$sUrl"
+                        val qInt = when {
+                            nameQ == "1080" || resQ.contains("1080") -> Qualities.P1080.value
+                            nameQ == "720" || resQ.contains("720") -> Qualities.P720.value
+                            nameQ == "480" || resQ.contains("480") -> Qualities.P480.value
+                            nameQ == "360" || resQ.contains("360") -> Qualities.P360.value
+                            else -> Qualities.Unknown.value
+                        }
+                        val qLabel = if (nameQ.isNotBlank()) "${nameQ}p" else if (resQ.isNotBlank()) resQ else "HLS"
+                        callback(
+                            newExtractorLink(
+                                source = "SoraStream - Oppadrama",
+                                name = "${"SoraStream - Oppadrama"} - $serverName $qLabel",
+                                url = fullSubUrl,
+                                type = ExtractorLinkType.M3U8
+                            ) {
+                                this.referer = "https://$domain/"
+                                this.quality = qInt
+                            }
+                        )
+                    }
+                } catch (_: Throwable) {}
+                true
+            } else {
+                false
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     suspend fun invokeOppadrama(
         title: String,
         season: Int? = null,
@@ -1086,24 +1161,42 @@ object SoraExtractor : SoraStream() {
         callback: (ExtractorLink) -> Unit
     ) {
         try {
-            val cleanTitle = title
-                .replace(Regex("(?i)[:\\-–—]\\s*(?:the\\s+)?series.*"), "")
-                .replace(Regex("\\(\\d{4}\\)"), "")
+            val searchTitle = title.trim()
+            val isMovie = season == null
+
+            if (searchTitle.isNullOrBlank()) return
+
+            val cleanTitle = searchTitle
+                .replace(Regex("""(?i)[:\-–—]\s*(?:the\s+)?series.*"""), "")
+                .replace(Regex("""\(\d{4}\)"""), "")
                 .trim()
+
             if (cleanTitle.isBlank()) return
 
-            val encoded = java.net.URLEncoder.encode(cleanTitle, "utf-8")
+            var streamFound = false
+
+            val encoded = URLEncoder.encode(cleanTitle, "utf-8")
             val searchUrl = "https://v1.oppadrama.cc/?s=$encoded"
-            val res = app.get(searchUrl, headers = mapOf("User-Agent" to "Mozilla/5.0"), timeout = 6)
-            val doc = res.document
-            val cards = doc.select("article.bs a, div.bsx a, div.listupd a")
+            val searchRes = try {
+                app.get(
+                    searchUrl,
+                    headers = mapOf(
+                        "User-Agent" to USER_AGENT,
+                        "Referer" to "https://v1.oppadrama.cc/"
+                    ),
+                    timeout = 6
+                )
+            } catch (_: Throwable) { null }
+
+            val doc = searchRes?.document
+            val cards = doc?.select("article.bs a, div.bsx a, div.listupd a") ?: org.jsoup.select.Elements()
 
             var matchedUrl: String? = null
             for (card in cards) {
                 val href = card.attr("href")
                 if (href.isBlank() || href == "#") continue
-                val cardTitle = card.attr("title").ifBlank { card.text() }
-                if (season != null && (href.contains("series", true) || cardTitle.contains("series", true))) {
+                val cardTitle = (card.attr("title").ifBlank { card.text() }).trim()
+                if (!isMovie && (href.contains("series", true) || cardTitle.contains("series", true))) {
                     matchedUrl = href
                     break
                 } else if (matchedUrl == null) {
@@ -1111,88 +1204,198 @@ object SoraExtractor : SoraStream() {
                 }
             }
 
-            if (matchedUrl.isNullOrBlank()) return
-
             var epPageUrl: String? = null
-            if (episode != null) {
-                val slug = matchedUrl.trim().removeSuffix("/").substringAfterLast("/")
-                val directEp = "https://v1.oppadrama.cc/$slug-episode-$episode/"
-                val directRes = try {
-                    app.get(directEp, headers = mapOf("User-Agent" to "Mozilla/5.0"), timeout = 5)
-                } catch (_: Throwable) { null }
+            if (matchedUrl != null) {
+                if (!isMovie && episode != null) {
+                    val slug = matchedUrl.trim().removeSuffix("/").substringAfterLast("/")
+                    val directEp = "https://v1.oppadrama.cc/$slug-episode-$episode/"
+                    val directRes = try {
+                        app.get(directEp, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "https://v1.oppadrama.cc/"), timeout = 5)
+                    } catch (_: Throwable) { null }
 
-                if (directRes != null && directRes.code == 200 && directRes.text.contains("player-embed")) {
-                    epPageUrl = directEp
-                } else {
-                    val seriesDoc = app.get(matchedUrl, headers = mapOf("User-Agent" to "Mozilla/5.0"), timeout = 6).document
-                    for (a in seriesDoc.select("div.eplister ul li a")) {
-                        val h = a.attr("href")
-                        val t = a.text()
-                        if (h.contains("-episode-$episode/", true) || t.contains("episode $episode", true)) {
-                            epPageUrl = h
-                            break
-                        }
-                    }
-                }
-            } else {
-                epPageUrl = matchedUrl
-            }
-
-            if (epPageUrl.isNullOrBlank()) return
-
-            val epDoc = app.get(epPageUrl, headers = mapOf("User-Agent" to "Mozilla/5.0"), timeout = 6).document
-            val iframe = epDoc.selectFirst("div.player-embed iframe")
-            var iframeSrc = iframe?.attr("src")?.takeIf { it.isNotBlank() } ?: iframe?.attr("data-src")
-
-            if (iframeSrc.isNullOrBlank()) {
-                for (opt in epDoc.select("select.mirror option[value]:not([disabled])")) {
-                    val b64 = opt.attr("value").trim()
-                    if (b64.isNotBlank()) {
-                        try {
-                            val decoded = base64Decode(b64.replace("\\s".toRegex(), ""))
-                            val m = Regex("src=\"([^\"]+)\"").find(decoded)?.groupValues?.get(1)
-                            if (!m.isNullOrBlank()) {
-                                iframeSrc = m
+                    if (directRes != null && directRes.code == 200 && directRes.text.contains("player-embed")) {
+                        epPageUrl = directEp
+                    } else {
+                        val seriesDoc = try {
+                            app.get(matchedUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "https://v1.oppadrama.cc/"), timeout = 6).document
+                        } catch (_: Throwable) { null }
+                        val epLinks = seriesDoc?.select("div.eplister ul li a") ?: org.jsoup.select.Elements()
+                        for (a in epLinks) {
+                            val h = a.attr("href")
+                            val t = a.text()
+                            if (h.contains("-episode-$episode/", true) || t.contains("episode $episode", true) || t.contains("episode-$episode", true)) {
+                                epPageUrl = h
                                 break
                             }
-                        } catch (_: Throwable) {}
+                        }
+                    }
+                } else {
+                    epPageUrl = matchedUrl
+                }
+            }
+
+            if (!epPageUrl.isNullOrBlank()) {
+                val epDoc = try {
+                    app.get(epPageUrl, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "https://v1.oppadrama.cc/"), timeout = 6).document
+                } catch (_: Throwable) { null }
+
+                val iframe = epDoc?.selectFirst("div.player-embed iframe")
+                var iframeSrc = iframe?.attr("src")?.takeIf { it.isNotBlank() } ?: iframe?.attr("data-src")
+
+                if (iframeSrc.isNullOrBlank() && epDoc != null) {
+                    val mirrorOptions = epDoc.select("select.mirror option[value]:not([disabled])")
+                    for (opt in mirrorOptions) {
+                        val b64 = opt.attr("value").trim()
+                        if (b64.isNotBlank()) {
+                            try {
+                                val decoded = base64Decode(b64.replace("\\s".toRegex(), ""))
+                                val m = Regex("""src=["']([^"']+)["']""").find(decoded)?.groupValues?.get(1)
+                                if (!m.isNullOrBlank()) {
+                                    iframeSrc = m
+                                    break
+                                }
+                            } catch (_: Throwable) {}
+                        }
+                    }
+                }
+
+                if (!iframeSrc.isNullOrBlank()) {
+                    if (iframeSrc.contains("vid.oppadrama.cc") || iframeSrc.contains("g8w90qhngo.com")) {
+                        val filecode = when {
+                            iframeSrc.contains("/e/") -> iframeSrc.substringAfter("/e/").substringBefore("?").substringBefore("/")
+                            iframeSrc.contains("filecode=") -> iframeSrc.substringAfter("filecode=").substringBefore("&")
+                            else -> null
+                        }
+
+                        if (filecode != null) {
+                            val apiRes = try {
+                                app.post(
+                                    "https://vid.oppadrama.cc/api/stream",
+                                    headers = mapOf(
+                                        "User-Agent" to USER_AGENT,
+                                        "Referer" to iframeSrc,
+                                        "Origin" to "https://vid.oppadrama.cc",
+                                        "Content-Type" to "application/json"
+                                    ),
+                                    json = mapOf("filecode" to filecode, "device" to "web"),
+                                    timeout = 8
+                                ).text
+                            } catch (_: Throwable) { null }
+
+                            val streamUrl = apiRes?.let { Regex("""["']streaming_url["']\s*:\s*["']([^"']+)["']""").find(it)?.groupValues?.get(1)?.replace(Regex("""\\/"""), "/") }
+                            if (!streamUrl.isNullOrBlank()) {
+                                streamFound = true
+                                callback(
+                                    newExtractorLink(
+                                        source = "SoraStream - Oppadrama",
+                                        name = "${"SoraStream - Oppadrama"} - Asian Drama (Auto HLS)",
+                                        url = streamUrl,
+                                        type = ExtractorLinkType.M3U8
+                                    ) {
+                                        this.referer = "https://vid.oppadrama.cc/"
+                                    }
+                                )
+
+                                try {
+                                    val manifestText = app.get(streamUrl, headers = mapOf("Referer" to "https://vid.oppadrama.cc/"), timeout = 5).text
+                                    val streamRegex = Regex("""#EXT-X-STREAM-INF:[^\n]*?(?:NAME="(\d+)"|RESOLUTION=(\d+x\d+))[^\n]*\n([^\n]+)""")
+                                    val baseUrl = streamUrl.substringBeforeLast("/")
+                                    streamRegex.findAll(manifestText).forEach { m ->
+                                        val nameQ = m.groupValues[1]
+                                        val resQ = m.groupValues[2]
+                                        val sUrl = m.groupValues[3].trim()
+                                        val fullSubUrl = if (sUrl.startsWith("http")) sUrl else "$baseUrl/$sUrl"
+                                        val qInt = when {
+                                            nameQ == "1080" || resQ.contains("1080") -> Qualities.P1080.value
+                                            nameQ == "720" || resQ.contains("720") -> Qualities.P720.value
+                                            nameQ == "480" || resQ.contains("480") -> Qualities.P480.value
+                                            nameQ == "360" || resQ.contains("360") -> Qualities.P360.value
+                                            else -> Qualities.Unknown.value
+                                        }
+                                        val qLabel = if (nameQ.isNotBlank()) "${nameQ}p" else if (resQ.isNotBlank()) resQ else "HLS"
+                                        callback(
+                                            newExtractorLink(
+                                                source = "SoraStream - Oppadrama",
+                                                name = "${"SoraStream - Oppadrama"} - Asian Drama $qLabel",
+                                                url = fullSubUrl,
+                                                type = ExtractorLinkType.M3U8
+                                            ) {
+                                                this.referer = "https://vid.oppadrama.cc/"
+                                                this.quality = qInt
+                                            }
+                                        )
+                                    }
+                                } catch (_: Throwable) {}
+                            }
+                        }
+                    } else if (iframeSrc.contains("morencius.com") || iframeSrc.contains("minochinos.com")) {
+                        if (extractMorenciusOrMinochinos(iframeSrc, callback)) {
+                            streamFound = true
+                        }
+                    } else {
+                        loadExtractor(iframeSrc, epPageUrl, subtitleCallback, callback)
                     }
                 }
             }
 
-            if (iframeSrc.isNullOrBlank()) return
+            // Jika Vidara 404 atau tiada pautan pada Oppadrama series, cuba fallback ke Movie / Film21 (cth: Alas Roban)
+            if (!streamFound) {
+                val slugCandidate = matchedUrl?.trim()?.removeSuffix("/")?.substringAfterLast("/")
+                    ?: cleanTitle.lowercase().replace(Regex("""[^a-z0-9]+"""), "-").trim('-')
+                val baseSlug = slugCandidate.replace("-the-series", "").replace("-series", "")
 
-            if (iframeSrc.contains("vid.oppadrama.cc") || iframeSrc.contains("g8w90qhngo.com")) {
-                val filecode = when {
-                    iframeSrc.contains("/e/") -> iframeSrc.substringAfter("/e/").substringBefore("?").substringBefore("/")
-                    iframeSrc.contains("filecode=") -> iframeSrc.substringAfter("filecode=").substringBefore("&")
-                    else -> null
-                } ?: return
-
-                val apiRes = app.post(
-                    "https://vid.oppadrama.cc/api/stream",
-                    headers = mapOf(
-                        "User-Agent" to "Mozilla/5.0",
-                        "Referer" to iframeSrc,
-                        "Origin" to "https://vid.oppadrama.cc",
-                        "Content-Type" to "application/json"
-                    ),
-                    json = mapOf("filecode" to filecode, "device" to "web"),
-                    timeout = 8
-                ).text
-
-                val streamUrl = Regex("\"streaming_url\"\\s*:\\s*\"([^\"]+)\"").find(apiRes)?.groupValues?.get(1)?.replace(Regex("\\\\/"), "/")
-                if (!streamUrl.isNullOrBlank()) {
-                    callback(
-                        newExtractorLink(
-                            source = "SoraStream - Oppadrama",
-                            name = "SoraStream - Oppadrama Vidara HLS",
-                            url = streamUrl,
-                            type = ExtractorLinkType.M3U8
-                        ) {
-                            this.referer = "https://vid.oppadrama.cc/"
+                val moviePages = listOf(
+                    "https://v1.oppadrama.cc/movie-$baseSlug-webdl/",
+                    "https://v1.oppadrama.cc/movie-$baseSlug-2026-webdl/",
+                    "https://v1.oppadrama.cc/movie-$baseSlug/"
+                )
+                for (mp in moviePages) {
+                    try {
+                        val mDoc = app.get(mp, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "https://v1.oppadrama.cc/"), timeout = 5).document
+                        for (opt in mDoc.select("select.mirror option[value]:not([disabled])")) {
+                            val b64 = opt.attr("value").trim()
+                            if (b64.isNotBlank()) {
+                                val decoded = base64Decode(b64.replace("\\s".toRegex(), ""))
+                                val mUrl = Regex("""src=["']([^"']+)["']""").find(decoded)?.groupValues?.get(1)
+                                if (!mUrl.isNullOrBlank() && extractMorenciusOrMinochinos(mUrl, callback)) {
+                                    streamFound = true
+                                    break
+                                }
+                            }
                         }
-                    )
+                        if (streamFound) break
+                    } catch (_: Throwable) {}
+                }
+
+                // Fallback kedua: Film21 (Minochinos 720p HLS H.264 AVC)
+                if (!streamFound) {
+                    try {
+                        val f21Search = "https://tv14.filem21.net/?s=" + URLEncoder.encode(cleanTitle, "utf-8")
+                        val f21Res = app.get(f21Search, headers = mapOf("User-Agent" to USER_AGENT), timeout = 6).document
+                        val f21Link = f21Res.selectFirst("article a, div.item a")?.attr("href")
+                        if (!f21Link.isNullOrBlank() && f21Link.contains("filem21.net")) {
+                            val f21Page = app.get(f21Link, headers = mapOf("User-Agent" to USER_AGENT, "Referer" to "https://tv14.filem21.net/"), timeout = 6).document
+                            val postId = f21Page.selectFirst(".muvipro_player_content, #muvipro_player_content_id, .gmr-server-wrap")?.attr("data-id")
+                            if (!postId.isNullOrBlank()) {
+                                for (tab in listOf("p1", "p2", "p3", "p4")) {
+                                    try {
+                                        val ajaxRes = app.post(
+                                            "https://tv14.filem21.net/wp-admin/admin-ajax.php",
+                                            data = mapOf("action" to "muvipro_player_content", "tab" to tab, "post_id" to postId),
+                                            headers = mapOf("User-Agent" to USER_AGENT, "Referer" to f21Link, "X-Requested-With" to "XMLHttpRequest"),
+                                            timeout = 6
+                                        ).text
+                                        val ajaxDoc = org.jsoup.Jsoup.parse(ajaxRes)
+                                        val ajaxIframe = ajaxDoc.selectFirst("iframe")?.attr("src")?.ifBlank { ajaxDoc.selectFirst("iframe")?.attr("data-src") }
+                                        if (!ajaxIframe.isNullOrBlank() && extractMorenciusOrMinochinos(ajaxIframe, callback)) {
+                                            streamFound = true
+                                            break
+                                        }
+                                    } catch (_: Throwable) {}
+                                }
+                            }
+                        }
+                    } catch (_: Throwable) {}
                 }
             }
         } catch (_: Throwable) {}
