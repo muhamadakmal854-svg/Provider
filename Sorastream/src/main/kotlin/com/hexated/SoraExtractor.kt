@@ -14,6 +14,7 @@ import com.lagradost.nicehttp.Requests
 import com.lagradost.nicehttp.Session
 import org.json.JSONObject
 import java.net.URLDecoder
+import java.net.URLEncoder
 import com.fasterxml.jackson.annotation.JsonProperty
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
