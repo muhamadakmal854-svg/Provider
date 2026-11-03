@@ -125,22 +125,20 @@ class Anichin(val context: Context) : MainAPI() {
     }
 
     private fun getPosterHeaders(): Map<String, String> {
-        return try {
+        val headers = mutableMapOf(
+            "User-Agent" to USER_AGENT,
+            "Referer" to "$mainUrl/",
+            "Accept" to "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+        )
+        try {
+            val ua = getActualUserAgent()
+            if (ua.isNotBlank()) headers["User-Agent"] = ua
             val cookie = getSavedCookie(getSafeContext())
-            val headers = mutableMapOf(
-                "User-Agent" to getActualUserAgent(),
-                "Referer" to "$mainUrl/"
-            )
             if (cookie.isNotBlank()) {
                 headers["Cookie"] = cookie
             }
-            headers
-        } catch (_: Throwable) {
-            mapOf(
-                "User-Agent" to USER_AGENT,
-                "Referer" to "$mainUrl/"
-            )
-        }
+        } catch (_: Throwable) {}
+        return headers
     }
 
     private fun getActivity(ctx: Context?): Activity? {
