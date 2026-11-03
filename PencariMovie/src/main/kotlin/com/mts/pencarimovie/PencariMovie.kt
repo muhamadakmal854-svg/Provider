@@ -235,21 +235,21 @@ class PencariMovie : MainAPI() {
             if (isMovie) {
                 val f = filesData.firstOrNull()
                 val passData = if (f != null && !f.shortCode.isNullOrBlank()) {
-                    toJson(PmMediaPass(
+                    PmMediaPass(
                         shortCode = f.shortCode,
                         title = f.title ?: title,
                         fileSize = f.fileSize,
                         playUrl = f.playUrl,
                         ddlUrl = f.ddlUrl
-                    ))
+                    ).toJson()
                 } else {
-                    toJson(PmMediaPass(
+                    PmMediaPass(
                         shortCode = "",
                         title = title,
                         fileSize = null,
                         playUrl = originalUrl,
                         ddlUrl = null
-                    ))
+                    ).toJson()
                 }
 
                 return newMovieLoadResponse(title, url, TvType.Movie, passData) {
@@ -263,13 +263,13 @@ class PencariMovie : MainAPI() {
                     val epTitle = file.title?.ifBlank { "Episod ${idx + 1}" } ?: "Episod ${idx + 1}"
                     val epNum = file.episodeNum ?: (idx + 1)
                     val sNum = file.seasonNum ?: 1
-                    val epData = toJson(PmMediaPass(
+                    val epData = PmMediaPass(
                         shortCode = sc,
                         title = epTitle,
                         fileSize = file.fileSize,
                         playUrl = file.playUrl,
                         ddlUrl = file.ddlUrl
-                    ))
+                    ).toJson()
 
                     newEpisode(epData) {
                         this.name = epTitle
@@ -290,11 +290,11 @@ class PencariMovie : MainAPI() {
         // Fallback untuk URL terus link / short_code
         val shortCodeMatch = Regex("""/link/([a-zA-Z0-9]+)""").find(url)?.groupValues?.getOrNull(1)
         if (!shortCodeMatch.isNullOrBlank()) {
-            val passData = toJson(PmMediaPass(
+            val passData = PmMediaPass(
                 shortCode = shortCodeMatch,
                 title = "Video Play",
                 playUrl = url
-            ))
+            ).toJson()
 
             return newMovieLoadResponse("Video Play", url, TvType.Movie, passData)
         }
@@ -323,28 +323,30 @@ class PencariMovie : MainAPI() {
             // Pelayan 1: Local Resolver PencariMovie (Port 8088 / telegra.my local daemon)
             val localUrl = "http://127.0.0.1:8088/api/download?short_code=$shortCode&file_size=${fileSize ?: ""}&name=$encodedName"
             callback(
-                ExtractorLink(
+                newExtractorLink(
                     source = name,
                     name = "PencariMovie Server (Port 8088)",
                     url = localUrl,
-                    referer = "$mainUrl/",
-                    quality = Qualities.P1080.value,
-                    isM3u8 = false
-                )
+                    type = ExtractorLinkType.VIDEO
+                ) {
+                    this.referer = "$mainUrl/"
+                    this.quality = Qualities.P1080.value
+                }
             )
             linkFound = true
 
             // Pelayan 2: Fallback Web Gateway Direct DDL (telegra.my)
             val fallbackUrl = "https://telegra.my/api/download?short_code=$shortCode"
             callback(
-                ExtractorLink(
+                newExtractorLink(
                     source = name,
                     name = "PencariMovie Web Fast Gateway",
                     url = fallbackUrl,
-                    referer = "$mainUrl/",
-                    quality = Qualities.P720.value,
-                    isM3u8 = false
-                )
+                    type = ExtractorLinkType.VIDEO
+                ) {
+                    this.referer = "$mainUrl/"
+                    this.quality = Qualities.P720.value
+                }
             )
 
             // Pelayan 3: Halaman pautan /link/{shortCode} scraping untuk pelayan video alternatif
@@ -358,14 +360,14 @@ class PencariMovie : MainAPI() {
                     if (href.isNotBlank() && !href.contains("127.0.0.1") && !href.contains("localhost") && !href.startsWith("tg:")) {
                         val fixed = fixUrl(href)
                         callback(
-                            ExtractorLink(
+                            newExtractorLink(
                                 source = "$name Direct",
                                 name = "PencariMovie Direct Stream",
                                 url = fixed,
-                                referer = "$mainUrl/",
-                                quality = Qualities.Unknown.value,
-                                isM3u8 = fixed.contains(".m3u8")
-                            )
+                                type = if (fixed.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                            ) {
+                                this.referer = "$mainUrl/"
+                            }
                         )
                         linkFound = true
                     }
