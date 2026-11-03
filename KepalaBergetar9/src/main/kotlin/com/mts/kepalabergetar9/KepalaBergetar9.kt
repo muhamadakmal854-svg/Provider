@@ -51,13 +51,8 @@ class KepalaBergetar9 : MainAPI() {
             ?: img?.attr("src")?.ifBlank { null }
             ?: img?.attr("data-lazy-src")?.ifBlank { null }
 
-        val epNum = Regex("""(?i)(?:Episod|Episode)\s*(\d+)""").find(rawTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
-
         return newTvSeriesSearchResponse(clean, href, TvType.TvSeries) {
             this.posterUrl = poster?.let { fixUrl(it) }
-            if (epNum != null) {
-                addEpisode(0, epNum)
-            }
         }
     }
 
@@ -189,26 +184,15 @@ class KepalaBergetar9 : MainAPI() {
         var foundAny = false
         for (server in serverUrls) {
             try {
-                when {
-                    server.contains("vkspeed.com", ignoreCase = true) -> {
-                        VkspeedExtractor().getUrl(server, fullUrl, subtitleCallback) { link ->
-                            foundAny = true
-                            callback.invoke(link)
-                        }
-                    }
-                    server.contains("douvideo.me.uk", ignoreCase = true) -> {
-                        DouvideoExtractor().getUrl(server, fullUrl, subtitleCallback) { link ->
-                            foundAny = true
-                            callback.invoke(link)
-                        }
-                    }
-                    else -> {
-                        val loaded = loadExtractor(server, fullUrl, subtitleCallback) { link ->
-                            foundAny = true
-                            callback.invoke(link)
-                        }
-                        if (loaded) foundAny = true
-                    }
+                if (server.contains("vkspeed.com", ignoreCase = true)) {
+                    VkspeedExtractor().getUrl(server, fullUrl, subtitleCallback, callback)
+                    foundAny = true
+                } else if (server.contains("douvideo.me.uk", ignoreCase = true)) {
+                    DouvideoExtractor().getUrl(server, fullUrl, subtitleCallback, callback)
+                    foundAny = true
+                } else {
+                    val loaded = loadExtractor(server, fullUrl, subtitleCallback, callback)
+                    if (loaded) foundAny = true
                 }
             } catch (_: Throwable) {}
         }

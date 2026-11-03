@@ -2,6 +2,7 @@ package com.mts.kepalabergetar9
 
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.USER_AGENT
+import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
 
@@ -56,13 +57,13 @@ class VkspeedExtractor : ExtractorApi() {
         if (!directMp4.isNullOrBlank()) {
             callback.invoke(
                 newExtractorLink(
-                    name,
-                    name,
-                    directMp4,
-                    cleanUrl,
-                    Qualities.P720.value,
-                    false
-                )
+                    source = name,
+                    name = name,
+                    url = directMp4,
+                    type = ExtractorLinkType.VIDEO
+                ) {
+                    this.referer = cleanUrl
+                }
             )
             return
         }
@@ -88,13 +89,13 @@ class VkspeedExtractor : ExtractorApi() {
                 if (!unpackedMp4.isNullOrBlank()) {
                     callback.invoke(
                         newExtractorLink(
-                            name,
-                            name,
-                            unpackedMp4,
-                            cleanUrl,
-                            Qualities.P720.value,
-                            false
-                        )
+                            source = name,
+                            name = name,
+                            url = unpackedMp4,
+                            type = ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = cleanUrl
+                        }
                     )
                     return
                 }
@@ -117,13 +118,13 @@ class VkspeedExtractor : ExtractorApi() {
                 } else {
                     callback.invoke(
                         newExtractorLink(
-                            name,
-                            name,
-                            vSrc,
-                            cleanUrl,
-                            Qualities.P720.value,
-                            false
-                        )
+                            source = name,
+                            name = name,
+                            url = vSrc,
+                            type = ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = cleanUrl
+                        }
                     )
                 }
             }
@@ -146,6 +147,7 @@ class DouvideoExtractor : ExtractorApi() {
         if (!id.isNullOrBlank()) {
             val vkspeedUrl = "https://vkspeed.com/embed-$id.html"
             VkspeedExtractor().getUrl(vkspeedUrl, url, subtitleCallback, callback)
+            return
         }
 
         val ref = referer ?: "https://kepalabergetar9.net/"
