@@ -64,7 +64,7 @@ class Anichin(val context: Context) : MainAPI() {
     }
 
     private fun toAbsoluteUrl(url: String): String {
-        val clean = url.trim()
+        val clean = url.trim().replace(" ", "%20")
         if (clean.isBlank()) return ""
         return when {
             clean.startsWith("http://", ignoreCase = true) || clean.startsWith("https://", ignoreCase = true) -> clean
@@ -1016,6 +1016,7 @@ class Anichin(val context: Context) : MainAPI() {
                 this.name = if (epNum != null) "Episode $epNum" else "Episode"
                 this.episode = epNum
                 this.posterUrl = epImg.ifBlank { backdrop.ifBlank { poster.ifBlank { null } } }
+                this.posterHeaders = getPosterHeaders()
                 if (parsedDate != null) {
                     this.date = parsedDate
                 }

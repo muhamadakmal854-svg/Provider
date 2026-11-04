@@ -1,11 +1,18 @@
 package com.mts.pencarimovie
 
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
+import androidx.preference.PreferenceManager
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import java.net.HttpURLConnection
+import java.net.URL
 import java.net.URLEncoder
 
 data class PmPost(
@@ -61,7 +68,7 @@ data class PmMediaPass(
     val ddlUrl: String? = null
 )
 
-class PencariMovie : MainAPI() {
+class PencariMovie(val context: Context) : MainAPI() {
     override var mainUrl = "https://flixtorbot.pencarimovie.com"
     override var name = "PencariMovie"
     override val hasMainPage = true
@@ -71,6 +78,7 @@ class PencariMovie : MainAPI() {
 
     companion object {
         const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        private var lastToastTime = 0L
     }
 
     private fun getAjaxHeaders(): Map<String, String> {
@@ -82,122 +90,109 @@ class PencariMovie : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "action=stream_posts&limit=20" to "🔥 Terkini & Hangat",
-        "action=stream_posts&category=malay&limit=20" to "🇲🇾 Filem & Drama Melayu",
-        "action=stream_posts&category=indonesian&limit=20" to "🇮🇩 Filem & Drama Indonesia",
-        "action=stream_posts&category=korean&limit=20" to "🇰🇷 K-Drama & Korea",
-        "action=stream_posts&category=action&limit=20" to "💥 Aksi (Action)",
-        "action=stream_posts&category=animation&limit=20" to "🎨 Animasi & Kartun",
-        "action=stream_posts&category=comedy&limit=20" to "😂 Komedi (Comedy)",
-        "action=stream_posts&category=horror&limit=20" to "👻 Seram (Horror)",
-        "action=stream_posts&category=sci-fi&limit=20" to "🚀 Sains Fiksyen (Sci-Fi)",
-        "action=stream_posts&category=drama&limit=20" to "🎭 Drama & Romantik"
+        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&page=1&per_page=15" to "Terkini",
+        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&category=movie&page=1&per_page=15" to "Filem",
+        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&category=series&page=1&per_page=15" to "Siri TV",
+        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&category=drama-melayu&page=1&per_page=15" to "Drama Melayu",
+        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&category=k-drama&page=1&per_page=15" to "K-Drama",
+        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&category=anime&page=1&per_page=15" to "Anime"
     )
 
-    private fun cleanTitle(raw: String): String {
-        return raw
-            .replace(Regex("""(?i)\s*[•·\-|]\s*(?:Movie|TvSeries|Series|Film)\b.*"""), "")
-            .replace(Regex("""\s+"""), " ")
+    private fun cleanTitle(title: String?): String {
+        if (title.isNullOrBlank()) return ""
+        return title
+            .replace(Regex("""\s*\[.*?\]"""), "")
+            .replace(Regex("""\s*\(.*?\)"""), "")
+            .replace("Download", "", ignoreCase = true)
+            .replace("Streaming", "", ignoreCase = true)
+            .replace("Nonton", "", ignoreCase = true)
+            .replace("Subtitle Indonesia", "", ignoreCase = true)
+            .replace("Malay Subtitle", "", ignoreCase = true)
+            .replace("Malay Sub", "", ignoreCase = true)
+            .replace("Eng Sub", "", ignoreCase = true)
             .trim()
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
-        val targetUrl = "$mainUrl/wp-admin/admin-ajax.php?${request.data}&page=$page"
-        val response = try {
-            app.get(targetUrl, headers = getAjaxHeaders(), timeout = 15).text
+        val url = if (page > 1) {
+            request.data.replace(Regex("""page=\d+"""), "page=$page")
+        } else {
+            request.data
+        }
+
+        val jsonText = try {
+            app.get(url, headers = getAjaxHeaders(), timeout = 15).text
         } catch (_: Exception) {
             return null
         }
 
-        val postList: List<PmPost> = tryParseJson<PmPostsResponse>(response)?.data
-            ?: tryParseJson<List<PmPost>>(response)
-            ?: emptyList()
+        val res = tryParseJson<PmPostsResponse>(jsonText)
+        val posts = res?.data ?: emptyList()
+        if (posts.isEmpty()) return null
 
-        if (postList.isEmpty()) return null
+        val items = posts.mapNotNull { post ->
+            val id = post.id ?: return@mapNotNull null
+            val rawTitle = post.title ?: return@mapNotNull null
+            val title = cleanTitle(rawTitle).ifBlank { rawTitle }
+            val poster = post.thumbnailUrl
+            val postUrl = "$mainUrl/?p=$id"
 
-        val searchResponses = postList.mapNotNull { post ->
-            val rawTitle = post.title?.trim() ?: return@mapNotNull null
-            val postId = post.id ?: return@mapNotNull null
-            val clean = cleanTitle(rawTitle).ifBlank { rawTitle }
-            val isMovie = rawTitle.contains("Movie", ignoreCase = true)
-            val link = post.permalink ?: "$mainUrl/?p=$postId"
-            val safeUrl = "$mainUrl/?pm_post_id=$postId&type=${if (isMovie) "movie" else "tv"}&url=${URLEncoder.encode(link, "UTF-8")}"
+            val isSeries = post.categories?.any {
+                it.contains("series", ignoreCase = true) ||
+                it.contains("drama", ignoreCase = true) ||
+                it.contains("anime", ignoreCase = true)
+            } == true
 
-            if (isMovie) {
-                newMovieSearchResponse(clean, safeUrl, TvType.Movie) {
-                    this.posterUrl = post.thumbnailUrl
-                }
-            } else {
-                newTvSeriesSearchResponse(clean, safeUrl, TvType.TvSeries) {
-                    this.posterUrl = post.thumbnailUrl
-                }
+            val type = if (isSeries) TvType.TvSeries else TvType.Movie
+
+            newAnimeSearchResponse(title, "$postUrl&pm_id=$id", type) {
+                this.posterUrl = poster
             }
         }
 
-        return newHomePageResponse(request.name, searchResponses)
+        return newHomePageResponse(request.name, items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val q = URLEncoder.encode(query.trim(), "UTF-8")
-        val results = mutableListOf<SearchResponse>()
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val searchUrl = "$mainUrl/wp-admin/admin-ajax.php?action=pm_search_posts&query=$encoded&per_page=20"
 
-        // 1. Carian pos katalog filem/drama
-        try {
-            val res = app.get("$mainUrl/wp-admin/admin-ajax.php?action=stream_search&search=$q&limit=30", headers = getAjaxHeaders(), timeout = 15).text
-            val posts = tryParseJson<PmPostsResponse>(res)?.data ?: tryParseJson<List<PmPost>>(res) ?: emptyList()
-            posts.forEach { post ->
-                val rawTitle = post.title?.trim() ?: return@forEach
-                val postId = post.id ?: return@forEach
-                val clean = cleanTitle(rawTitle).ifBlank { rawTitle }
-                val isMovie = rawTitle.contains("Movie", ignoreCase = true)
-                val link = post.permalink ?: "$mainUrl/?p=$postId"
-                val safeUrl = "$mainUrl/?pm_post_id=$postId&type=${if (isMovie) "movie" else "tv"}&url=${URLEncoder.encode(link, "UTF-8")}"
-
-                if (isMovie) {
-                    results.add(newMovieSearchResponse(clean, safeUrl, TvType.Movie) {
-                        this.posterUrl = post.thumbnailUrl
-                    })
-                } else {
-                    results.add(newTvSeriesSearchResponse(clean, safeUrl, TvType.TvSeries) {
-                        this.posterUrl = post.thumbnailUrl
-                    })
-                }
-            }
-        } catch (_: Exception) {}
-
-        // 2. Carian terus fail Telegram jika katalog kosong atau padanan fail khusus
-        if (results.isEmpty()) {
-            try {
-                val res = app.get("$mainUrl/wp-admin/admin-ajax.php?action=stream_search_files&search=$q&limit=30", headers = getAjaxHeaders(), timeout = 15).text
-                val files = tryParseJson<PmFilesResponse>(res)?.data?.files ?: emptyList()
-                files.forEach { file ->
-                    val sc = file.shortCode ?: return@forEach
-                    val title = file.title?.trim() ?: sc
-                    val isMovie = (file.seasonNum ?: 0) == 0 && (file.episodeNum ?: 0) == 0
-                    val fileUrl = "$mainUrl/link/$sc"
-
-                    if (isMovie) {
-                        results.add(newMovieSearchResponse(title, fileUrl, TvType.Movie) {
-                            this.posterUrl = file.thumbnailUrl
-                        })
-                    } else {
-                        results.add(newTvSeriesSearchResponse(title, fileUrl, TvType.TvSeries) {
-                            this.posterUrl = file.thumbnailUrl
-                        })
-                    }
-                }
-            } catch (_: Exception) {}
+        val jsonText = try {
+            app.get(searchUrl, headers = getAjaxHeaders(), timeout = 15).text
+        } catch (_: Exception) {
+            return emptyList()
         }
 
-        return results.distinctBy { it.url }
+        val res = tryParseJson<PmPostsResponse>(jsonText)
+        val posts = res?.data ?: emptyList()
+
+        return posts.mapNotNull { post ->
+            val id = post.id ?: return@mapNotNull null
+            val rawTitle = post.title ?: return@mapNotNull null
+            val title = cleanTitle(rawTitle).ifBlank { rawTitle }
+            val poster = post.thumbnailUrl
+            val postUrl = "$mainUrl/?p=$id"
+
+            val isSeries = post.categories?.any {
+                it.contains("series", ignoreCase = true) ||
+                it.contains("drama", ignoreCase = true) ||
+                it.contains("anime", ignoreCase = true)
+            } == true
+
+            val type = if (isSeries) TvType.TvSeries else TvType.Movie
+
+            newAnimeSearchResponse(title, "$postUrl&pm_id=$id", type) {
+                this.posterUrl = poster
+            }
+        }
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val postId = Regex("""pm_post_id=(\d+)""").find(url)?.groupValues?.getOrNull(1)
+        val postIdMatch = Regex("""[?&]pm_id=(\d+)""").find(url) ?: Regex("""[?&]p=(\d+)""").find(url)
+        val postId = postIdMatch?.groupValues?.getOrNull(1)
 
         if (!postId.isNullOrBlank()) {
-            // Mengambil maklumat fail media dan episod dari endpoint AJAX
-            val filesUrl = "$mainUrl/wp-admin/admin-ajax.php?action=stream_post_files&post_id=$postId&limit=60"
+            val filesUrl = "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_post_files&post_id=$postId"
             val filesText = try {
                 app.get(filesUrl, headers = getAjaxHeaders(), timeout = 20).text
             } catch (_: Exception) {
@@ -302,6 +297,22 @@ class PencariMovie : MainAPI() {
         return null
     }
 
+    private fun showServerGuideToast() {
+        val now = System.currentTimeMillis()
+        if (now - lastToastTime > 15000) {
+            lastToastTime = now
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    Toast.makeText(
+                        context,
+                        "PencariMovie: Pelayan port 8088 belum dikesan. Pasang companion APK di telegra.my/apk atau tetapkan IP di Tetapan Extension.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -320,13 +331,39 @@ class PencariMovie : MainAPI() {
         if (shortCode.isNotBlank()) {
             val encodedName = URLEncoder.encode(title, "UTF-8")
 
-            // Pelayan 1: Local Resolver PencariMovie (Port 8088 / telegra.my local daemon)
-            val localUrl = "http://127.0.0.1:8088/api/download?short_code=$shortCode&file_size=${fileSize ?: ""}&name=$encodedName"
+            // Ambil URL pelayan daripada SharedPreferences (Lalai: http://127.0.0.1:8088)
+            val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+            val configuredServer = prefs.getString(PREF_PM_SERVER_URL, DEFAULT_PM_SERVER_URL)
+                ?.trimEnd('/') ?: DEFAULT_PM_SERVER_URL
+            val tgCookies = prefs.getString(PREF_PM_TG_COOKIES, null).orEmpty()
+
+            // Semak status pelayan penstriman
+            var isServerActive = false
+            try {
+                val pingUrl = "$configuredServer/api/version"
+                val conn = URL(pingUrl).openConnection() as HttpURLConnection
+                conn.connectTimeout = 1500
+                conn.readTimeout = 1500
+                conn.requestMethod = "GET"
+                conn.connect()
+                if (conn.responseCode in 200..299) {
+                    isServerActive = true
+                }
+                conn.disconnect()
+            } catch (_: Exception) {}
+
+            if (!isServerActive) {
+                showServerGuideToast()
+            }
+
+            // Pelayan 1: Konfigurasi Pelayan PencariMovie (Local Daemon / LAN IP / Tunnel)
+            val serverStreamUrl = "$configuredServer/api/download?short_code=$shortCode&file_size=${fileSize ?: ""}&name=$encodedName"
+            val labelStatus = if (isServerActive) "PencariMovie Server (Aktif)" else "PencariMovie Server (Port 8088)"
             callback(
                 newExtractorLink(
                     source = name,
-                    name = "PencariMovie Server (Port 8088)",
-                    url = localUrl,
+                    name = labelStatus,
+                    url = serverStreamUrl,
                     type = ExtractorLinkType.VIDEO
                 ) {
                     this.referer = "$mainUrl/"
@@ -349,10 +386,18 @@ class PencariMovie : MainAPI() {
                 }
             )
 
-            // Pelayan 3: Halaman pautan /link/{shortCode} scraping untuk pelayan video alternatif
+            // Pelayan 3: Halaman pautan /link/{shortCode} scraping dengan kuki sesi Telegram
             try {
                 val linkPageUrl = "$mainUrl/link/$shortCode"
-                val doc = app.get(linkPageUrl, headers = mapOf("User-Agent" to USER_AGENT), timeout = 8).document
+                val headers = mutableMapOf(
+                    "User-Agent" to USER_AGENT,
+                    "Referer" to "$mainUrl/"
+                )
+                if (tgCookies.isNotBlank()) {
+                    headers["Cookie"] = tgCookies
+                }
+
+                val doc = app.get(linkPageUrl, headers = headers, timeout = 8).document
 
                 // Cari pautan muat turun atau video langsung
                 doc.select("a.download-btn, a[href*='api/download'], a[href*='download'], video source, video").forEach { el ->

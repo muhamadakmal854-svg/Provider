@@ -7,6 +7,9 @@ import android.content.Context
 @CloudstreamPlugin
 class PencariMoviePlugin: Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(PencariMovie())
+        registerMainAPI(PencariMovie(context))
+        openSettings = { ctx ->
+            PencariMovieSettingsDialog.open(ctx)
+        }
     }
 }
