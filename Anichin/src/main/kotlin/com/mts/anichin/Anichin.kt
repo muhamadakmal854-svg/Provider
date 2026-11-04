@@ -1016,7 +1016,6 @@ class Anichin(val context: Context) : MainAPI() {
                 this.name = if (epNum != null) "Episode $epNum" else "Episode"
                 this.episode = epNum
                 this.posterUrl = epImg.ifBlank { backdrop.ifBlank { poster.ifBlank { null } } }
-                this.posterHeaders = getPosterHeaders()
                 if (parsedDate != null) {
                     this.date = parsedDate
                 }
