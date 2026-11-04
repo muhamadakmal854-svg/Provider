@@ -130,9 +130,52 @@ class PencariMovieSettingsDialog : DialogFragment() {
             }
             serverCategory.addPreference(testServerPref)
 
+            val startCompanionPref = Preference(ctx).apply {
+                val isInstalled = try {
+                    ctx.packageManager.getPackageInfo("com.pencarimovie.server", 0) != null
+                } catch (_: Exception) { false }
+
+                title = if (isInstalled) "Mulakan PencariMovie Server (Port 8088)" else "Pasang PencariMovie Server (telegra.my/apk)"
+                summary = if (isInstalled) "Servis latar belakang dikesan di peranti ini. Klik untuk mulakan pelayan." else "Aplikasi pelayan belum dipasang. Klik untuk muat turun dan pasang rasmi."
+
+                setOnPreferenceClickListener {
+                    if (isInstalled) {
+                        try {
+                            val startIntent = Intent("com.pencarimovie.server.action.START").apply {
+                                setPackage("com.pencarimovie.server")
+                                component = android.content.ComponentName("com.pencarimovie.server", "com.pencarimovie.server.ServerService")
+                            }
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                ctx.startForegroundService(startIntent)
+                            } else {
+                                ctx.startService(startIntent)
+                            }
+                            Toast.makeText(ctx, "Memulakan PencariMovie Server...", Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            try {
+                                val launchIntent = ctx.packageManager.getLaunchIntentForPackage("com.pencarimovie.server")
+                                if (launchIntent != null) {
+                                    ctx.startActivity(launchIntent)
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    } else {
+                        try {
+                            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://telegra.my/apk"))
+                            browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            ctx.startActivity(browserIntent)
+                        } catch (e: Exception) {
+                            Toast.makeText(ctx, "Pautan APK: https://telegra.my/apk", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    true
+                }
+            }
+            serverCategory.addPreference(startCompanionPref)
+
             val apkGuidePref = Preference(ctx).apply {
-                title = "Muat Turun APK Pelayan (Android TV / Stick)"
-                summary = "Buka pautan https://telegra.my/apk untuk memuat turun pelayan penstriman rasmi"
+                title = "Muat Turun APK Pelayan (telegra.my/apk)"
+                summary = "Buka pautan https://telegra.my/apk di pelayar web"
                 setOnPreferenceClickListener {
                     try {
                         val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://telegra.my/apk"))

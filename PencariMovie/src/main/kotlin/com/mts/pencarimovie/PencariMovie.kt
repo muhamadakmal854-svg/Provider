@@ -1,6 +1,9 @@
 package com.mts.pencarimovie
 
 import android.content.Context
+import android.content.ComponentName
+import android.content.Intent
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
@@ -304,6 +307,58 @@ class PencariMovie(val context: Context) : MainAPI() {
         return null
     }
 
+    private fun pingServer(serverUrl: String): Boolean {
+        return try {
+            val pingUrl = "$serverUrl/api/version"
+            val conn = URL(pingUrl).openConnection() as HttpURLConnection
+            conn.connectTimeout = 1200
+            conn.readTimeout = 1200
+            conn.requestMethod = "GET"
+            conn.connect()
+            val code = conn.responseCode
+            conn.disconnect()
+            code in 200..299
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun isCompanionInstalled(): Boolean {
+        return try {
+            context.packageManager.getPackageInfo("com.pencarimovie.server", 0) != null
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun ensureCompanionServerStarted(configuredServer: String): Boolean {
+        if (pingServer(configuredServer)) return true
+
+        val isLocalhost = configuredServer.contains("127.0.0.1") || configuredServer.contains("localhost")
+        if (isLocalhost && isCompanionInstalled()) {
+            try {
+                val intent = Intent("com.pencarimovie.server.action.START").apply {
+                    setPackage("com.pencarimovie.server")
+                    component = ComponentName("com.pencarimovie.server", "com.pencarimovie.server.ServerService")
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+
+                for (i in 1..6) {
+                    Thread.sleep(500)
+                    if (pingServer(configuredServer)) {
+                        return true
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        return pingServer(configuredServer)
+    }
+
     private fun showServerGuideToast() {
         val now = System.currentTimeMillis()
         if (now - lastToastTime > 15000) {
@@ -344,20 +399,8 @@ class PencariMovie(val context: Context) : MainAPI() {
                 ?.trimEnd('/') ?: DEFAULT_PM_SERVER_URL
             val tgCookies = prefs.getString(PREF_PM_TG_COOKIES, null).orEmpty()
 
-            // Semak status pelayan penstriman
-            var isServerActive = false
-            try {
-                val pingUrl = "$configuredServer/api/version"
-                val conn = URL(pingUrl).openConnection() as HttpURLConnection
-                conn.connectTimeout = 1500
-                conn.readTimeout = 1500
-                conn.requestMethod = "GET"
-                conn.connect()
-                if (conn.responseCode in 200..299) {
-                    isServerActive = true
-                }
-                conn.disconnect()
-            } catch (_: Exception) {}
+            // Semak status pelayan penstriman & auto-start companion jika dipasang
+            val isServerActive = ensureCompanionServerStarted(configuredServer)
 
             if (!isServerActive) {
                 showServerGuideToast()
