@@ -32,6 +32,11 @@ data class PmPostsResponse(
     @JsonProperty("data") val data: List<PmPost>? = null
 )
 
+data class PmSinglePostResponse(
+    @JsonProperty("success") val success: Boolean? = null,
+    @JsonProperty("data") val data: PmPost? = null
+)
+
 data class PmFile(
     @JsonProperty("id") val id: Long? = null,
     @JsonProperty("title") val title: String? = null,
@@ -90,12 +95,17 @@ class PencariMovie(val context: Context) : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&page=1&per_page=15" to "Terkini",
-        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&category=movie&page=1&per_page=15" to "Filem",
-        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&category=series&page=1&per_page=15" to "Siri TV",
-        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&category=drama-melayu&page=1&per_page=15" to "Drama Melayu",
-        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&category=k-drama&page=1&per_page=15" to "K-Drama",
-        "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_posts&category=anime&page=1&per_page=15" to "Anime"
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&limit=20" to "Terkini",
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=action&limit=20" to "Aksi (Action)",
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=animation&limit=20" to "Animasi (Animation)",
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=comedy&limit=20" to "Komedi (Comedy)",
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=drama&limit=20" to "Drama",
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=horror&limit=20" to "Seram (Horror)",
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=sci-fi&limit=20" to "Sains Fiksyen (Sci-Fi)",
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=romance&limit=20" to "Romantik (Romance)",
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=fantasy&limit=20" to "Fantasi (Fantasy)",
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=adventure&limit=20" to "Pengembaraan (Adventure)",
+        "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=crime&limit=20" to "Jenayah (Crime)"
     )
 
     private fun cleanTitle(title: String?): String {
@@ -103,6 +113,7 @@ class PencariMovie(val context: Context) : MainAPI() {
         return title
             .replace(Regex("""\s*\[.*?\]"""), "")
             .replace(Regex("""\s*\(.*?\)"""), "")
+            .replace(Regex("""\s*•\s*(?:Movie|TvSeries|Series)""", RegexOption.IGNORE_CASE), "")
             .replace("Download", "", ignoreCase = true)
             .replace("Streaming", "", ignoreCase = true)
             .replace("Nonton", "", ignoreCase = true)
@@ -114,8 +125,9 @@ class PencariMovie(val context: Context) : MainAPI() {
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+        val offset = (page - 1) * 20
         val url = if (page > 1) {
-            request.data.replace(Regex("""page=\d+"""), "page=$page")
+            "${request.data}&offset=$offset"
         } else {
             request.data
         }
@@ -135,17 +147,15 @@ class PencariMovie(val context: Context) : MainAPI() {
             val rawTitle = post.title ?: return@mapNotNull null
             val title = cleanTitle(rawTitle).ifBlank { rawTitle }
             val poster = post.thumbnailUrl
-            val postUrl = "$mainUrl/?p=$id"
+            val postUrl = "$mainUrl/?p=$id&pm_id=$id"
 
-            val isSeries = post.categories?.any {
-                it.contains("series", ignoreCase = true) ||
-                it.contains("drama", ignoreCase = true) ||
-                it.contains("anime", ignoreCase = true)
-            } == true
+            val isSeries = rawTitle.contains("TvSeries", ignoreCase = true) ||
+                           rawTitle.contains("Series", ignoreCase = true) ||
+                           post.categories?.any { it.contains("series", ignoreCase = true) } == true
 
             val type = if (isSeries) TvType.TvSeries else TvType.Movie
 
-            newAnimeSearchResponse(title, "$postUrl&pm_id=$id", type) {
+            newAnimeSearchResponse(title, postUrl, type) {
                 this.posterUrl = poster
             }
         }
@@ -155,7 +165,7 @@ class PencariMovie(val context: Context) : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val encoded = URLEncoder.encode(query, "UTF-8")
-        val searchUrl = "$mainUrl/wp-admin/admin-ajax.php?action=pm_search_posts&query=$encoded&per_page=20"
+        val searchUrl = "$mainUrl/wp-admin/admin-ajax.php?action=stream_search&search=$encoded&limit=25"
 
         val jsonText = try {
             app.get(searchUrl, headers = getAjaxHeaders(), timeout = 15).text
@@ -171,17 +181,15 @@ class PencariMovie(val context: Context) : MainAPI() {
             val rawTitle = post.title ?: return@mapNotNull null
             val title = cleanTitle(rawTitle).ifBlank { rawTitle }
             val poster = post.thumbnailUrl
-            val postUrl = "$mainUrl/?p=$id"
+            val postUrl = "$mainUrl/?p=$id&pm_id=$id"
 
-            val isSeries = post.categories?.any {
-                it.contains("series", ignoreCase = true) ||
-                it.contains("drama", ignoreCase = true) ||
-                it.contains("anime", ignoreCase = true)
-            } == true
+            val isSeries = rawTitle.contains("TvSeries", ignoreCase = true) ||
+                           rawTitle.contains("Series", ignoreCase = true) ||
+                           post.categories?.any { it.contains("series", ignoreCase = true) } == true
 
             val type = if (isSeries) TvType.TvSeries else TvType.Movie
 
-            newAnimeSearchResponse(title, "$postUrl&pm_id=$id", type) {
+            newAnimeSearchResponse(title, postUrl, type) {
                 this.posterUrl = poster
             }
         }
@@ -192,7 +200,17 @@ class PencariMovie(val context: Context) : MainAPI() {
         val postId = postIdMatch?.groupValues?.getOrNull(1)
 
         if (!postId.isNullOrBlank()) {
-            val filesUrl = "$mainUrl/wp-admin/admin-ajax.php?action=pm_get_post_files&post_id=$postId"
+            // 1. Ambil maklumat pos lengkap melalui stream_get_post
+            val postUrl = "$mainUrl/wp-admin/admin-ajax.php?action=stream_get_post&post_id=$postId"
+            val postText = try {
+                app.get(postUrl, headers = getAjaxHeaders(), timeout = 15).text
+            } catch (_: Exception) {
+                ""
+            }
+            val singlePost = tryParseJson<PmSinglePostResponse>(postText)?.data
+
+            // 2. Ambil senarai fail berkaitan melalui stream_post_files
+            val filesUrl = "$mainUrl/wp-admin/admin-ajax.php?action=stream_post_files&post_id=$postId&limit=50"
             val filesText = try {
                 app.get(filesUrl, headers = getAjaxHeaders(), timeout = 20).text
             } catch (_: Exception) {
@@ -201,33 +219,21 @@ class PencariMovie(val context: Context) : MainAPI() {
 
             val filesData = tryParseJson<PmFilesResponse>(filesText)?.data?.files ?: emptyList()
 
-            // Dapatkan maklumat pos jika ada permalink
-            val originalUrl = Regex("""url=([^&]+)""").find(url)?.groupValues?.getOrNull(1)?.let {
-                java.net.URLDecoder.decode(it, "UTF-8")
-            } ?: "$mainUrl/?p=$postId"
-
-            val doc = try {
-                app.get(originalUrl, headers = mapOf("User-Agent" to USER_AGENT), timeout = 10).document
-            } catch (_: Exception) {
-                null
-            }
-
-            val rawTitle = doc?.selectFirst("h1.entry-title, h1")?.text()?.trim()
-                ?: filesData.firstOrNull()?.title
-                ?: "Movie"
+            val rawTitle = singlePost?.title ?: filesData.firstOrNull()?.title ?: "Movie"
             val title = cleanTitle(rawTitle).ifBlank { rawTitle }
 
-            val poster = doc?.selectFirst("meta[property='og:image']")?.attr("content")
-                ?: doc?.selectFirst(".wp-post-image, .attachment-post-thumbnail, img")?.attr("src")
-                ?: filesData.firstOrNull()?.thumbnailUrl
+            val poster = singlePost?.thumbnailUrl ?: filesData.firstOrNull()?.thumbnailUrl
+            val synopsis = singlePost?.excerpt?.replace(Regex("""<[^>]*>"""), "")?.trim()
+                ?: singlePost?.content?.replace(Regex("""<[^>]*>"""), "")?.trim()
 
-            val synopsis = doc?.selectFirst(".entry-content p, .entry-content")?.text()?.trim()
             val year = Regex("""\b(19\d{2}|20\d{2})\b""").find(rawTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
             val hasMultipleEpisodes = filesData.size > 1 && filesData.any { (it.episodeNum ?: 0) > 0 || (it.seasonNum ?: 0) > 0 }
-            val isMovie = !hasMultipleEpisodes && (url.contains("type=movie", ignoreCase = true) || filesData.size <= 1)
+            val isSeries = rawTitle.contains("TvSeries", ignoreCase = true) ||
+                           rawTitle.contains("Series", ignoreCase = true) ||
+                           hasMultipleEpisodes
 
-            if (isMovie) {
+            if (!isSeries || filesData.isEmpty()) {
                 val f = filesData.firstOrNull()
                 val passData = if (f != null && !f.shortCode.isNullOrBlank()) {
                     PmMediaPass(
@@ -242,7 +248,7 @@ class PencariMovie(val context: Context) : MainAPI() {
                         shortCode = "",
                         title = title,
                         fileSize = null,
-                        playUrl = originalUrl,
+                        playUrl = url,
                         ddlUrl = null
                     ).toJson()
                 }
@@ -255,9 +261,10 @@ class PencariMovie(val context: Context) : MainAPI() {
             } else {
                 val episodes = filesData.mapIndexed { idx, file ->
                     val sc = file.shortCode ?: ""
-                    val epTitle = file.title?.ifBlank { "Episod ${idx + 1}" } ?: "Episod ${idx + 1}"
-                    val epNum = file.episodeNum ?: (idx + 1)
-                    val sNum = file.seasonNum ?: 1
+                    val epNum = if ((file.episodeNum ?: 0) > 0) file.episodeNum else (idx + 1)
+                    val sNum = if ((file.seasonNum ?: 0) > 0) file.seasonNum else 1
+                    val epTitle = file.title?.ifBlank { "Episod $epNum" } ?: "Episod $epNum"
+
                     val epData = PmMediaPass(
                         shortCode = sc,
                         title = epTitle,
@@ -305,7 +312,7 @@ class PencariMovie(val context: Context) : MainAPI() {
                 try {
                     Toast.makeText(
                         context,
-                        "PencariMovie: Pelayan port 8088 belum dikesan. Pasang companion APK di telegra.my/apk atau tetapkan IP di Tetapan Extension.",
+                        "PencariMovie: Pelayan port 8088 belum dikesan. Pasang companion app di telegra.my/apk atau tetapkan IP di Tetapan Extension.",
                         Toast.LENGTH_LONG
                     ).show()
                 } catch (_: Exception) {}
@@ -372,21 +379,23 @@ class PencariMovie(val context: Context) : MainAPI() {
             )
             linkFound = true
 
-            // Pelayan 2: Fallback Web Gateway Direct DDL (telegra.my)
-            val fallbackUrl = "https://telegra.my/api/download?short_code=$shortCode"
-            callback(
-                newExtractorLink(
-                    source = name,
-                    name = "PencariMovie Web Fast Gateway",
-                    url = fallbackUrl,
-                    type = ExtractorLinkType.VIDEO
-                ) {
-                    this.referer = "$mainUrl/"
-                    this.quality = Qualities.P720.value
-                }
-            )
+            // Pelayan 2: Jika DDL URL tersedia secara langsung daripada data API
+            val ddlUrl = mediaPass?.ddlUrl
+            if (!ddlUrl.isNullOrBlank()) {
+                callback(
+                    newExtractorLink(
+                        source = "$name Fast DDL",
+                        name = "PencariMovie Direct DDL",
+                        url = ddlUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = "$mainUrl/"
+                        this.quality = Qualities.P720.value
+                    }
+                )
+            }
 
-            // Pelayan 3: Halaman pautan /link/{shortCode} scraping dengan kuki sesi Telegram
+            // Pelayan 3: Halaman pautan /link/{shortCode} scraping dengan kuki sesi WordPress / Telegram
             try {
                 val linkPageUrl = "$mainUrl/link/$shortCode"
                 val headers = mutableMapOf(

@@ -105,6 +105,18 @@ class Anichin(val context: Context) : MainAPI() {
             }
         }
 
+        val childWithStyle = element.selectFirst("[style*='background'], [style*='url'], .backdrop")
+        if (childWithStyle != null) {
+            val childStyle = childWithStyle.attr("style")
+            val bgMatch = Regex("""url\(['"]?(.*?)['"]?\)""").find(childStyle)
+            if (bgMatch != null) {
+                val bgUrl = bgMatch.groupValues[1].replace("'", "").replace("\"", "").trim()
+                if (bgUrl.isNotBlank() && !bgUrl.startsWith("data:", true)) {
+                    return toAbsoluteUrl(bgUrl)
+                }
+            }
+        }
+
         return null
     }
 
@@ -125,10 +137,15 @@ class Anichin(val context: Context) : MainAPI() {
     }
 
     private fun getPosterHeaders(): Map<String, String> {
-        return mapOf(
-            "User-Agent" to USER_AGENT,
+        val map = mutableMapOf(
+            "User-Agent" to getActualUserAgent(),
             "Referer" to "$mainUrl/"
         )
+        val cookie = getSavedCookie(getSafeContext())
+        if (cookie.isNotBlank()) {
+            map["Cookie"] = cookie
+        }
+        return map
     }
 
     private fun getActivity(ctx: Context?): Activity? {
