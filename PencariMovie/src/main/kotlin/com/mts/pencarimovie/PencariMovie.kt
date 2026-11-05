@@ -10,6 +10,8 @@ import android.widget.Toast
 import androidx.preference.PreferenceManager
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -67,6 +69,16 @@ class PencariMovie(val context: Context) : MainAPI() {
             .trim()
     }
 
+    private fun formatFileSize(size: Long?): String {
+        if (size == null || size <= 0L) return ""
+        val mb = size.toDouble() / (1024.0 * 1024.0)
+        return if (mb >= 1000.0) {
+            String.format("%.1f GB", mb / 1024.0)
+        } else {
+            String.format("%.0f MB", mb)
+        }
+    }
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val offset = (page - 1) * 20
         val url = if (page > 1) {
@@ -76,7 +88,7 @@ class PencariMovie(val context: Context) : MainAPI() {
         }
 
         val jsonText = try {
-            app.get(url, headers = getAjaxHeaders(), timeout = 15).text
+            app.get(url, headers = getAjaxHeaders(), timeout = 10).text
         } catch (_: Exception) {
             return null
         }
@@ -141,7 +153,7 @@ class PencariMovie(val context: Context) : MainAPI() {
         val searchUrl = "$mainUrl/wp-admin/admin-ajax.php?action=stream_search&search=$encoded&limit=25"
 
         val jsonText = try {
-            app.get(searchUrl, headers = getAjaxHeaders(), timeout = 15).text
+            app.get(searchUrl, headers = getAjaxHeaders(), timeout = 10).text
         } catch (_: Exception) {
             return emptyList()
         }
@@ -200,23 +212,29 @@ class PencariMovie(val context: Context) : MainAPI() {
         val postId = postIdMatch?.groupValues?.getOrNull(1)
 
         if (!postId.isNullOrBlank()) {
-            // 1. Ambil maklumat pos lengkap melalui stream_get_post
+            // Jalankan kedua-dua permintaan API serentak secara selari (Parallel Async) untuk pantas
             val postUrl = "$mainUrl/wp-admin/admin-ajax.php?action=stream_get_post&post_id=$postId"
-            val postText = try {
-                app.get(postUrl, headers = getAjaxHeaders(), timeout = 15).text
-            } catch (_: Exception) {
-                ""
-            }
-            val singlePost = try { JSONObject(postText).optJSONObject("data") } catch (_: Exception) { null }
-
-            // 2. Ambil senarai fail berkaitan melalui stream_post_files
             val filesUrl = "$mainUrl/wp-admin/admin-ajax.php?action=stream_post_files&post_id=$postId&limit=50"
-            val filesText = try {
-                app.get(filesUrl, headers = getAjaxHeaders(), timeout = 20).text
-            } catch (_: Exception) {
-                ""
+
+            val (postText, filesText) = coroutineScope {
+                val postDeferred = async {
+                    try {
+                        app.get(postUrl, headers = getAjaxHeaders(), timeout = 8).text
+                    } catch (_: Exception) {
+                        ""
+                    }
+                }
+                val filesDeferred = async {
+                    try {
+                        app.get(filesUrl, headers = getAjaxHeaders(), timeout = 8).text
+                    } catch (_: Exception) {
+                        ""
+                    }
+                }
+                Pair(postDeferred.await(), filesDeferred.await())
             }
 
+            val singlePost = try { JSONObject(postText).optJSONObject("data") } catch (_: Exception) { null }
             val filesArr = try {
                 JSONObject(filesText).optJSONObject("data")?.optJSONArray("files") ?: JSONArray()
             } catch (_: Exception) {
@@ -266,12 +284,28 @@ class PencariMovie(val context: Context) : MainAPI() {
                 val playUrl = f?.optString("play_url", "").orEmpty()
                 val ddlUrl = f?.optString("ddl_url", "").orEmpty()
 
+                // Simpan semua fail pilihan resolusi dalam passObj
+                val filesListJson = JSONArray()
+                for (idx in 0 until filesArr.length()) {
+                    val fItem = filesArr.optJSONObject(idx) ?: continue
+                    val sc = fItem.optString("short_code", "")
+                    if (sc.isNotBlank()) {
+                        filesListJson.put(JSONObject().apply {
+                            put("shortCode", sc)
+                            put("title", fItem.optString("title", fTitle))
+                            put("fileSize", fItem.optLong("file_size", 0L))
+                            put("ddlUrl", fItem.optString("ddl_url", ""))
+                        })
+                    }
+                }
+
                 val passObj = JSONObject().apply {
                     put("shortCode", shortCode)
                     put("title", fTitle)
                     if (fSize != null) put("fileSize", fSize)
                     put("playUrl", if (playUrl.isNotBlank()) playUrl else url)
                     if (ddlUrl.isNotBlank()) put("ddlUrl", ddlUrl)
+                    if (filesListJson.length() > 0) put("files", filesListJson)
                 }
 
                 return newMovieLoadResponse(title, url, TvType.Movie, passObj.toString()) {
@@ -336,22 +370,6 @@ class PencariMovie(val context: Context) : MainAPI() {
         return null
     }
 
-    private fun pingServer(serverUrl: String): Boolean {
-        return try {
-            val pingUrl = "$serverUrl/api/version"
-            val conn = URL(pingUrl).openConnection() as HttpURLConnection
-            conn.connectTimeout = 1200
-            conn.readTimeout = 1200
-            conn.requestMethod = "GET"
-            conn.connect()
-            val code = conn.responseCode
-            conn.disconnect()
-            code in 200..299
-        } catch (_: Exception) {
-            false
-        }
-    }
-
     private fun isCompanionInstalled(): Boolean {
         return try {
             context.packageManager.getPackageInfo("com.pencarimovie.server", 0) != null
@@ -360,48 +378,19 @@ class PencariMovie(val context: Context) : MainAPI() {
         }
     }
 
-    private fun ensureCompanionServerStarted(configuredServer: String): Boolean {
-        if (pingServer(configuredServer)) return true
-
-        val isLocalhost = configuredServer.contains("127.0.0.1") || configuredServer.contains("localhost")
-        if (isLocalhost && isCompanionInstalled()) {
-            try {
-                val intent = Intent("com.pencarimovie.server.action.START").apply {
-                    setPackage("com.pencarimovie.server")
-                    component = ComponentName("com.pencarimovie.server", "com.pencarimovie.server.ServerService")
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-
-                for (i in 1..6) {
-                    Thread.sleep(500)
-                    if (pingServer(configuredServer)) {
-                        return true
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-
-        return pingServer(configuredServer)
-    }
-
-    private fun showServerGuideToast() {
-        val now = System.currentTimeMillis()
-        if (now - lastToastTime > 15000) {
-            lastToastTime = now
-            Handler(Looper.getMainLooper()).post {
-                try {
-                    Toast.makeText(
-                        context,
-                        "PencariMovie: Pelayan port 8088 belum dikesan. Pasang companion app di telegra.my/apk atau tetapkan IP di Tetapan Extension.",
-                        Toast.LENGTH_LONG
-                    ).show()
-                } catch (_: Exception) {}
+    private fun triggerCompanionServiceNonBlocking() {
+        if (!isCompanionInstalled()) return
+        try {
+            val intent = Intent("com.pencarimovie.server.action.START").apply {
+                setPackage("com.pencarimovie.server")
+                component = ComponentName("com.pencarimovie.server", "com.pencarimovie.server.ServerService")
             }
-        }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (_: Exception) {}
     }
 
     override suspend fun loadLinks(
@@ -414,6 +403,7 @@ class PencariMovie(val context: Context) : MainAPI() {
         var title = "Stream"
         var fileSize: Long? = null
         var ddlUrl = ""
+        var filesArr: JSONArray? = null
 
         try {
             val json = JSONObject(data)
@@ -423,6 +413,7 @@ class PencariMovie(val context: Context) : MainAPI() {
                 fileSize = json.optLong("fileSize")
             }
             ddlUrl = json.optString("ddlUrl", "")
+            filesArr = json.optJSONArray("files")
         } catch (_: Exception) {
             shortCode = Regex("""/link/([a-zA-Z0-9]+)""").find(data)?.groupValues?.getOrNull(1) ?: ""
         }
@@ -433,29 +424,70 @@ class PencariMovie(val context: Context) : MainAPI() {
 
         var linkFound = false
 
-        if (shortCode.isNotBlank()) {
-            val encodedName = URLEncoder.encode(title, "UTF-8")
+        // Ambil URL pelayan penstriman daripada SharedPreferences (Lalai: http://127.0.0.1:8088)
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val configuredServer = prefs.getString(PREF_PM_SERVER_URL, DEFAULT_PM_SERVER_URL)
+            ?.trimEnd('/') ?: DEFAULT_PM_SERVER_URL
 
-            // Ambil URL pelayan daripada SharedPreferences (Lalai: http://127.0.0.1:8088)
-            val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-            val configuredServer = prefs.getString(PREF_PM_SERVER_URL, DEFAULT_PM_SERVER_URL)
-                ?.trimEnd('/') ?: DEFAULT_PM_SERVER_URL
-            val tgCookies = prefs.getString(PREF_PM_TG_COOKIES, null).orEmpty()
+        // Mulakan companion service secara tak sekat (Non-blocking background intent - 0ms delay)
+        val isLocalhost = configuredServer.contains("127.0.0.1") || configuredServer.contains("localhost")
+        if (isLocalhost) {
+            triggerCompanionServiceNonBlocking()
+        }
 
-            // Semak status pelayan penstriman & auto-start companion jika dipasang
-            val isServerActive = ensureCompanionServerStarted(configuredServer)
+        // 1. Jika terdapat beberapa fail resolusi (cth: 1080p, 720p), keluarkan kesemuanya serta-merta
+        if (filesArr != null && filesArr.length() > 0) {
+            for (i in 0 until filesArr.length()) {
+                val fObj = filesArr.optJSONObject(i) ?: continue
+                val fSc = fObj.optString("shortCode", "")
+                if (fSc.isBlank()) continue
+                val fTitle = fObj.optString("title", title)
+                val fSize = fObj.optLong("fileSize", 0L).takeIf { it > 0 }
+                val fDdl = fObj.optString("ddlUrl", "")
+                val encodedName = URLEncoder.encode(fTitle, "UTF-8")
 
-            if (!isServerActive) {
-                showServerGuideToast()
+                val sizeText = formatFileSize(fSize)
+                val label = if (sizeText.isNotBlank()) "PencariMovie ($sizeText)" else "PencariMovie ($fTitle)"
+
+                val streamUrl = "$configuredServer/api/download?short_code=$fSc&file_size=${fSize ?: ""}&name=$encodedName"
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = label,
+                        url = streamUrl,
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = "$mainUrl/"
+                        this.quality = if (fTitle.contains("1080", ignoreCase = true)) Qualities.P1080.value else Qualities.P720.value
+                    }
+                )
+                linkFound = true
+
+                if (fDdl.isNotBlank()) {
+                    callback(
+                        newExtractorLink(
+                            source = "$name Fast DDL",
+                            name = "Direct DDL ($sizeText)",
+                            url = fDdl,
+                            type = ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = "$mainUrl/"
+                            this.quality = Qualities.P720.value
+                        }
+                    )
+                }
             }
-
-            // Pelayan 1: Konfigurasi Pelayan PencariMovie (Local Daemon / LAN IP / Tunnel)
+        } else if (shortCode.isNotBlank()) {
+            // 2. Jika 1 fail tunggal, keluarkan pautan strim terus serta-merta tanpa sebarang lengah masa
+            val encodedName = URLEncoder.encode(title, "UTF-8")
+            val sizeText = formatFileSize(fileSize)
+            val label = if (sizeText.isNotBlank()) "PencariMovie Server ($sizeText)" else "PencariMovie Server (Port 8088)"
             val serverStreamUrl = "$configuredServer/api/download?short_code=$shortCode&file_size=${fileSize ?: ""}&name=$encodedName"
-            val labelStatus = if (isServerActive) "PencariMovie Server (Aktif)" else "PencariMovie Server (Port 8088)"
+
             callback(
                 newExtractorLink(
                     source = name,
-                    name = labelStatus,
+                    name = label,
                     url = serverStreamUrl,
                     type = ExtractorLinkType.VIDEO
                 ) {
@@ -465,7 +497,6 @@ class PencariMovie(val context: Context) : MainAPI() {
             )
             linkFound = true
 
-            // Pelayan 2: Jika DDL URL tersedia secara langsung daripada data API
             if (ddlUrl.isNotBlank()) {
                 callback(
                     newExtractorLink(
@@ -479,39 +510,6 @@ class PencariMovie(val context: Context) : MainAPI() {
                     }
                 )
             }
-
-            // Pelayan 3: Halaman pautan /link/{shortCode} scraping dengan kuki sesi WordPress / Telegram
-            try {
-                val linkPageUrl = "$mainUrl/link/$shortCode"
-                val headers = mutableMapOf(
-                    "User-Agent" to USER_AGENT,
-                    "Referer" to "$mainUrl/"
-                )
-                if (tgCookies.isNotBlank()) {
-                    headers["Cookie"] = tgCookies
-                }
-
-                val doc = app.get(linkPageUrl, headers = headers, timeout = 8).document
-
-                // Cari pautan muat turun atau video langsung
-                doc.select("a.download-btn, a[href*='api/download'], a[href*='download'], video source, video").forEach { el ->
-                    val href = el.attr("href").ifBlank { el.attr("src") }
-                    if (href.isNotBlank() && !href.contains("127.0.0.1") && !href.contains("localhost") && !href.startsWith("tg:")) {
-                        val fixed = fixUrl(href)
-                        callback(
-                            newExtractorLink(
-                                source = "$name Direct",
-                                name = "PencariMovie Direct Stream",
-                                url = fixed,
-                                type = if (fixed.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                            ) {
-                                this.referer = "$mainUrl/"
-                            }
-                        )
-                        linkFound = true
-                    }
-                }
-            } catch (_: Exception) {}
         }
 
         return linkFound
