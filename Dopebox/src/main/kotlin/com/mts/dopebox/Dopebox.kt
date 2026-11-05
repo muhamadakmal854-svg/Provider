@@ -1344,4 +1344,89 @@ class Dopebox : MainAPI() {
         } catch (_: Throwable) {}
     }
 
+
+    private suspend fun invokeTorrentio(
+        titleName: String?,
+        tmdbId: Int?,
+        imdbIdParam: String?,
+        isMovie: Boolean,
+        season: Int?,
+        episode: Int?,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        val imdbId = imdbIdParam ?: (if (tmdbId != null) fetchImdbId(tmdbId, isMovie) else null) ?: return
+        val cleanImdb = if (imdbId.startsWith("tt")) imdbId else "tt$imdbId"
+        val torrentioUrl = if (!isMovie && season != null && episode != null) {
+            "https://torrentio.strem.fun/stream/series/$cleanImdb:$season:$episode.json"
+        } else {
+            "https://torrentio.strem.fun/stream/movie/$cleanImdb.json"
+        }
+
+        try {
+            val resText = app.get(
+                torrentioUrl,
+                headers = mapOf("User-Agent" to USER_AGENT),
+                timeout = 10
+            ).text
+            val resObj = tryParseJson<TorrentioResponse>(resText)
+            val streams = resObj?.streams ?: return
+
+            val cleanTitle = titleName?.replace(Regex("""[^\w\s-]"""), "")?.trim() ?: "Stream"
+
+            var count = 0
+            streams.forEach { stream ->
+                val infoHash = stream.infoHash ?: return@forEach
+                if (count >= 15) return@forEach
+
+                val sName = stream.name ?: "Torrentio"
+                val sTitle = stream.title ?: ""
+                val qInt = when {
+                    sName.contains("4k", true) || sTitle.contains("4k", true) || sTitle.contains("2160", true) -> Qualities.P2160.value
+                    sName.contains("1080", true) || sTitle.contains("1080", true) -> Qualities.P1080.value
+                    sName.contains("720", true) || sTitle.contains("720", true) -> Qualities.P720.value
+                    sName.contains("480", true) || sTitle.contains("480", true) -> Qualities.P480.value
+                    else -> Qualities.Unknown.value
+                }
+
+                val qLabel = when (qInt) {
+                    Qualities.P2160.value -> "4K UHD"
+                    Qualities.P1080.value -> "1080p FHD"
+                    Qualities.P720.value -> "720p HD"
+                    Qualities.P480.value -> "480p"
+                    else -> "HQ"
+                }
+
+                val seeds = Regex("""👤\s*(\d+)""").find(sTitle)?.groupValues?.get(1)?.let { "[$it Seeds]" } ?: ""
+                val size = Regex("""💾\s*([\d.]+\s*[GMK]B)""").find(sTitle)?.groupValues?.get(1)?.let { "[$it]" } ?: ""
+
+                val label = listOf(qLabel, seeds, size).filter { it.isNotBlank() }.joinToString(" ")
+                val magnetUrl = "magnet:?xt=urn:btih:$infoHash&dn=${URLEncoder.encode(cleanTitle, "UTF-8")}&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce"
+
+                callback.invoke(
+                    newExtractorLink(
+                        source = this.name,
+                        name = "$Dopebox - $label",
+                        url = magnetUrl,
+                        type = ExtractorLinkType.MAGNET
+                    ) {
+                        this.quality = qInt
+                    }
+                )
+                count++
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
+    data class TorrentioResponse(
+        @JsonProperty("streams") val streams: List<TorrentioStream>? = null
+    )
+
+    data class TorrentioStream(
+        @JsonProperty("name") val name: String? = null,
+        @JsonProperty("title") val title: String? = null,
+        @JsonProperty("infoHash") val infoHash: String? = null,
+        @JsonProperty("fileIdx") val fileIdx: Int? = null
+    )
+
 }
