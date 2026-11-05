@@ -1,4 +1,4 @@
-version = 1
+version = 2
 
 cloudstream {
 
@@ -12,7 +12,7 @@ cloudstream {
 
     tvTypes     = listOf("Movie", "TvSeries", "AsianDrama", "Anime")
 
-    iconUrl     = "https://iwcsantodomingo.org/favicon.ico"
+    iconUrl     = "https://lk21official.lat/favicon.ico"
 
 }
 

@@ -8,73 +8,13 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.preference.PreferenceManager
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
-
-data class PmPost(
-    @JsonProperty("id") val id: Long? = null,
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("excerpt") val excerpt: String? = null,
-    @JsonProperty("content") val content: String? = null,
-    @JsonProperty("thumbnail_url") val thumbnailUrl: String? = null,
-    @JsonProperty("permalink") val permalink: String? = null,
-    @JsonProperty("date") val date: String? = null,
-    @JsonProperty("categories") val categories: List<String>? = null,
-    @JsonProperty("tags") val tags: List<String>? = null
-)
-
-data class PmPostsResponse(
-    @JsonProperty("success") val success: Boolean? = null,
-    @JsonProperty("data") val data: List<PmPost>? = null
-)
-
-data class PmSinglePostResponse(
-    @JsonProperty("success") val success: Boolean? = null,
-    @JsonProperty("data") val data: PmPost? = null
-)
-
-data class PmFile(
-    @JsonProperty("id") val id: Long? = null,
-    @JsonProperty("title") val title: String? = null,
-    @JsonProperty("caption") val caption: String? = null,
-    @JsonProperty("short_code") val shortCode: String? = null,
-    @JsonProperty("file_type") val fileType: String? = null,
-    @JsonProperty("mime") val mime: String? = null,
-    @JsonProperty("file_size") val fileSize: Long? = null,
-    @JsonProperty("extension") val extension: String? = null,
-    @JsonProperty("season_num") val seasonNum: Int? = null,
-    @JsonProperty("episode_num") val episodeNum: Int? = null,
-    @JsonProperty("quality_score") val qualityScore: Int? = null,
-    @JsonProperty("added_date") val addedDate: String? = null,
-    @JsonProperty("play_url") val playUrl: String? = null,
-    @JsonProperty("ddl_url") val ddlUrl: String? = null,
-    @JsonProperty("thumbnail_url") val thumbnailUrl: String? = null
-)
-
-data class PmFilesData(
-    @JsonProperty("files") val files: List<PmFile>? = null,
-    @JsonProperty("total_found") val totalFound: Int? = null
-)
-
-data class PmFilesResponse(
-    @JsonProperty("success") val success: Boolean? = null,
-    @JsonProperty("data") val data: PmFilesData? = null
-)
-
-data class PmMediaPass(
-    val shortCode: String,
-    val title: String,
-    val fileSize: Long? = null,
-    val playUrl: String? = null,
-    val ddlUrl: String? = null
-)
 
 class PencariMovie(val context: Context) : MainAPI() {
     override var mainUrl = "https://flixtorbot.pencarimovie.com"
@@ -141,29 +81,59 @@ class PencariMovie(val context: Context) : MainAPI() {
             return null
         }
 
-        val res = tryParseJson<PmPostsResponse>(jsonText)
-        val posts = res?.data ?: emptyList()
-        if (posts.isEmpty()) return null
+        val json = try {
+            JSONObject(jsonText)
+        } catch (_: Exception) {
+            return null
+        }
 
-        val items = posts.mapNotNull { post ->
-            val id = post.id ?: return@mapNotNull null
-            val rawTitle = post.title ?: return@mapNotNull null
+        val dataArr = json.optJSONArray("data") ?: return null
+        if (dataArr.length() == 0) return null
+
+        val items = mutableListOf<SearchResponse>()
+        for (i in 0 until dataArr.length()) {
+            val post = dataArr.optJSONObject(i) ?: continue
+            val id = post.optLong("id", -1L)
+            if (id <= 0) continue
+            val rawTitle = post.optString("title", "")
+            if (rawTitle.isBlank()) continue
             val title = cleanTitle(rawTitle).ifBlank { rawTitle }
-            val poster = post.thumbnailUrl
+
+            var poster = post.optString("thumbnail_url", "").trim()
+            if (poster.isBlank()) {
+                val content = post.optString("content", "")
+                val imgMatch = Regex("""<img[^>]+src=["']([^"']+)["']""").find(content)
+                if (imgMatch != null) {
+                    poster = imgMatch.groupValues[1].trim()
+                }
+            }
+            val posterUrl = if (poster.isNotBlank()) poster else null
             val postUrl = "$mainUrl/?p=$id&pm_id=$id"
 
             val isSeries = rawTitle.contains("TvSeries", ignoreCase = true) ||
                            rawTitle.contains("Series", ignoreCase = true) ||
-                           post.categories?.any { it.contains("series", ignoreCase = true) } == true
+                           post.optJSONArray("categories")?.let { cats ->
+                               (0 until cats.length()).any { cats.optString(it).contains("series", ignoreCase = true) }
+                           } == true
 
             val type = if (isSeries) TvType.TvSeries else TvType.Movie
 
-            newAnimeSearchResponse(title, postUrl, type) {
-                this.posterUrl = poster
+            if (isSeries) {
+                items.add(newTvSeriesSearchResponse(title, postUrl, type) {
+                    this.posterUrl = posterUrl
+                })
+            } else {
+                items.add(newMovieSearchResponse(title, postUrl, type) {
+                    this.posterUrl = posterUrl
+                })
             }
         }
 
-        return newHomePageResponse(request.name, items)
+        return if (items.isNotEmpty()) {
+            newHomePageResponse(request.name, items)
+        } else {
+            null
+        }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -176,26 +146,53 @@ class PencariMovie(val context: Context) : MainAPI() {
             return emptyList()
         }
 
-        val res = tryParseJson<PmPostsResponse>(jsonText)
-        val posts = res?.data ?: emptyList()
+        val json = try {
+            JSONObject(jsonText)
+        } catch (_: Exception) {
+            return emptyList()
+        }
 
-        return posts.mapNotNull { post ->
-            val id = post.id ?: return@mapNotNull null
-            val rawTitle = post.title ?: return@mapNotNull null
+        val dataArr = json.optJSONArray("data") ?: return emptyList()
+        val items = mutableListOf<SearchResponse>()
+        for (i in 0 until dataArr.length()) {
+            val post = dataArr.optJSONObject(i) ?: continue
+            val id = post.optLong("id", -1L)
+            if (id <= 0) continue
+            val rawTitle = post.optString("title", "")
+            if (rawTitle.isBlank()) continue
             val title = cleanTitle(rawTitle).ifBlank { rawTitle }
-            val poster = post.thumbnailUrl
+
+            var poster = post.optString("thumbnail_url", "").trim()
+            if (poster.isBlank()) {
+                val content = post.optString("content", "")
+                val imgMatch = Regex("""<img[^>]+src=["']([^"']+)["']""").find(content)
+                if (imgMatch != null) {
+                    poster = imgMatch.groupValues[1].trim()
+                }
+            }
+            val posterUrl = if (poster.isNotBlank()) poster else null
             val postUrl = "$mainUrl/?p=$id&pm_id=$id"
 
             val isSeries = rawTitle.contains("TvSeries", ignoreCase = true) ||
                            rawTitle.contains("Series", ignoreCase = true) ||
-                           post.categories?.any { it.contains("series", ignoreCase = true) } == true
+                           post.optJSONArray("categories")?.let { cats ->
+                               (0 until cats.length()).any { cats.optString(it).contains("series", ignoreCase = true) }
+                           } == true
 
             val type = if (isSeries) TvType.TvSeries else TvType.Movie
 
-            newAnimeSearchResponse(title, postUrl, type) {
-                this.posterUrl = poster
+            if (isSeries) {
+                items.add(newTvSeriesSearchResponse(title, postUrl, type) {
+                    this.posterUrl = posterUrl
+                })
+            } else {
+                items.add(newMovieSearchResponse(title, postUrl, type) {
+                    this.posterUrl = posterUrl
+                })
             }
         }
+
+        return items
     }
 
     override suspend fun load(url: String): LoadResponse? {
@@ -210,7 +207,7 @@ class PencariMovie(val context: Context) : MainAPI() {
             } catch (_: Exception) {
                 ""
             }
-            val singlePost = tryParseJson<PmSinglePostResponse>(postText)?.data
+            val singlePost = try { JSONObject(postText).optJSONObject("data") } catch (_: Exception) { null }
 
             // 2. Ambil senarai fail berkaitan melalui stream_post_files
             val filesUrl = "$mainUrl/wp-admin/admin-ajax.php?action=stream_post_files&post_id=$postId&limit=50"
@@ -220,72 +217,104 @@ class PencariMovie(val context: Context) : MainAPI() {
                 ""
             }
 
-            val filesData = tryParseJson<PmFilesResponse>(filesText)?.data?.files ?: emptyList()
+            val filesArr = try {
+                JSONObject(filesText).optJSONObject("data")?.optJSONArray("files") ?: JSONArray()
+            } catch (_: Exception) {
+                JSONArray()
+            }
 
-            val rawTitle = singlePost?.title ?: filesData.firstOrNull()?.title ?: "Movie"
+            val rawTitle = singlePost?.optString("title", "")?.ifBlank { null }
+                ?: (if (filesArr.length() > 0) filesArr.optJSONObject(0)?.optString("title", "") else null)
+                ?: "Movie"
             val title = cleanTitle(rawTitle).ifBlank { rawTitle }
 
-            val poster = singlePost?.thumbnailUrl ?: filesData.firstOrNull()?.thumbnailUrl
-            val synopsis = singlePost?.excerpt?.replace(Regex("""<[^>]*>"""), "")?.trim()
-                ?: singlePost?.content?.replace(Regex("""<[^>]*>"""), "")?.trim()
+            var poster = singlePost?.optString("thumbnail_url", "")?.trim().orEmpty()
+            if (poster.isBlank() && singlePost != null) {
+                val content = singlePost.optString("content", "")
+                val imgMatch = Regex("""<img[^>]+src=["']([^"']+)["']""").find(content)
+                if (imgMatch != null) {
+                    poster = imgMatch.groupValues[1].trim()
+                }
+            }
+            if (poster.isBlank() && filesArr.length() > 0) {
+                poster = filesArr.optJSONObject(0)?.optString("thumbnail_url", "")?.trim().orEmpty()
+            }
+            val posterUrl = if (poster.isNotBlank()) poster else null
+
+            val synopsis = singlePost?.optString("excerpt", "")?.replace(Regex("""<[^>]*>"""), "")?.trim()?.ifBlank { null }
+                ?: singlePost?.optString("content", "")?.replace(Regex("""<[^>]*>"""), "")?.trim()?.ifBlank { null }
 
             val year = Regex("""\b(19\d{2}|20\d{2})\b""").find(rawTitle)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
-            val hasMultipleEpisodes = filesData.size > 1 && filesData.any { (it.episodeNum ?: 0) > 0 || (it.seasonNum ?: 0) > 0 }
+            var hasMultipleEpisodes = false
+            for (idx in 0 until filesArr.length()) {
+                val fObj = filesArr.optJSONObject(idx) ?: continue
+                if (fObj.optInt("episode_num", 0) > 0 || fObj.optInt("season_num", 0) > 0) {
+                    hasMultipleEpisodes = true
+                    break
+                }
+            }
             val isSeries = rawTitle.contains("TvSeries", ignoreCase = true) ||
                            rawTitle.contains("Series", ignoreCase = true) ||
                            hasMultipleEpisodes
 
-            if (!isSeries || filesData.isEmpty()) {
-                val f = filesData.firstOrNull()
-                val passData = if (f != null && !f.shortCode.isNullOrBlank()) {
-                    PmMediaPass(
-                        shortCode = f.shortCode,
-                        title = f.title ?: title,
-                        fileSize = f.fileSize,
-                        playUrl = f.playUrl,
-                        ddlUrl = f.ddlUrl
-                    ).toJson()
-                } else {
-                    PmMediaPass(
-                        shortCode = "",
-                        title = title,
-                        fileSize = null,
-                        playUrl = url,
-                        ddlUrl = null
-                    ).toJson()
+            if (!isSeries || filesArr.length() <= 1) {
+                val f = if (filesArr.length() > 0) filesArr.optJSONObject(0) else null
+                val shortCode = f?.optString("short_code", "").orEmpty()
+                val fTitle = f?.optString("title", title) ?: title
+                val fSize = f?.optLong("file_size", 0L)?.takeIf { it > 0 }
+                val playUrl = f?.optString("play_url", "").orEmpty()
+                val ddlUrl = f?.optString("ddl_url", "").orEmpty()
+
+                val passObj = JSONObject().apply {
+                    put("shortCode", shortCode)
+                    put("title", fTitle)
+                    if (fSize != null) put("fileSize", fSize)
+                    put("playUrl", if (playUrl.isNotBlank()) playUrl else url)
+                    if (ddlUrl.isNotBlank()) put("ddlUrl", ddlUrl)
                 }
 
-                return newMovieLoadResponse(title, url, TvType.Movie, passData) {
-                    this.posterUrl = poster
+                return newMovieLoadResponse(title, url, TvType.Movie, passObj.toString()) {
+                    this.posterUrl = posterUrl
                     this.plot = synopsis
                     this.year = year
                 }
             } else {
-                val episodes = filesData.mapIndexed { idx, file ->
-                    val sc = file.shortCode ?: ""
-                    val epNum = if ((file.episodeNum ?: 0) > 0) file.episodeNum else (idx + 1)
-                    val sNum = if ((file.seasonNum ?: 0) > 0) file.seasonNum else 1
-                    val epTitle = file.title?.ifBlank { "Episod $epNum" } ?: "Episod $epNum"
+                val episodes = mutableListOf<Episode>()
+                for (idx in 0 until filesArr.length()) {
+                    val file = filesArr.optJSONObject(idx) ?: continue
+                    val sc = file.optString("short_code", "")
+                    val epRaw = file.optInt("episode_num", 0)
+                    val sRaw = file.optInt("season_num", 0)
+                    val epNum = if (epRaw > 0) epRaw else (idx + 1)
+                    val sNum = if (sRaw > 0) sRaw else 1
+                    val epTitle = file.optString("title", "").ifBlank { "Episod $epNum" }
+                    val fSize = file.optLong("file_size", 0L).takeIf { it > 0 }
+                    val pUrl = file.optString("play_url", "")
+                    val dUrl = file.optString("ddl_url", "")
+                    val fThumb = file.optString("thumbnail_url", "").ifBlank { poster }
 
-                    val epData = PmMediaPass(
-                        shortCode = sc,
-                        title = epTitle,
-                        fileSize = file.fileSize,
-                        playUrl = file.playUrl,
-                        ddlUrl = file.ddlUrl
-                    ).toJson()
-
-                    newEpisode(epData) {
-                        this.name = epTitle
-                        this.episode = epNum
-                        this.season = sNum
-                        this.posterUrl = file.thumbnailUrl ?: poster
+                    val epPassObj = JSONObject().apply {
+                        put("shortCode", sc)
+                        put("title", epTitle)
+                        if (fSize != null) put("fileSize", fSize)
+                        if (pUrl.isNotBlank()) put("playUrl", pUrl)
+                        if (dUrl.isNotBlank()) put("ddlUrl", dUrl)
                     }
-                }.sortedWith(compareBy({ it.season }, { it.episode }))
 
-                return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                    this.posterUrl = poster
+                    episodes.add(
+                        newEpisode(epPassObj.toString()) {
+                            this.name = epTitle
+                            this.episode = epNum
+                            this.season = sNum
+                            this.posterUrl = if (fThumb.isNotBlank()) fThumb else posterUrl
+                        }
+                    )
+                }
+                val sortedEpisodes = episodes.sortedWith(compareBy({ it.season }, { it.episode }))
+
+                return newTvSeriesLoadResponse(title, url, TvType.TvSeries, sortedEpisodes) {
+                    this.posterUrl = posterUrl
                     this.plot = synopsis
                     this.year = year
                 }
@@ -295,13 +324,13 @@ class PencariMovie(val context: Context) : MainAPI() {
         // Fallback untuk URL terus link / short_code
         val shortCodeMatch = Regex("""/link/([a-zA-Z0-9]+)""").find(url)?.groupValues?.getOrNull(1)
         if (!shortCodeMatch.isNullOrBlank()) {
-            val passData = PmMediaPass(
-                shortCode = shortCodeMatch,
-                title = "Video Play",
-                playUrl = url
-            ).toJson()
+            val passObj = JSONObject().apply {
+                put("shortCode", shortCodeMatch)
+                put("title", "Video Play")
+                put("playUrl", url)
+            }
 
-            return newMovieLoadResponse("Video Play", url, TvType.Movie, passData)
+            return newMovieLoadResponse("Video Play", url, TvType.Movie, passObj.toString())
         }
 
         return null
@@ -381,12 +410,26 @@ class PencariMovie(val context: Context) : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val mediaPass = tryParseJson<PmMediaPass>(data)
-        val shortCode = mediaPass?.shortCode
-            ?: Regex("""/link/([a-zA-Z0-9]+)""").find(data)?.groupValues?.getOrNull(1)
-            ?: ""
-        val title = mediaPass?.title ?: "Stream"
-        val fileSize = mediaPass?.fileSize
+        var shortCode = ""
+        var title = "Stream"
+        var fileSize: Long? = null
+        var ddlUrl = ""
+
+        try {
+            val json = JSONObject(data)
+            shortCode = json.optString("shortCode", "")
+            title = json.optString("title", "Stream")
+            if (json.has("fileSize")) {
+                fileSize = json.optLong("fileSize")
+            }
+            ddlUrl = json.optString("ddlUrl", "")
+        } catch (_: Exception) {
+            shortCode = Regex("""/link/([a-zA-Z0-9]+)""").find(data)?.groupValues?.getOrNull(1) ?: ""
+        }
+
+        if (shortCode.isBlank()) {
+            shortCode = Regex("""/link/([a-zA-Z0-9]+)""").find(data)?.groupValues?.getOrNull(1) ?: ""
+        }
 
         var linkFound = false
 
@@ -423,8 +466,7 @@ class PencariMovie(val context: Context) : MainAPI() {
             linkFound = true
 
             // Pelayan 2: Jika DDL URL tersedia secara langsung daripada data API
-            val ddlUrl = mediaPass?.ddlUrl
-            if (!ddlUrl.isNullOrBlank()) {
+            if (ddlUrl.isNotBlank()) {
                 callback(
                     newExtractorLink(
                         source = "$name Fast DDL",

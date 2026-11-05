@@ -52,8 +52,8 @@ class Anichin(val context: Context) : MainAPI() {
         private const val TAG = "Anichin"
         const val COOKIE_KEY = "anichin_cf_cookies"
         const val USER_AGENT_KEY = "anichin_cf_ua"
-        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-        const val USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         private val solverMutex = Mutex()
         @Volatile
         private var isDialogShowing = false
@@ -137,15 +137,10 @@ class Anichin(val context: Context) : MainAPI() {
     }
 
     private fun getPosterHeaders(): Map<String, String> {
-        val map = mutableMapOf(
-            "User-Agent" to getActualUserAgent(),
+        return mapOf(
+            "User-Agent" to USER_AGENT,
             "Referer" to "$mainUrl/"
         )
-        val cookie = getSavedCookie(getSafeContext())
-        if (cookie.isNotBlank()) {
-            map["Cookie"] = cookie
-        }
-        return map
     }
 
     private fun getActivity(ctx: Context?): Activity? {

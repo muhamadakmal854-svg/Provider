@@ -37,7 +37,7 @@ import java.util.Locale
 import java.util.TimeZone
 
 class Lk21 : MainAPI() {
-    override var mainUrl = "https://iwcsantodomingo.org"
+    override var mainUrl = "https://lk21official.lat"
     override var name = "Lk21"
     override val hasMainPage = true
     override var lang = "id"
@@ -437,7 +437,7 @@ class Lk21 : MainAPI() {
 
             // Regex scan pada seluruh HTML halaman untuk URL player
             val htmlText = pageDoc.html()
-            val urlRegex = Regex("""(https?://[^\s"'<>]*(?:playerp2p|strp2p|rpmvid|vidhide|morencius|callistanise|efek\.stream|filemoon|byseq|streamwish|barplay|embedpyrox|wishembed|hgcloud|upns)[^\s"'<>]*)""", RegexOption.IGNORE_CASE)
+            val urlRegex = Regex("""(https?://[^\s"'<>]*(?:playerp2p|strp2p|rpmvid|vidhide|morencius|callistanise|efek\.stream|filemoon|byse|abyss|streamwish|barplay|embedpyrox|wishembed|hgcloud|upns)[^\s"'<>]*)""", RegexOption.IGNORE_CASE)
             urlRegex.findAll(htmlText).forEach { match ->
                 val u = match.groupValues[1].replace("\\/", "/").trim()
                 if (!u.contains("wp-json") && !u.contains("twitter.com") && !u.contains("whatsapp.com") && !u.contains("t.me")) {
@@ -551,7 +551,7 @@ class Lk21 : MainAPI() {
         }
 
         // 5. Byseq / Filemoon
-        if (lower.contains("byseqekaho.com") || lower.contains("filemoon.to") || lower.contains("filemoon.sx") || lower.contains("filemoon.in")) {
+        if (lower.contains("byse") || lower.contains("byseqekaho.com") || lower.contains("filemoon.to") || lower.contains("filemoon.sx") || lower.contains("filemoon.in")) {
             runCatching {
                 ByseqExtractor().getUrl(url, referer, subtitleCallback) { l ->
                     callback.invoke(l)
