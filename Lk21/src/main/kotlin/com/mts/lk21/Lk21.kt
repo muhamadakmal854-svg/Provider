@@ -76,7 +76,7 @@ import java.util.TimeZone
 
 class Lk21 : MainAPI() {
 
-    override var mainUrl = "https://lk21official.lat"
+    override var mainUrl = "https://tv12.lk21official.cc"
 
     override var name = "Lk21"
 
@@ -974,7 +974,7 @@ class Lk21 : MainAPI() {
 
             // Download buttons & other server links
 
-            pageDoc.select(".gmr-download-list a, .download-btn, a[href*='download'], a[href*='drive'], a[href*='player']").forEach { btn ->
+            pageDoc.select(".gmr-download-list a, .download-btn, a[href*='download'], a[href*='drive'], a[href*='player'], a[href*='/play/'], a[href*='/embed/'], a[href*='get/']").forEach { btn ->
 
                 val href = btn.attr("href").trim()
 

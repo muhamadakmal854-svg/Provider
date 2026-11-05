@@ -67,7 +67,7 @@ open class VidHideExtractor : ExtractorApi() {
         callback: (ExtractorLink) -> Unit
     ) {
         val targetUrl = url.replace("/d/", "/v/").replace("/download/", "/v/")
-        val ref = referer ?: "https://lk21official.lat/"
+        val ref = referer ?: "https://tv12.lk21official.cc/"
 
         val html = try {
             app.get(
@@ -356,7 +356,7 @@ open class ByseqExtractor : ExtractorApi() {
         }
 
         // 2. Fallback for legacy Dean Edwards / plain m3u8
-        val ref = referer ?: "https://lk21official.lat/"
+        val ref = referer ?: "https://tv12.lk21official.cc/"
         val html = try {
             app.get(
                 url,
