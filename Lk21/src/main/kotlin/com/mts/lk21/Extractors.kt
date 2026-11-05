@@ -10,10 +10,12 @@ import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
 import java.net.URLDecoder
 import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
@@ -64,8 +66,8 @@ open class VidHideExtractor : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val targetUrl = url.replace("/d/", "/v/").replace("/download/", "/v/").replace("/embed/", "/v/")
-        val ref = referer ?: "https://iwcsantodomingo.org/"
+        val targetUrl = url.replace("/d/", "/v/").replace("/download/", "/v/")
+        val ref = referer ?: "https://lk21official.lat/"
 
         val html = try {
             app.get(
@@ -91,12 +93,26 @@ open class VidHideExtractor : ExtractorApi() {
         m3u8Regex.findAll(unpacked).forEach { match ->
             val m3u8 = match.groupValues[1]
             if (foundLinks.add(m3u8)) {
-                generateM3u8(
-                    source = name,
-                    streamUrl = m3u8,
-                    referer = targetUrl,
-                    headers = mapOf("Referer" to targetUrl)
-                ).forEach(callback)
+                // Direct emission as fallback
+                callback.invoke(
+                    newExtractorLink(
+                        source = name,
+                        name = "$name (Auto)",
+                        url = m3u8,
+                        type = ExtractorLinkType.M3U8
+                    ) {
+                        this.referer = targetUrl
+                        this.quality = Qualities.P1080.value
+                    }
+                )
+                runCatching {
+                    generateM3u8(
+                        source = name,
+                        streamUrl = m3u8,
+                        referer = targetUrl,
+                        headers = mapOf("Referer" to targetUrl)
+                    ).forEach(callback)
+                }
             }
         }
     }
@@ -239,11 +255,20 @@ open class StreamWishExtractor : ExtractorApi() {
     }
 }
 
-// ─── BYSEQ / FILEMOON EXTRACTOR ─────────────────────────────────────────────
+// ─── BYSEQ / BYSE / FILEMOON EXTRACTOR (AES-256-GCM BYSE API & LEGACY) ─────
 open class ByseqExtractor : ExtractorApi() {
-    override var name = "Byseq"
-    override var mainUrl = "https://byseqekaho.com"
+    override var name = "Byse"
+    override var mainUrl = "https://bysesayeveum.com"
     override val requiresReferer = false
+
+    private fun base64UrlDecode(str: String): ByteArray {
+        var s = str.replace('-', '+').replace('_', '/')
+        val mod = s.length % 4
+        if (mod != 0) {
+            s += "=".repeat(4 - mod)
+        }
+        return Base64.decode(s, Base64.DEFAULT)
+    }
 
     override suspend fun getUrl(
         url: String,
@@ -251,7 +276,87 @@ open class ByseqExtractor : ExtractorApi() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ) {
-        val ref = referer ?: "https://iwcsantodomingo.org/"
+        val host = runCatching { URI(url).host }.getOrNull() ?: "bysesayeveum.com"
+        val code = Regex("""/e/([a-zA-Z0-9]+)""").find(url)?.groupValues?.get(1)
+
+        // 1. Byse Modern AES-256-GCM Encrypted API
+        if (!code.isNullOrBlank()) {
+            val apiUrl = "https://$host/api/videos/$code/"
+            try {
+                val jsonStr = app.get(
+                    apiUrl,
+                    headers = mapOf(
+                        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Referer" to url
+                    ),
+                    timeout = 10
+                ).text
+
+                val rootJson = JSONObject(jsonStr)
+                val playback = rootJson.optJSONObject("playback")
+                if (playback != null) {
+                    val vNum = playback.optInt("version", 1)
+                    val keyParts = playback.optJSONArray("key_parts")
+                    if (keyParts != null && keyParts.length() > 0) {
+                        val idx1 = vNum
+                        val idx2 = 31 - vNum
+                        if (idx1 in 1..keyParts.length() && idx2 in 1..keyParts.length()) {
+                            val part1 = base64UrlDecode(keyParts.getString(idx1 - 1))
+                            val part2 = base64UrlDecode(keyParts.getString(idx2 - 1))
+                            val keyBytes = part1 + part2
+                            val ivBytes = base64UrlDecode(playback.getString("iv"))
+                            val payloadBytes = base64UrlDecode(playback.getString("payload"))
+
+                            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                            val keySpec = SecretKeySpec(keyBytes, "AES")
+                            val gcmSpec = GCMParameterSpec(128, ivBytes)
+                            cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+                            val decryptedBytes = cipher.doFinal(payloadBytes)
+                            val decryptedJson = JSONObject(String(decryptedBytes, Charsets.UTF_8))
+                            val sources = decryptedJson.optJSONArray("sources")
+                            if (sources != null && sources.length() > 0) {
+                                for (i in 0 until sources.length()) {
+                                    val src = sources.optJSONObject(i) ?: continue
+                                    val m3u8Url = src.optString("url")
+                                    val label = src.optString("label", "1080p")
+                                    val quality = when {
+                                        label.contains("1080") -> Qualities.P1080.value
+                                        label.contains("720") -> Qualities.P720.value
+                                        label.contains("480") -> Qualities.P480.value
+                                        else -> Qualities.Unknown.value
+                                    }
+                                    if (m3u8Url.isNotBlank()) {
+                                        // Direct emission for guaranteed playback
+                                        callback.invoke(
+                                            newExtractorLink(
+                                                source = name,
+                                                name = "$name ($label)",
+                                                url = m3u8Url,
+                                                type = ExtractorLinkType.M3U8
+                                            ) {
+                                                this.referer = "https://$host/"
+                                                this.quality = quality
+                                            }
+                                        )
+                                        runCatching {
+                                            generateM3u8(
+                                                source = "$name ($label)",
+                                                streamUrl = m3u8Url,
+                                                referer = "https://$host/"
+                                            ).forEach(callback)
+                                        }
+                                    }
+                                }
+                                return
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 2. Fallback for legacy Dean Edwards / plain m3u8
+        val ref = referer ?: "https://lk21official.lat/"
         val html = try {
             app.get(
                 url,
@@ -259,7 +364,7 @@ open class ByseqExtractor : ExtractorApi() {
                     "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                     "Referer" to ref
                 ),
-                timeout = 15
+                timeout = 10
             ).text
         } catch (_: Exception) {
             return
@@ -272,12 +377,26 @@ open class ByseqExtractor : ExtractorApi() {
 
         val m3u8Regex = Regex("""(https?://[^\s"'<>]+\.m3u8[^\s"'<>]*)""")
         m3u8Regex.findAll(unpacked).forEach { match ->
-            generateM3u8(
-                source = name,
-                streamUrl = match.groupValues[1],
-                referer = url,
-                headers = mapOf("Referer" to url)
-            ).forEach(callback)
+            val m3u8 = match.groupValues[1]
+            callback.invoke(
+                newExtractorLink(
+                    source = name,
+                    name = "$name (Auto)",
+                    url = m3u8,
+                    type = ExtractorLinkType.M3U8
+                ) {
+                    this.referer = url
+                    this.quality = Qualities.P1080.value
+                }
+            )
+            runCatching {
+                generateM3u8(
+                    source = name,
+                    streamUrl = m3u8,
+                    referer = url,
+                    headers = mapOf("Referer" to url)
+                ).forEach(callback)
+            }
         }
     }
 }
