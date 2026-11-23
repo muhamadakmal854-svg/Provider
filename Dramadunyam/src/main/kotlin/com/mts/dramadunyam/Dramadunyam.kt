@@ -290,7 +290,7 @@ class Dramadunyam : MainAPI() {
         val mainStreamUrl = json.optString("url", "").trim()
         val mainType = json.optString("type", "").lowercase().trim()
 
-        fun emitLink(rawUrl: String, typeStr: String, label: String) {
+        suspend fun emitLink(rawUrl: String, typeStr: String, label: String) {
             if (rawUrl.isBlank()) return
             val isHls = typeStr == "hls" || rawUrl.contains(".m3u8")
             if (isHls) {

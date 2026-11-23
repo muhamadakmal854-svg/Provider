@@ -39,6 +39,23 @@ class PencariMovie(val context: Context) : MainAPI() {
         )
     }
 
+    private suspend fun fetchAjax(url: String): String? {
+        val targets = listOf(
+            url,
+            url.replace("flixtorbot.pencarimovie.com", "pencarimovie.com")
+        ).distinct()
+
+        for (target in targets) {
+            try {
+                val res = app.get(target, headers = getAjaxHeaders(), timeout = 20)
+                if (res.code == 200 && res.text.isNotBlank()) {
+                    return res.text
+                }
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
     override val mainPage = mainPageOf(
         "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&limit=20" to "Terkini",
         "$mainUrl/wp-admin/admin-ajax.php?action=stream_posts&category=action&limit=20" to "Aksi (Action)",
@@ -87,11 +104,7 @@ class PencariMovie(val context: Context) : MainAPI() {
             request.data
         }
 
-        val jsonText = try {
-            app.get(url, headers = getAjaxHeaders(), timeout = 10).text
-        } catch (_: Exception) {
-            return null
-        }
+        val jsonText = fetchAjax(url) ?: return null
 
         val json = try {
             JSONObject(jsonText)
@@ -105,7 +118,9 @@ class PencariMovie(val context: Context) : MainAPI() {
         val items = mutableListOf<SearchResponse>()
         for (i in 0 until dataArr.length()) {
             val post = dataArr.optJSONObject(i) ?: continue
-            val id = post.optLong("id", -1L)
+            val id = post.optLong("id", -1L).takeIf { it > 0 }
+                ?: post.optString("id", "").toLongOrNull()
+                ?: -1L
             if (id <= 0) continue
             val rawTitle = post.optString("title", "")
             if (rawTitle.isBlank()) continue
@@ -142,7 +157,7 @@ class PencariMovie(val context: Context) : MainAPI() {
         }
 
         return if (items.isNotEmpty()) {
-            newHomePageResponse(request.name, items)
+            newHomePageResponse(request.name, items, hasNext = items.size >= 20)
         } else {
             null
         }
@@ -152,11 +167,7 @@ class PencariMovie(val context: Context) : MainAPI() {
         val encoded = URLEncoder.encode(query, "UTF-8")
         val searchUrl = "$mainUrl/wp-admin/admin-ajax.php?action=stream_search&search=$encoded&limit=25"
 
-        val jsonText = try {
-            app.get(searchUrl, headers = getAjaxHeaders(), timeout = 10).text
-        } catch (_: Exception) {
-            return emptyList()
-        }
+        val jsonText = fetchAjax(searchUrl) ?: return emptyList()
 
         val json = try {
             JSONObject(jsonText)
@@ -168,7 +179,9 @@ class PencariMovie(val context: Context) : MainAPI() {
         val items = mutableListOf<SearchResponse>()
         for (i in 0 until dataArr.length()) {
             val post = dataArr.optJSONObject(i) ?: continue
-            val id = post.optLong("id", -1L)
+            val id = post.optLong("id", -1L).takeIf { it > 0 }
+                ?: post.optString("id", "").toLongOrNull()
+                ?: -1L
             if (id <= 0) continue
             val rawTitle = post.optString("title", "")
             if (rawTitle.isBlank()) continue
@@ -218,18 +231,10 @@ class PencariMovie(val context: Context) : MainAPI() {
 
             val (postText, filesText) = coroutineScope {
                 val postDeferred = async {
-                    try {
-                        app.get(postUrl, headers = getAjaxHeaders(), timeout = 8).text
-                    } catch (_: Exception) {
-                        ""
-                    }
+                    fetchAjax(postUrl).orEmpty()
                 }
                 val filesDeferred = async {
-                    try {
-                        app.get(filesUrl, headers = getAjaxHeaders(), timeout = 8).text
-                    } catch (_: Exception) {
-                        ""
-                    }
+                    fetchAjax(filesUrl).orEmpty()
                 }
                 Pair(postDeferred.await(), filesDeferred.await())
             }
