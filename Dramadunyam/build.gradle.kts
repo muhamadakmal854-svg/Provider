@@ -1,8 +1,8 @@
-version = 1
+version = 11
 
 cloudstream {
 
-    language    = "en"
+    language    = "id"
 
     description = "Provider untuk Dramadunyam"
 

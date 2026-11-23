@@ -3,7 +3,6 @@ package com.mts.dramadunyam
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.M3u8Helper.Companion.generateM3u8
-import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import java.net.URLEncoder
@@ -13,229 +12,238 @@ class Dramadunyam : MainAPI() {
     override var mainUrl = "https://dramadunyam.com"
     override var name = "Dramadunyam"
     override val hasMainPage = true
-    override var lang = "en"
+    override var lang = "id"
     override val hasDownloadSupport = true
     override val supportedTypes = setOf(TvType.AsianDrama, TvType.TvSeries)
 
     companion object {
         const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-        private const val MIRROR_URL = "https://dramadunyam.org"
+        @Volatile
+        private var cachedBilet: String? = null
+        private var lastBiletFetchTime = 0L
     }
 
-    private fun toMirror(url: String): String {
-        return url.replace("https://dramadunyam.com", MIRROR_URL)
-            .replace("http://dramadunyam.com", MIRROR_URL)
-    }
-
-    private suspend fun fetchDocument(url: String): Document? {
-        val target = toMirror(url)
+    private suspend fun getBilet(): String? {
+        val now = System.currentTimeMillis()
+        if (cachedBilet != null && (now - lastBiletFetchTime < 3600000L)) {
+            return cachedBilet
+        }
         return try {
-            app.get(
-                target,
+            val res = app.get(
+                "$mainUrl/api/config",
                 headers = mapOf(
                     "User-Agent" to USER_AGENT,
-                    "Referer" to "$MIRROR_URL/"
+                    "Referer" to "$mainUrl/id"
                 ),
                 timeout = 15
-            ).document
-        } catch (_: Exception) {
-            try {
-                app.get(
-                    url,
-                    headers = mapOf(
-                        "User-Agent" to USER_AGENT,
-                        "Referer" to "$mainUrl/"
-                    ),
-                    timeout = 15
-                ).document
-            } catch (_: Exception) {
-                null
+            )
+            val setCookie = res.headers["set-cookie"] ?: res.headers["Set-Cookie"]
+            val m = Regex("""(dd_bilet=[^;\r\n]+)""").find(setCookie.orEmpty())
+            val bilet = m?.groupValues?.getOrNull(1)
+            if (bilet != null) {
+                cachedBilet = bilet
+                lastBiletFetchTime = now
             }
+            cachedBilet
+        } catch (_: Exception) {
+            cachedBilet
         }
     }
 
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "🔥 Terkini (Latest Series)",
-        "$mainUrl/category/dramabox/" to "🎬 DramaBox",
-        "$mainUrl/category/goodshort/" to "⭐ GoodShort",
-        "$mainUrl/category/reelshort/" to "⚡ ReelShort",
-        "$mainUrl/category/shortmax/" to "💎 ShortMax",
-        "$mainUrl/category/dramawave/" to "🌊 DramaWave",
-        "$mainUrl/category/flickreels/" to "🎞️ FlickReels",
-        "$mainUrl/category/happyshort/" to "✨ HappyShort",
-        "$mainUrl/category/flareflow/" to "🔥 FlareFlow",
-        "$mainUrl/category/netshort/" to "🌐 NetShort",
-        "$mainUrl/category/moboreels/" to "📱 MoboReels",
-        "$mainUrl/tag/billionaire/" to "💰 Billionaire / CEO",
-        "$mainUrl/tag/revenge/" to "⚔️ Revenge",
-        "$mainUrl/tag/romance/" to "💖 Romance",
-        "$mainUrl/tag/hidden-identity/" to "🎭 Hidden Identity",
-        "$mainUrl/tag/contract-marriage/" to "💍 Contract Marriage",
-        "$mainUrl/tag/mafia/" to "🕶️ Mafia",
-        "$mainUrl/tag/werewolf/" to "🐺 Werewolf & Fantasy",
-        "$mainUrl/tag/rebirth/" to "⏳ Rebirth & Time Travel"
+        "$mainUrl/api/series?page=1&limit=20&lang=id" to "Terkini (Semua)",
+        "$mainUrl/api/series?platform=FreeReels&page=1&limit=20&lang=id" to "FreeReels",
+        "$mainUrl/api/series?platform=DramaBox&page=1&limit=20&lang=id" to "DramaBox",
+        "$mainUrl/api/series?platform=ShortMax&page=1&limit=20&lang=id" to "ShortMax",
+        "$mainUrl/api/series?platform=ReelShort&page=1&limit=20&lang=id" to "ReelShort",
+        "$mainUrl/api/series?tag=balas-dendam&page=1&limit=20&lang=id" to "Balas Dendam (Revenge)",
+        "$mainUrl/api/series?tag=romantis&page=1&limit=20&lang=id" to "Romantis (Romance)",
+        "$mainUrl/api/series?tag=bisnis&page=1&limit=20&lang=id" to "Bisnis (Business)",
+        "$mainUrl/api/series?tag=pengkhianatan&page=1&limit=20&lang=id" to "Pengkhianatan (Betrayal)",
+        "$mainUrl/api/series?tag=kota&page=1&limit=20&lang=id" to "Kehidupan Kota (Urban)",
+        "$mainUrl/api/series?tag=keluarga&page=1&limit=20&lang=id" to "Keluarga (Family)"
     )
 
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
-        val baseUrl = request.data.removeSuffix("/")
-        val targetUrl = if (page <= 1) {
-            baseUrl
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+        val targetUrl = if (page > 1) {
+            request.data.replace(Regex("""page=\d+"""), "page=$page")
         } else {
-            if (baseUrl.contains("?")) {
-                val parts = baseUrl.split("?", limit = 2)
-                "${parts[0]}/page/$page/?${parts[1]}"
-            } else {
-                "$baseUrl/page/$page/"
-            }
+            request.data
         }
 
-        val doc = fetchDocument(targetUrl) ?: return newHomePageResponse(request.name, emptyList())
-        val items = parseCards(doc)
-        return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
+        val bilet = getBilet()
+        val headers = mutableMapOf(
+            "User-Agent" to USER_AGENT,
+            "Referer" to "$mainUrl/id",
+            "Accept" to "application/json"
+        )
+        if (bilet != null) {
+            headers["Cookie"] = bilet
+        }
+
+        val jsonText = try {
+            app.get(targetUrl, headers = headers, timeout = 15).text
+        } catch (_: Exception) {
+            return null
+        }
+
+        val json = try {
+            JSONObject(jsonText)
+        } catch (_: Exception) {
+            return null
+        }
+
+        val dataArr = json.optJSONArray("data") ?: return null
+        if (dataArr.length() == 0) return null
+
+        val items = mutableListOf<SearchResponse>()
+        for (i in 0 until dataArr.length()) {
+            val obj = dataArr.optJSONObject(i) ?: continue
+            val title = obj.optString("title", "").trim()
+            val slug = obj.optString("slug", "").trim()
+            if (title.isBlank() || slug.isBlank()) continue
+
+            val cover = obj.optString("cover", "").trim().ifBlank { null }
+            val postUrl = "$mainUrl/id/serial/$slug"
+
+            items.add(newTvSeriesSearchResponse(title, postUrl, TvType.AsianDrama) {
+                this.posterUrl = cover
+            })
+        }
+
+        return if (items.isNotEmpty()) {
+            newHomePageResponse(request.name, items, hasNext = items.size >= 20)
+        } else {
+            null
+        }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val encoded = URLEncoder.encode(query, "UTF-8")
-        val searchUrl = "$mainUrl/?s=$encoded"
-        val doc = fetchDocument(searchUrl) ?: return emptyList()
-        return parseCards(doc)
-    }
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) return emptyList()
 
-    private fun parseCards(doc: Document): List<SearchResponse> {
-        val results = mutableListOf<SearchResponse>()
-        val seenUrls = mutableSetOf<String>()
-
-        val cards = doc.select("article.entry, article.post, li.entry-list-item, div.post")
-        for (card in cards) {
-            val a = card.selectFirst("h2.entry-title a, a.post-thumbnail, a[href]") ?: continue
-            val href = a.attr("href").trim()
-            if (href.isBlank() || href == "/" || href == mainUrl || href == "$mainUrl/" ||
-                href == MIRROR_URL || href == "$MIRROR_URL/" ||
-                href.contains("/category/") || href.contains("/tag/") || href.contains("/wp-content/") ||
-                href.contains("#") || seenUrls.contains(href)
-            ) continue
-
-            val titleEl = card.selectFirst("h2.entry-title, .entry-title, h2, h3")
-            val rawTitle = (titleEl?.text()?.trim() ?: a.text().trim()).ifBlank {
-                card.selectFirst("img")?.attr("alt")?.trim() ?: ""
+        // Jika carian adalah URL terus ke drama
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            val slugMatch = Regex("""/serial/([^/?#]+)""").find(trimmed)
+            if (slugMatch != null) {
+                val slug = slugMatch.groupValues[1]
+                val postUrl = "$mainUrl/id/serial/$slug"
+                val displayTitle = slug.replace('-', ' ').split(' ').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+                return listOf(newTvSeriesSearchResponse(displayTitle, postUrl, TvType.AsianDrama))
             }
-            if (rawTitle.isBlank()) continue
-
-            val img = card.selectFirst("img")
-            val poster = img?.attr("data-src")?.takeIf { it.isNotBlank() }
-                ?: img?.attr("data-lazy-src")?.takeIf { it.isNotBlank() }
-                ?: img?.attr("src")?.takeIf { it.isNotBlank() && !it.startsWith("data:image") }
-
-            seenUrls.add(href)
-            results.add(
-                newTvSeriesSearchResponse(rawTitle, href, TvType.AsianDrama) {
-                    this.posterUrl = poster
-                }
-            )
         }
 
-        if (results.size < 5) {
-            for (a in doc.select("a[href]")) {
-                val href = a.attr("href").trim()
-                if (href.isBlank() || href == "/" || href == mainUrl || href == "$mainUrl/" ||
-                    href == MIRROR_URL || href == "$MIRROR_URL/" ||
-                    href.contains("/category/") || href.contains("/tag/") || href.contains("/wp-content/") ||
-                    href.contains("#") || href.contains("privacy") || href.contains("terms") ||
-                    href.contains("dmca") || href.contains("data-collection") || seenUrls.contains(href)
-                ) continue
+        val encoded = URLEncoder.encode(trimmed, "UTF-8")
+        val searchUrl = "$mainUrl/api/search?q=$encoded&lang=id&page=1&limit=30"
 
-                val img = a.selectFirst("img") ?: continue
-                val poster = img.attr("data-src").takeIf { it.isNotBlank() }
-                    ?: img.attr("data-lazy-src").takeIf { it.isNotBlank() }
-                    ?: img.attr("src").takeIf { it.isNotBlank() && !it.startsWith("data:image") }
+        val bilet = getBilet()
+        val headers = mutableMapOf(
+            "User-Agent" to USER_AGENT,
+            "Referer" to "$mainUrl/id",
+            "Accept" to "application/json"
+        )
+        if (bilet != null) {
+            headers["Cookie"] = bilet
+        }
 
-                val rawTitle = a.attr("title").takeIf { it.isNotBlank() }
-                    ?: img.attr("alt").takeIf { it.isNotBlank() }
-                    ?: a.text().trim().takeIf { it.isNotBlank() }
-                    ?: continue
+        val jsonText = try {
+            app.get(searchUrl, headers = headers, timeout = 15).text
+        } catch (_: Exception) {
+            return emptyList()
+        }
 
-                seenUrls.add(href)
-                results.add(
-                    newTvSeriesSearchResponse(rawTitle, href, TvType.AsianDrama) {
-                        this.posterUrl = poster
-                    }
-                )
-            }
+        val json = try {
+            JSONObject(jsonText)
+        } catch (_: Exception) {
+            return emptyList()
+        }
+
+        val dataArr = json.optJSONArray("data") ?: return emptyList()
+        val results = mutableListOf<SearchResponse>()
+        for (i in 0 until dataArr.length()) {
+            val obj = dataArr.optJSONObject(i) ?: continue
+            val title = obj.optString("title", "").trim()
+            val slug = obj.optString("slug", "").trim()
+            if (title.isBlank() || slug.isBlank()) continue
+
+            val cover = obj.optString("cover", "").trim().ifBlank { null }
+            val postUrl = "$mainUrl/id/serial/$slug"
+
+            results.add(newTvSeriesSearchResponse(title, postUrl, TvType.AsianDrama) {
+                this.posterUrl = cover
+            })
         }
 
         return results
     }
 
     override suspend fun load(url: String): LoadResponse? {
-        val doc = fetchDocument(url) ?: return null
-        val html = doc.html()
-
-        val title = doc.selectFirst("h1.entry-title, .asdi-ov-series, h1")?.text()?.trim()
-            ?: doc.selectFirst("meta[property='og:title']")?.attr("content")?.removeSuffix(" | Dramadunyam")?.trim()
-            ?: "Short Drama"
-
-        val poster = doc.selectFirst("img.asdi-poster")?.attr("data-src")?.takeIf { it.isNotBlank() }
-            ?: doc.selectFirst("img.asdi-poster")?.attr("src")?.takeIf { it.isNotBlank() && !it.startsWith("data:image") }
-            ?: doc.selectFirst("meta[property='og:image']")?.attr("content")?.takeIf { it.isNotBlank() }
-
-        val plot = doc.selectFirst("meta[property='og:description']")?.attr("content")?.trim()
-            ?: doc.selectFirst(".entry-content p, .asdi-desc, .description")?.text()?.trim()
-
-        val tags = doc.select("a[href*='/tag/'], a[href*='/category/']")
-            .map { it.text().trim() }
-            .filter { it.isNotBlank() && !it.contains("series", ignoreCase = true) }
-
-        val episodesList = mutableListOf<Episode>()
-
-        val codeMatch = Regex("""\{"post":\d+,"code":"([^"]+)".*?"episodes":(\[.*?\])(?:,"|\})""").find(html)
-        if (codeMatch != null) {
-            val code = codeMatch.groupValues[1]
-            val epsJsonStr = codeMatch.groupValues[2]
-            try {
-                val epsArray = JSONArray(epsJsonStr)
-                for (i in 0 until epsArray.length()) {
-                    val epObj = epsArray.optJSONObject(i) ?: continue
-                    val epNum = epObj.optInt("n", i + 1)
-                    val rawEpTitle = epObj.optString("t", "Episode $epNum")
-                    val epTitle = rawEpTitle.split("–")[0].trim().ifBlank { "Episode $epNum" }
-                    val linkData = "$code|$epNum|$url"
-
-                    episodesList.add(
-                        newEpisode(linkData) {
-                            this.name = epTitle
-                            this.episode = epNum
-                            this.season = 1
-                            this.posterUrl = poster
-                        }
-                    )
-                }
-            } catch (_: Exception) {}
+        val cleanUrl = if (url.startsWith("http")) url else "$mainUrl$url"
+        val bilet = getBilet()
+        val headers = mutableMapOf(
+            "User-Agent" to USER_AGENT,
+            "Referer" to "$mainUrl/id"
+        )
+        if (bilet != null) {
+            headers["Cookie"] = bilet
         }
 
-        if (episodesList.isEmpty()) {
-            val epCountText = doc.selectFirst(".asdi-eps-count")?.text()?.trim()
-            val count = Regex("""(\d+)""").find(epCountText ?: "")?.groupValues?.get(1)?.toIntOrNull() ?: 1
-            val codeFallback = Regex("\"code\":\"(dp-[a-zA-Z0-9]+)\"").find(html)?.groupValues?.get(1) ?: ""
-            for (epNum in 1..count) {
-                val linkData = "$codeFallback|$epNum|$url"
-                episodesList.add(
-                    newEpisode(linkData) {
-                        this.name = "Episode $epNum"
-                        this.episode = epNum
-                        this.season = 1
-                        this.posterUrl = poster
-                    }
-                )
+        val doc = try {
+            app.get(cleanUrl, headers = headers, timeout = 15).document
+        } catch (_: Exception) {
+            return null
+        }
+
+        val rawTitle = doc.selectFirst("h1")?.text()?.trim()
+            ?: doc.selectFirst("meta[property='og:title']")?.attr("content")?.trim()
+            ?: "Drama"
+
+        val cleanTitle = rawTitle
+            .replace(Regex("""\s*Sub Indo.*""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*Dubbing.*""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s*Full Episode.*""", RegexOption.IGNORE_CASE), "")
+            .trim()
+
+        val plot = doc.selectFirst("meta[property='og:description']")?.attr("content")?.trim()
+            ?: doc.selectFirst("meta[name='description']")?.attr("content")?.trim()
+
+        val poster = doc.selectFirst("meta[property='og:image']")?.attr("content")?.trim()
+            ?: doc.selectFirst("img[src*='covers']")?.attr("src")?.trim()
+
+        // Anggarkan jumlah episod
+        val cntMatch = Regex("""\((\d+)\s*Episode\)""", RegexOption.IGNORE_CASE).find(rawTitle)
+            ?: Regex("""(\d+)\s*episode""", RegexOption.IGNORE_CASE).find(plot.orEmpty())
+        val estimatedTotal = cntMatch?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 30
+
+        // Kumpul semua pautan episod yang disenaraikan
+        val epLinks = doc.select("a[href*='/episode-']")
+        val epMap = mutableMapOf<Int, String>()
+        for (a in epLinks) {
+            val href = a.attr("href")
+            val epNum = Regex("""/episode-(\d+)""").find(href)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            if (epNum != null) {
+                epMap[epNum] = fixUrl(href)
             }
         }
 
-        return newTvSeriesLoadResponse(title, url, TvType.AsianDrama, episodesList) {
+        val totalEpisodes = maxOf(estimatedTotal, epMap.keys.maxOrNull() ?: 1)
+        val episodes = mutableListOf<Episode>()
+        val baseSerialUrl = cleanUrl.replace(Regex("""/episode-\d+.*"""), "").trimEnd('/')
+
+        for (ep in 1..totalEpisodes) {
+            val epUrl = epMap[ep] ?: "$baseSerialUrl/episode-$ep"
+            episodes.add(
+                newEpisode(epUrl) {
+                    this.name = "Episode $ep"
+                    this.episode = ep
+                    this.posterUrl = poster
+                }
+            )
+        }
+
+        return newTvSeriesLoadResponse(cleanTitle, cleanUrl, TvType.AsianDrama, episodes) {
             this.posterUrl = poster
             this.plot = plot
-            this.tags = tags.distinct()
         }
     }
 
@@ -245,93 +253,87 @@ class Dramadunyam : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val parts = data.split("|")
-        val code: String
-        val ep: Int
-        val pageUrl: String
+        val epUrl = if (data.startsWith("http")) data else "$mainUrl$data"
+        val bilet = getBilet()
+        val headers = mutableMapOf(
+            "User-Agent" to USER_AGENT,
+            "Referer" to "$mainUrl/"
+        )
+        if (bilet != null) {
+            headers["Cookie"] = bilet
+        }
 
-        if (parts.size >= 3) {
-            code = parts[0].trim()
-            ep = parts[1].trim().toIntOrNull() ?: 1
-            pageUrl = parts[2].trim()
-        } else if (data.startsWith("http")) {
-            pageUrl = data
-            val doc = fetchDocument(pageUrl)
-            code = Regex("\"code\":\"(dp-[a-zA-Z0-9]+)\"").find(doc?.html() ?: "")?.groupValues?.get(1) ?: ""
-            ep = 1
+        val epRes = try {
+            app.get(epUrl, headers = headers, timeout = 15)
+        } catch (_: Exception) {
+            return false
+        }
+
+        // Kemas kini bilet jika ada cookie baharu dalam respons
+        val setCookie = epRes.headers["set-cookie"] ?: epRes.headers["Set-Cookie"]
+        val newBilet = Regex("""(dd_bilet=[^;\r\n]+)""").find(setCookie.orEmpty())?.groupValues?.getOrNull(1)
+        if (newBilet != null) {
+            cachedBilet = newBilet
+            lastBiletFetchTime = System.currentTimeMillis()
+        }
+        val activeBilet = newBilet ?: bilet
+
+        val html = epRes.text
+        val hlsRelative = Regex("""<video[^>]+src=["']([^"']+)["']""").find(html)?.groupValues?.getOrNull(1)
+            ?: Regex("""(/hls/\d+/\d+/playlist\.m3u8)""").find(html)?.groupValues?.getOrNull(1)
+            ?: return false
+
+        val fullHlsUrl = if (hlsRelative.startsWith("http")) hlsRelative else "$mainUrl$hlsRelative"
+        val hlsHeaders = mutableMapOf(
+            "User-Agent" to USER_AGENT,
+            "Referer" to epUrl
+        )
+        if (activeBilet != null) {
+            hlsHeaders["Cookie"] = activeBilet
+        }
+
+        // Dapatkan pautan aliran terus melalui 302 redirect
+        val redirectRes = try {
+            app.get(fullHlsUrl, headers = hlsHeaders, allowRedirects = false, timeout = 15)
+        } catch (_: Exception) {
+            null
+        }
+
+        val location = redirectRes?.headers?.get("location") ?: redirectRes?.headers?.get("Location")
+        val streamUrl = if (!location.isNullOrBlank()) {
+            if (location.startsWith("http")) location else "$mainUrl$location"
         } else {
-            return false
-        }
-
-        if (code.isBlank()) return false
-
-        val streamApiUrl = "$MIRROR_URL/wp-json/asdi/v1/stream?code=$code&ep=$ep"
-        val resText = try {
-            app.get(
-                streamApiUrl,
-                headers = mapOf(
-                    "User-Agent" to USER_AGENT,
-                    "Referer" to toMirror(pageUrl),
-                    "Accept" to "application/json, */*"
-                ),
-                timeout = 15
-            ).text
-        } catch (_: Exception) {
-            return false
-        }
-
-        val json = try {
-            JSONObject(resText)
-        } catch (_: Exception) {
-            return false
+            fullHlsUrl
         }
 
         var foundAny = false
-        val mainStreamUrl = json.optString("url", "").trim()
-        val mainType = json.optString("type", "").lowercase().trim()
 
-        suspend fun emitLink(rawUrl: String, typeStr: String, label: String) {
-            if (rawUrl.isBlank()) return
-            val isHls = typeStr == "hls" || rawUrl.contains(".m3u8")
-            if (isHls) {
-                generateM3u8(
-                    source = name,
-                    streamUrl = rawUrl,
-                    referer = "$MIRROR_URL/"
-                ).forEach { link ->
-                    callback.invoke(link)
-                    foundAny = true
-                }
-            } else {
-                callback.invoke(
-                    newExtractorLink(
-                        source = name,
-                        name = "$name $label (MP4)",
-                        url = rawUrl,
-                        type = ExtractorLinkType.VIDEO
-                    ) {
-                        this.referer = "$MIRROR_URL/"
-                        this.quality = Qualities.P1080.value
-                    }
-                )
+        // 1. Pecahkan kualiti M3U8 (1080p, 720p, 480p, dll.) secara automatik
+        try {
+            generateM3u8(
+                source = name,
+                streamUrl = streamUrl,
+                referer = "$mainUrl/"
+            ).forEach { link ->
+                callback.invoke(link)
                 foundAny = true
             }
-        }
+        } catch (_: Exception) {}
 
-        if (mainStreamUrl.isNotBlank()) {
-            emitLink(mainStreamUrl, mainType, "VIP")
-        }
-
-        val sources = json.optJSONArray("sources")
-        if (sources != null) {
-            for (i in 0 until sources.length()) {
-                val sObj = sources.optJSONObject(i) ?: continue
-                val sUrl = sObj.optString("url", "").trim()
-                if (sUrl.isNotBlank() && sUrl != mainStreamUrl) {
-                    val sType = sObj.optString("type", "").lowercase().trim()
-                    emitLink(sUrl, sType, "Server ${i + 2}")
+        // 2. Sandaran pautan M3U8 terus jika penjanaan senarai kualiti gagal
+        if (!foundAny) {
+            callback.invoke(
+                newExtractorLink(
+                    source = name,
+                    name = "$name (HLS Auto)",
+                    url = streamUrl,
+                    type = ExtractorLinkType.M3U8
+                ) {
+                    this.referer = "$mainUrl/"
+                    this.quality = Qualities.P1080.value
                 }
-            }
+            )
+            foundAny = true
         }
 
         return foundAny
